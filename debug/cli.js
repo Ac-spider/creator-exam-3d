@@ -60,6 +60,11 @@ function printHelp() {
   remember, mem       - 查看已发现的故事片段
   world, wstate       - 查看世界状态与叙事记忆
 
+  【图鉴命令】
+  codex, cx           - 查看连锁反应图鉴
+  legacy, leg         - 查看单位传承系统
+  stats               - 查看游戏统计
+
 【其他命令】
   reset, r            - 重置当前关卡
   level <n>           - 切换到第 n 关（1-6）
@@ -449,6 +454,23 @@ async function main() {
           break;
         }
 
+        case 'codex':
+        case 'cx': {
+          handleCodex();
+          break;
+        }
+
+        case 'legacy':
+        case 'leg': {
+          handleLegacy();
+          break;
+        }
+
+        case 'stats': {
+          handleStats();
+          break;
+        }
+
         case 'quit':
         case 'q':
         case 'exit':
@@ -467,6 +489,96 @@ async function main() {
 }
 
 main().catch(console.error);
+
+// ========== 图鉴命令处理 ==========
+
+function handleCodex() {
+  console.log('\n╔════════════════════════════════════════════════════════════╗');
+  console.log('║              连锁反应图鉴                                  ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
+
+  const stats = game.resonanceCodex.getStats();
+  console.log(`\n进度: ${stats.discovered}/${stats.total} (${stats.progress}%)`);
+
+  const discovered = game.resonanceCodex.getDiscovered();
+  if (discovered.length > 0) {
+    console.log('\n--- 已发现的共鸣 ---');
+    for (const reaction of discovered) {
+      console.log(`\n  【${reaction.name}】`);
+      console.log(`  能力: ${reaction.abilities.join(' + ')}`);
+      console.log(`  效果: ${reaction.description}`);
+      console.log(`  发现回合: ${reaction.discoverTurn} | 使用次数: ${reaction.usageCount}`);
+    }
+  }
+
+  const undiscovered = game.resonanceCodex.getUndiscovered();
+  if (undiscovered.length > 0) {
+    console.log('\n--- 未发现的共鸣 ---');
+    for (const reaction of undiscovered) {
+      console.log(`\n  【???】`);
+      console.log(`  能力: ${reaction.abilities.join(' + ')}`);
+      console.log(`  提示: ${reaction.description.substring(0, 30)}...`);
+    }
+  }
+
+  if (stats.completion) {
+    console.log('\n✨ 恭喜！你已发现所有连锁反应！');
+  }
+}
+
+function handleLegacy() {
+  console.log('\n╔════════════════════════════════════════════════════════════╗');
+  console.log('║              单位传承系统                                  ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
+
+  const stats = legacySystem.getStats();
+  console.log(`\n传承单位总数: ${stats.totalLegacyUnits}`);
+  console.log(`总救援次数: ${stats.totalRescues}`);
+  console.log(`已解锁特质: ${stats.globalTraits.length}/8`);
+
+  if (stats.tierDistribution) {
+    console.log('\n--- 传承等级分布 ---');
+    for (const [tier, count] of Object.entries(stats.tierDistribution)) {
+      if (count > 0) {
+        console.log(`  ${tier}: ${count}人`);
+      }
+    }
+  }
+
+  // 显示每个传承单位的故事
+  for (const [id, legacy] of legacySystem.legacyUnits) {
+    const story = legacySystem.generateLegacyStory(id);
+    if (story) {
+      console.log(`\n--- ${story.name} [${story.tier}] ---`);
+      console.log(`  救援次数: ${story.rescueCount}`);
+      if (story.traits.length > 0) {
+        console.log(`  特质: ${story.traits.join(', ')}`);
+      }
+      for (const chapter of story.stories) {
+        console.log(`  ${chapter.story}`);
+      }
+    }
+  }
+}
+
+function handleStats() {
+  console.log('\n╔════════════════════════════════════════════════════════════╗');
+  console.log('║              游戏统计                                      ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
+
+  console.log(`\n当前关卡: ${game.level.title}`);
+  console.log(`回合: ${game.turn}/${game.level.maxTurns}`);
+  console.log(`已救援: ${game.rescued}`);
+  console.log(`已迷失: ${game.lost}`);
+  console.log(`裂隙: ${game.entropy}/${game.level.entropyLimit}`);
+
+  const codexStats = game.resonanceCodex.getStats();
+  console.log(`\n连锁反应发现: ${codexStats.discovered}/${codexStats.total}`);
+
+  const legacyStats = legacySystem.getStats();
+  console.log(`传承单位: ${legacyStats.totalLegacyUnits}`);
+  console.log(`特质解锁: ${legacyStats.completion.traits.percentage}%`);
+}
 
 // ========== 叙事命令处理 ==========
 
