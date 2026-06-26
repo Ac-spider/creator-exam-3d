@@ -1461,24 +1461,43 @@ class DebugGame {
     if (!goal) return null;
     const startKey = `${unit.x},${unit.y}`;
     const goalKey = `${goal.x},${goal.y}`;
-    const queue = [{ x: unit.x, y: unit.y }];
-    const cameFrom = new Map([[startKey, null]]);
 
-    while (queue.length) {
-      const current = queue.shift();
+    // A* with time-aware terrain costs
+    const openSet = [{ x: unit.x, y: unit.y, g: 0, f: this.distance(unit.x, unit.y, goal.x, goal.y) }];
+    const closedSet = new Set([startKey]);
+    const cameFrom = new Map([[startKey, null]]);
+    const gScore = new Map([[startKey, 0]]);
+
+    while (openSet.length > 0) {
+      // Get node with lowest f score
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift();
       const currentKey = `${current.x},${current.y}`;
+
       if (currentKey === goalKey) break;
-      const nbs = this.neighbors(current.x, current.y).sort((a, b) => this.distance(a.x, a.y, goal.x, goal.y) - this.distance(b.x, b.y, goal.x, goal.y));
-      for (const nb of nbs) {
+
+      for (const nb of this.neighbors(current.x, current.y)) {
         const key = `${nb.x},${nb.y}`;
-        if (cameFrom.has(key)) continue;
+        if (closedSet.has(key)) continue;
         if (!this.isPassable(nb.x, nb.y, unit)) continue;
-        cameFrom.set(key, current);
-        queue.push(nb);
+
+        // Time-aware terrain cost
+        const moveCost = this.getMoveCost(nb.x, nb.y, unit);
+        const tentativeG = current.g + moveCost;
+
+        if (!gScore.has(key) || tentativeG < gScore.get(key)) {
+          gScore.set(key, tentativeG);
+          const f = tentativeG + this.distance(nb.x, nb.y, goal.x, goal.y);
+          openSet.push({ x: nb.x, y: nb.y, g: tentativeG, f });
+          cameFrom.set(key, { x: current.x, y: current.y });
+          closedSet.add(key);
+        }
       }
     }
 
     if (!cameFrom.has(goalKey)) return null;
+
+    // Reconstruct path
     let current = goal;
     let previous = cameFrom.get(goalKey);
     while (previous && !(previous.x === unit.x && previous.y === unit.y)) {
@@ -1486,6 +1505,46 @@ class DebugGame {
       previous = cameFrom.get(`${current.x},${current.y}`);
     }
     return current.x === unit.x && current.y === unit.y ? null : current;
+  }
+
+  getMoveCost(x, y, unit) {
+    const terrain = this.getTerrain(x, y);
+    let cost = 1;
+
+    // Base terrain costs
+    if (terrain === TILE.FOREST) cost = 2;
+    else if (terrain === TILE.HIGH) cost = 1.5;
+    else if (terrain === TILE.BRIDGE) cost = 1.2;
+    else if (terrain === TILE.SWAMP) cost = 2.5;
+    else if (terrain === TILE.FOG || terrain === TILE.DARK) cost = 3;
+
+    // Time-aware costs: temporary terrain about to expire
+    const tempCreation = this.creations.find(c =>
+      c.placed && c.remaining > 0 && c.remaining <= 1 &&
+      this.distance(x, y, c.x, c.y) <= (c.card.range || 0) &&
+      c.restores?.some(r => r.x === x && r.y === y)
+    );
+    if (tempCreation) {
+      // High cost for terrain that will expire soon
+      cost += 5;
+    }
+
+    // Beast-specific: avoid traps
+    if (unit.type === 'beast') {
+      const trapHere = this.creations.some(c =>
+        c.placed && c.remaining > 0 && c.card.ability === 'trap' &&
+        c.x === x && c.y === y
+      );
+      if (trapHere) cost += 10;
+    }
+
+    // Civilian-specific: prefer guided paths
+    if (this.isCivilian(unit) && unit.guidedTurns > 0) {
+      const nearGuide = this.nearActiveAbility(x, y, ['guide', 'memory_beacon']);
+      if (nearGuide) cost *= 0.8; // Slight preference for guided areas
+    }
+
+    return cost;
   }
 
   randomPassableNeighbor(unit) {
