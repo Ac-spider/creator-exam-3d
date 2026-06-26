@@ -1154,6 +1154,90 @@ runner.test('PersistentWorld - 应记录关卡并更新遗产轨迹', async () =
   runner.assert(Array.isArray(effects), '应返回活跃效果数组');
 });
 
+// 测试 VectorMemory 语义记忆系统
+runner.test('VectorMemory - 应编码文本并检索相似记忆', async () => {
+  const { VectorMemory } = await import('../public/js/vectorMemory.js');
+  const vm = new VectorMemory();
+
+  // 添加记忆
+  vm.addMemory('造物者创造了永恒之光，照亮了黑暗矿井', { type: 'creation', level: 'night-mine' });
+  vm.addMemory('洪水淹没了村庄，但救援及时赶到', { type: 'rescue', level: 'flood-village' });
+  vm.addMemory('巨兽愤怒地咆哮，摧毁了城墙', { type: 'hazard', level: 'giant-city' });
+  vm.addMemory('黑暗中出现了希望的光芒', { type: 'event', level: 'night-mine' });
+
+  // 测试相似性查询
+  const results = vm.query('光明照亮黑暗', 3);
+  runner.assert(results.length > 0, '应返回相似记忆');
+  runner.assert(results[0].similarity > 0.3, '相似度应超过阈值');
+
+  // 测试主题查询
+  const creationMemories = vm.queryByTheme('creation', 2);
+  runner.assert(creationMemories.length > 0, '应找到创造主题记忆');
+});
+
+runner.test('VectorMemory - 应发现叙事弧线', async () => {
+  const { VectorMemory } = await import('../public/js/vectorMemory.js');
+  const vm = new VectorMemory();
+
+  // 添加一系列相关的记忆形成叙事弧线
+  vm.addMemory('村庄被洪水淹没，居民陷入绝望', { type: 'event', turn: 1 });
+  vm.addMemory('造物者创造桥梁拯救村民', { type: 'creation', turn: 2 });
+  vm.addMemory('救援成功，村民重获希望', { type: 'rescue', turn: 3 });
+  vm.addMemory('但洪水再次来袭，情况危急', { type: 'hazard', turn: 4 });
+  vm.addMemory('最终所有居民安全撤离', { type: 'rescue', turn: 5 });
+
+  const arcs = vm.findNarrativeArcs(3);
+  runner.assert(arcs.length > 0, '应发现叙事弧线');
+  runner.assert(arcs[0].memories.length >= 3, '弧线应包含至少3个记忆');
+  runner.assert(arcs[0].coherence > 0, '弧线应有正相干度');
+});
+
+runner.test('VectorMemory - 序列化与反序列化', async () => {
+  const { VectorMemory } = await import('../public/js/vectorMemory.js');
+  const vm = new VectorMemory();
+
+  vm.addMemory('测试记忆1', { type: 'test' });
+  vm.addMemory('测试记忆2', { type: 'test' });
+
+  const serialized = vm.serialize();
+  runner.assert(serialized.embeddings.length === 2, '应序列化2条记忆');
+
+  const vm2 = new VectorMemory();
+  vm2.deserialize(serialized);
+  runner.assert(vm2.embeddings.length === 2, '反序列化后应有2条记忆');
+
+  const results = vm2.query('测试', 2);
+  runner.assert(results.length === 2, '反序列化后查询应正常工作');
+});
+
+// 测试 aiMemory 与 VectorMemory 集成
+runner.test('AIMemory - 应使用语义记忆检索相关记忆', async () => {
+  const { getMemorySystem, resetMemorySystem } = await import('../public/js/aiMemory.js');
+  resetMemorySystem();
+  const memory = getMemorySystem();
+
+  // 添加叙事记忆
+  memory.addNarrativeMemory('creation', '造物者创造了光之桥');
+  memory.addNarrativeMemory('rescue', '救援队在黑暗中找到了幸存者');
+  memory.addNarrativeMemory('event', '巨兽的愤怒震撼了大地');
+
+  // 语义查询
+  const related = memory.queryRelatedMemories('光明与希望', 2);
+  runner.assert(related.length > 0, '应返回语义相关记忆');
+
+  // 主题查询
+  const creationMemories = memory.getThematicMemories('creation', 2);
+  runner.assert(creationMemories.length > 0, '应找到创造主题记忆');
+
+  // 叙事弧线
+  const arcs = memory.findNarrativeArcs(2);
+  runner.assert(Array.isArray(arcs), '应返回叙事弧线数组');
+
+  // 叙事摘要
+  const summary = memory.generateNarrativeSummary();
+  runner.assert(summary !== null, '应生成叙事摘要');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

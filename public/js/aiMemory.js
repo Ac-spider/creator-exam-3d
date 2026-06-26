@@ -1,6 +1,8 @@
 // AI Memory System - Tracks player behavior, creations, and generates personalized narratives
 // Inspired by AI-driven game narrative systems and emergent storytelling
 
+import { VectorMemory } from './vectorMemory.js';
+
 export class AIMemorySystem {
   constructor() {
     this.playerProfile = {
@@ -32,6 +34,9 @@ export class AIMemorySystem {
     this.levelHistory = [];
     this.creationHistory = [];
     this.narrativeThreads = new Map();
+
+    // Semantic vector memory for narrative retrieval
+    this.vectorMemory = new VectorMemory();
 
     // Load from localStorage if available
     this.loadFromStorage();
@@ -136,7 +141,7 @@ export class AIMemorySystem {
     this.playerProfile.riskTolerance = Math.min(1, riskyAbilities / total + 0.3);
   }
 
-  // Add narrative memory
+  // Add narrative memory with semantic vector encoding
   addNarrativeMemory(type, content, relatedEntities = []) {
     const memory = {
       id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
@@ -149,6 +154,15 @@ export class AIMemorySystem {
 
     this.worldState.narrativeMemory.push(memory);
 
+    // Also encode in vector memory for semantic retrieval
+    const text = typeof content === 'string' ? content : JSON.stringify(content);
+    this.vectorMemory.addMemory(text, {
+      type,
+      level: this.worldState.currentLevel,
+      entities: relatedEntities,
+      turn: this.worldState.currentTurn || 0
+    });
+
     // Keep only last 100 memories
     if (this.worldState.narrativeMemory.length > 100) {
       this.worldState.narrativeMemory = this.worldState.narrativeMemory.slice(-100);
@@ -156,6 +170,26 @@ export class AIMemorySystem {
 
     this.saveToStorage();
     return memory;
+  }
+
+  // Semantic query for related memories using vector similarity
+  queryRelatedMemories(queryText, topK = 5) {
+    return this.vectorMemory.query(queryText, topK);
+  }
+
+  // Find narrative arcs in player history
+  findNarrativeArcs(minLength = 3) {
+    return this.vectorMemory.findNarrativeArcs(minLength);
+  }
+
+  // Get thematic memories (sacrifice, hope, despair, creation, war)
+  getThematicMemories(theme, topK = 5) {
+    return this.vectorMemory.queryByTheme(theme, topK);
+  }
+
+  // Generate narrative summary from vector memory
+  generateNarrativeSummary() {
+    return this.vectorMemory.generateNarrativeSummary();
   }
 
   // Discover lore
@@ -631,7 +665,8 @@ ${lossContext}${redemptionContext}
         creationHistory: this.creationHistory.map(c => ({
           ...c,
           card: { ...c.card }
-        }))
+        })),
+        vectorMemory: this.vectorMemory.serialize()
       };
       localStorage.setItem('creator_exam_memory', JSON.stringify(data));
     } catch (e) {
@@ -648,6 +683,9 @@ ${lossContext}${redemptionContext}
         this.worldState = data.worldState || this.worldState;
         this.levelHistory = data.levelHistory || [];
         this.creationHistory = data.creationHistory || [];
+        if (data.vectorMemory) {
+          this.vectorMemory.deserialize(data.vectorMemory);
+        }
       }
     } catch (e) {
       console.warn('Failed to load memory from storage:', e);
@@ -682,6 +720,7 @@ ${lossContext}${redemptionContext}
     };
     this.levelHistory = [];
     this.creationHistory = [];
+    this.vectorMemory = new VectorMemory();
     this.saveToStorage();
   }
 
