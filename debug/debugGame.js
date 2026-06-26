@@ -8,6 +8,7 @@ import { RitualForge } from '../public/js/ritualForge.js';
 import { CognitiveAbyss } from '../public/js/cognitiveAbyss.js';
 import { VerificationCorruption } from '../public/js/verificationCorruption.js';
 import { OathManager } from '../public/js/oathbinding.js';
+import { RiftEchoSystem } from '../public/js/riftEchoes.js';
 
 class DebugGame extends GameEngine {
   constructor() {
@@ -17,6 +18,7 @@ class DebugGame extends GameEngine {
     this.cognitiveAbyss = new CognitiveAbyss();
     this.verificationCorruption = new VerificationCorruption();
     this.oathManager = new OathManager();
+    this.riftEchoSystem = new RiftEchoSystem();
   }
 
   reset() {
@@ -26,6 +28,7 @@ class DebugGame extends GameEngine {
     this.cognitiveAbyss = new CognitiveAbyss();
     this.verificationCorruption = new VerificationCorruption();
     this.oathManager = new OathManager();
+    this.riftEchoSystem = new RiftEchoSystem();
     // Add legacy NPCs from previous rescues
     if (this.legacyUnits && this.legacyUnits.length > 0) {
       for (const npc of this.legacyUnits) {

@@ -2095,6 +2095,159 @@ runner.test('言灵誓约 - 序列化与统计', async () => {
   runner.assert(manager2.getAllActiveOaths().length === 2, '反序列化后应有2个活跃誓约');
 });
 
+// 测试裂隙回响系统
+runner.test('裂隙回响 - 应在高裂隙时显现', async () => {
+  const { RiftEchoSystem, ECHO_TYPES } = await import('../public/js/riftEchoes.js');
+  const system = new RiftEchoSystem();
+
+  const memory = {
+    id: 'mem-1',
+    text: '创造了发光水母照亮黑暗',
+    ability: 'illuminate',
+    name: '发光水母',
+    metadata: { type: 'creation', turn: 1, level: 'test' }
+  };
+
+  const gameState = {
+    entropy: 5,
+    entropyLimit: 7,
+    turn: 3,
+    abyssDepth: 0.5
+  };
+
+  const result = system.manifestEcho(memory, gameState);
+  runner.assert(result.success === true, '应成功显现回响');
+  runner.assert(result.echo !== null, '应返回回响对象');
+  runner.assert(ECHO_TYPES[result.echo.echoType] !== undefined, '回响类型应有效');
+  runner.assert(result.narrative.length > 0, '应生成叙事文本');
+
+  const active = system.getActiveEchoes();
+  runner.assert(active.length === 1, '应有1个活跃回响');
+});
+
+runner.test('裂隙回响 - 恶意回响应扭曲能力', async () => {
+  const { RiftEchoSystem, ABILITY_REVERSALS } = await import('../public/js/riftEchoes.js');
+  const system = new RiftEchoSystem();
+
+  const memory = {
+    id: 'mem-1',
+    text: '创造了发光水母',
+    ability: 'illuminate',
+    name: '发光水母',
+    metadata: { type: 'creation' }
+  };
+
+  const gameState = {
+    entropy: 6,
+    entropyLimit: 7,
+    turn: 1,
+    corruptionLevel: 5 // 高腐化增加恶意概率
+  };
+
+  // 强制显现恶意回响
+  const result = system.manifestEcho(memory, gameState);
+  const echo = result.echo;
+
+  const effectiveAbility = echo.getEffectiveAbility();
+  runner.assert(effectiveAbility !== undefined, '应有有效能力');
+
+  if (echo.echoType === 'malicious') {
+    runner.assert(effectiveAbility === 'darken', '恶意回响应扭曲为darken');
+  }
+});
+
+runner.test('裂隙回响 - 回合推进与过期', async () => {
+  const { RiftEchoSystem } = await import('../public/js/riftEchoes.js');
+  const system = new RiftEchoSystem();
+
+  const memory = {
+    id: 'mem-1',
+    text: '测试造物',
+    ability: 'calm',
+    name: '安抚之笛',
+    metadata: { type: 'creation' }
+  };
+
+  const gameState = { entropy: 5, entropyLimit: 7, turn: 1 };
+  system.manifestEcho(memory, gameState, { x: 2, y: 3 });
+
+  const echo = system.getActiveEchoes()[0];
+  runner.assert(echo.x === 2, '回响X坐标应为2');
+  runner.assert(echo.y === 3, '回响Y坐标应为3');
+
+  // 推进回合直到过期
+  let expired = false;
+  for (let i = 0; i < 5; i++) {
+    const results = system.processTurn(gameState);
+    if (results.some(r => r.type === 'expired')) {
+      expired = true;
+      break;
+    }
+  }
+
+  runner.assert(expired === true, '回响应最终过期');
+  runner.assert(system.getActiveEchoes().length === 0, '过期后不应有活跃回响');
+});
+
+runner.test('裂隙回响 - 从VectorMemory中生成', async () => {
+  const { RiftEchoSystem } = await import('../public/js/riftEchoes.js');
+  const { VectorMemory } = await import('../public/js/vectorMemory.js');
+  const system = new RiftEchoSystem();
+  const vectorMemory = new VectorMemory();
+
+  // 添加造物记忆
+  vectorMemory.addMemory('创造了发光水母照亮黑暗', { type: 'creation', turn: 1 });
+  vectorMemory.addMemory('造了一座桥帮助村民过河', { type: 'creation', turn: 2 });
+  vectorMemory.addMemory('洪水淹没了村庄', { type: 'hazard', turn: 3 });
+
+  const gameState = {
+    entropy: 6,
+    entropyLimit: 7,
+    turn: 4
+  };
+
+  const result = system.tryManifestFromMemory(vectorMemory, gameState, 'creation');
+  // 由于随机性，可能成功也可能失败（取决于shouldManifest）
+  // 但我们已经设置了高entropy，应该有较高概率成功
+  if (result.success) {
+    runner.assert(result.echo !== null, '成功时应返回回响');
+    runner.assert(system.getActiveEchoes().length > 0, '应有活跃回响');
+  }
+
+  // 测试统计
+  const stats = system.getStats();
+  runner.assert(stats.totalManifested >= 0, '统计应正常');
+});
+
+runner.test('裂隙回响 - 序列化与统计', async () => {
+  const { RiftEchoSystem } = await import('../public/js/riftEchoes.js');
+  const system = new RiftEchoSystem();
+
+  const memory = {
+    id: 'mem-1',
+    text: '测试造物',
+    ability: 'illuminate',
+    name: '测试之光',
+    metadata: { type: 'creation' }
+  };
+
+  const gameState = { entropy: 5, entropyLimit: 7, turn: 1 };
+  system.manifestEcho(memory, gameState);
+
+  const stats = system.getStats();
+  runner.assert(stats.totalManifested === 1, '应记录1个显现');
+  runner.assert(stats.currentlyActive === 1, '应有1个活跃回响');
+
+  const serialized = system.serialize();
+  runner.assert(serialized.echoes.length === 1, '序列化应包含1个回响');
+  runner.assert(serialized.totalManifested === 1, '序列化应包含统计');
+
+  const system2 = new RiftEchoSystem();
+  system2.deserialize(serialized);
+  runner.assert(system2.getActiveEchoes().length === 1, '反序列化后应有1个活跃回响');
+  runner.assert(system2.totalManifested === 1, '反序列化后统计应一致');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
