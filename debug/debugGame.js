@@ -7,6 +7,7 @@ import { NPCManager } from '../public/js/npcManager.js';
 import { RitualForge } from '../public/js/ritualForge.js';
 import { CognitiveAbyss } from '../public/js/cognitiveAbyss.js';
 import { VerificationCorruption } from '../public/js/verificationCorruption.js';
+import { OathManager } from '../public/js/oathbinding.js';
 
 class DebugGame extends GameEngine {
   constructor() {
@@ -15,6 +16,7 @@ class DebugGame extends GameEngine {
     this.ritualForge = new RitualForge();
     this.cognitiveAbyss = new CognitiveAbyss();
     this.verificationCorruption = new VerificationCorruption();
+    this.oathManager = new OathManager();
   }
 
   reset() {
@@ -23,6 +25,7 @@ class DebugGame extends GameEngine {
     this.ritualForge = new RitualForge();
     this.cognitiveAbyss = new CognitiveAbyss();
     this.verificationCorruption = new VerificationCorruption();
+    this.oathManager = new OathManager();
     // Add legacy NPCs from previous rescues
     if (this.legacyUnits && this.legacyUnits.length > 0) {
       for (const npc of this.legacyUnits) {

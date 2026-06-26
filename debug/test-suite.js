@@ -2013,6 +2013,88 @@ runner.test('验证腐化 - 序列化与统计', async () => {
   runner.assert(corruption2.illegalCardsCreated.length === 1, '反序列化后应恢复非法卡牌记录');
 });
 
+// 测试言灵誓约系统
+runner.test('言灵誓约 - 应创建誓约并生效', async () => {
+  const { OathManager, OATH_TYPES } = await import('../public/js/oathbinding.js');
+  const manager = new OathManager();
+
+  const result = manager.createOath('protection', 'npc1', '老渔夫');
+  runner.assert(result.success === true, '应成功创建誓约');
+  runner.assert(result.oath !== null, '应返回誓约对象');
+  runner.assert(result.oath.type === 'protection', '誓约类型应为守护');
+  runner.assert(result.oath.status === 'active', '誓约状态应为活跃');
+
+  const activeOaths = manager.getAllActiveOaths();
+  runner.assert(activeOaths.length === 1, '应有1个活跃誓约');
+
+  const benefits = manager.getActiveBenefits();
+  runner.assert(benefits.length === 1, '应有1个活跃收益');
+  runner.assert(benefits[0].type === 'shield', '收益类型应为护盾');
+});
+
+runner.test('言灵誓约 - 同一NPC不应重复誓约', async () => {
+  const { OathManager } = await import('../public/js/oathbinding.js');
+  const manager = new OathManager();
+
+  manager.createOath('protection', 'npc1', '老渔夫');
+  const result = manager.createOath('knowledge', 'npc1', '老渔夫');
+  runner.assert(result.success === false, '重复誓约应失败');
+});
+
+runner.test('言灵誓约 - 玩家主动打破誓约', async () => {
+  const { OathManager } = await import('../public/js/oathbinding.js');
+  const manager = new OathManager();
+
+  const createResult = manager.createOath('protection', 'npc1', '老渔夫');
+  const oathId = createResult.oath.id;
+
+  const breakResult = manager.playerBreakOath(oathId);
+  runner.assert(breakResult.success === true, '打破誓约应成功');
+  runner.assert(breakResult.oath.status === 'broken', '誓约状态应为已打破');
+  runner.assert(manager.reputation < 50, '声誉应下降');
+});
+
+runner.test('言灵誓约 - 背叛机制应触发', async () => {
+  const { OathManager } = await import('../public/js/oathbinding.js');
+  const manager = new OathManager();
+
+  // 创建高背叛风险的誓约
+  const result = manager.createOath('sacrifice', 'npc1', '测试NPC');
+  const oath = result.oath;
+  // 手动设置高背叛风险
+  oath.trustLevel = 5;
+  oath.betrayalTriggers.push('player_harm');
+
+  const betrayalChance = oath.calculateBetrayalChance();
+  runner.assert(betrayalChance > 0.3, '高不信任+伤害触发器应产生高背叛概率');
+
+  // 模拟背叛（强制触发）
+  const betrayResult = oath.betray();
+  runner.assert(betrayResult.oath.status === 'betrayed', '誓约状态应为已背叛');
+  runner.assert(betrayResult.consequences.length > 0, '背叛应有后果');
+});
+
+runner.test('言灵誓约 - 序列化与统计', async () => {
+  const { OathManager } = await import('../public/js/oathbinding.js');
+  const manager = new OathManager();
+
+  manager.createOath('protection', 'npc1', '老渔夫');
+  manager.createOath('knowledge', 'npc2', '小烛');
+
+  const stats = manager.getStats();
+  runner.assert(stats.total === 2, '应记录2个誓约');
+  runner.assert(stats.active === 2, '应有2个活跃誓约');
+
+  const serialized = manager.serialize();
+  runner.assert(serialized.oaths.length === 2, '序列化应包含2个誓约');
+  runner.assert(serialized.reputation === 50, '序列化应包含声誉值');
+
+  const manager2 = new OathManager();
+  manager2.deserialize(serialized);
+  runner.assert(manager2.oaths.size === 2, '反序列化后应有2个誓约');
+  runner.assert(manager2.getAllActiveOaths().length === 2, '反序列化后应有2个活跃誓约');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
