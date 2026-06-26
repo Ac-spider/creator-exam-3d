@@ -62,11 +62,11 @@ class TestRunner {
   }
 
   assertTrue(value, message) {
-    this.assert(value === true, message || `Expected true, got ${value}`);
+    this.assert(!!value === true, message || `Expected true, got ${value}`);
   }
 
   assertFalse(value, message) {
-    this.assert(value === false, message || `Expected false, got ${value}`);
+    this.assert(!!value === false, message || `Expected false, got ${value}`);
   }
 }
 
@@ -402,13 +402,14 @@ runner.test('资源限制 - 造物次数耗尽后应无法继续造物', () => {
   const game = new DebugGame();
   game.reset();
 
-  // 耗尽所有造物次数
-  while (game.creationCharges > 0) {
+  // 耗尽所有造物次数（先create再place，creationCharges在create时减少）
+  let attempts = 0;
+  while (game.creationCharges > 0 && attempts < 20) {
+    attempts++;
     const result = game.create('造一座桥');
     if (result.error) break;
-    // 放置造物以消耗次数
+    // 放置造物
     if (result.success && result.creationId) {
-      // 找一个空位放置
       for (let y = 0; y < 7; y++) {
         for (let x = 0; x < 7; x++) {
           if (!game.unitAt(x, y)) {

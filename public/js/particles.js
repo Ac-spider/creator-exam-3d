@@ -104,6 +104,66 @@ export class ParticleSystem {
     });
   }
 
+  // Spawn resonance effect for chain reactions
+  spawnResonanceEffect(x, y, z, color) {
+    // Dual-color spiral particles
+    const particleCount = 60;
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const lifetimes = new Float32Array(particleCount);
+
+    const baseColor = new THREE.Color(color);
+    const secondaryColor = new THREE.Color(0xffffff);
+
+    for (let i = 0; i < particleCount; i++) {
+      const angle = (i / particleCount) * Math.PI * 4;
+      const radius = 0.2 + (i / particleCount) * 2;
+      const height = Math.sin(angle * 2) * 0.5 + 1;
+
+      positions[i * 3] = x + Math.cos(angle) * radius;
+      positions[i * 3 + 1] = y + height;
+      positions[i * 3 + 2] = z + Math.sin(angle) * radius;
+
+      const mixRatio = (i % 2 === 0) ? 1 : 0;
+      const c = mixRatio === 1 ? baseColor : secondaryColor;
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+
+      lifetimes[i] = 1.5 + Math.random() * 1.0;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1));
+
+    const material = new THREE.PointsMaterial({
+      size: 0.15,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      vertexColors: true
+    });
+
+    const points = new THREE.Points(geometry, material);
+    this.scene.add(points);
+
+    this.particles.push({
+      mesh: points,
+      type: 'resonance',
+      age: 0,
+      maxAge: 2.5,
+      centerX: x,
+      centerY: y,
+      centerZ: z
+    });
+
+    // Add connecting beam between resonating creations
+    this.spawnFloatingText(x, y + 2, z, '共鸣!', 0xfff5a0);
+  }
+
   // Spawn floating text effect
   spawnFloatingText(x, y, z, text, color = 0xffffff) {
     const canvas = document.createElement('canvas');
@@ -287,6 +347,23 @@ export class ParticleSystem {
 
         case 'terrain':
         case 'loss': {
+          particle.mesh.material.opacity = remaining * 0.9;
+          break;
+        }
+
+        case 'resonance': {
+          const positions = particle.mesh.geometry.attributes.position.array;
+          const time = particle.age * 2;
+
+          for (let j = 0; j < positions.length / 3; j++) {
+            const angle = (j / (positions.length / 3)) * Math.PI * 4 + time;
+            const radius = 0.2 + (j / (positions.length / 3)) * 2 + Math.sin(time * 2) * 0.3;
+            positions[j * 3] = particle.centerX + Math.cos(angle) * radius;
+            positions[j * 3 + 1] = particle.centerY + Math.sin(time + j * 0.1) * 0.5 + 1;
+            positions[j * 3 + 2] = particle.centerZ + Math.sin(angle) * radius;
+          }
+
+          particle.mesh.geometry.attributes.position.needsUpdate = true;
           particle.mesh.material.opacity = remaining * 0.9;
           break;
         }

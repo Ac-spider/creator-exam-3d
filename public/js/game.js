@@ -422,6 +422,72 @@ class CreatorExam3D {
       }
       if (changed) this.addLog(`「${card.name}」改造了 ${changed} 处危险地形。`);
     }
+
+    if (card.ability === 'freeze_water') {
+      let changed = 0;
+      for (const cell of this.tilesWithin(x, y, Math.max(1, card.range))) {
+        if (this.getTerrain(cell.x, cell.y) === TILE.WATER) {
+          this.setTempTerrain(creation, cell.x, cell.y, TILE.BRIDGE);
+          changed += 1;
+        }
+      }
+      if (!changed) this.setTempTerrain(creation, x, y, TILE.BRIDGE);
+    }
+
+    if (card.ability === 'raise_earth') {
+      let changed = 0;
+      for (const cell of this.tilesWithin(x, y, card.range)) {
+        const terrain = this.getTerrain(cell.x, cell.y);
+        if ([TILE.LAND, TILE.WATER, TILE.SWAMP].includes(terrain)) {
+          this.setTempTerrain(creation, cell.x, cell.y, TILE.HIGH);
+          changed += 1;
+        }
+      }
+      if (!changed) this.setTempTerrain(creation, x, y, TILE.HIGH);
+    }
+
+    if (card.ability === 'grow_forest') {
+      let changed = 0;
+      for (const cell of this.tilesWithin(x, y, card.range)) {
+        const terrain = this.getTerrain(cell.x, cell.y);
+        if ([TILE.LAND, TILE.SWAMP].includes(terrain)) {
+          this.setTempTerrain(creation, cell.x, cell.y, TILE.FOREST);
+          changed += 1;
+        }
+      }
+      if (!changed) this.setTempTerrain(creation, x, y, TILE.FOREST);
+    }
+
+    if (card.ability === 'dig_channel') {
+      let changed = 0;
+      for (const cell of this.tilesWithin(x, y, card.range)) {
+        if (this.getTerrain(cell.x, cell.y) === TILE.LAND) {
+          this.setTempTerrain(creation, cell.x, cell.y, TILE.WATER);
+          changed += 1;
+        }
+      }
+      if (!changed) this.setTempTerrain(creation, x, y, TILE.WATER);
+    }
+
+    if (card.ability === 'trap') {
+      this.setTempTerrain(creation, x, y, TILE.WALL);
+    }
+
+    if (card.ability === 'sun_blessing') {
+      for (const cell of this.tilesWithin(x, y, card.range + 1)) {
+        const terrain = this.getTerrain(cell.x, cell.y);
+        if (terrain === TILE.DARK || terrain === TILE.FOG) {
+          this.setTerrain(cell.x, cell.y, TILE.LAND);
+        }
+      }
+      for (const unit of this.units.filter((u) => this.isCivilian(u) && u.status === 'active')) {
+        if (this.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+          unit.immuneChaos = true;
+          unit.guidedTurns = Math.max(unit.guidedTurns, 2);
+        }
+      }
+      this.addLog(`「${card.name}」降下日华，大范围驱散黑暗并庇佑生灵。`);
+    }
   }
 
   endTurn() {
@@ -431,6 +497,7 @@ class CreatorExam3D {
     }
     this.addLog(`第 ${this.turn} 回合开始结算。`, true);
     this.applyActiveCreationEffects();
+    this.checkChainReactions();
     this.moveUnits();
     this.spreadHazards();
     this.applyTileHazardsToUnits();
@@ -444,6 +511,84 @@ class CreatorExam3D {
     }
     this.renderWorld();
     this.updateUi();
+  }
+
+  checkChainReactions() {
+    const resonancePairs = [
+      { a: 'illuminate', b: 'absorb_water', result: 'steam', text: '照明与吸水共鸣，产生蒸汽驱散更多迷雾' },
+      { a: 'calm', b: 'memory_beacon', result: 'peace', text: '安抚与记忆共鸣，使者心中的疑虑消散' },
+      { a: 'force_field', b: 'transform_land', result: 'sanctuary', text: '结界与地形改造共鸣，形成神圣庇护所' },
+      { a: 'freeze_water', b: 'illuminate', result: 'prism', text: '冰与光共鸣，折射出指引道路的光棱' },
+      { a: 'guide', b: 'reveal_path', result: 'clarity', text: '引导与显路共鸣，所有单位获得清晰视野' },
+      { a: 'sun_blessing', b: 'cleanse', result: 'renewal', text: '日华与净化共鸣，大地焕发生机' }
+    ];
+
+    for (const pair of resonancePairs) {
+      const creationA = this.creations.find(c => c.remaining > 0 && c.card.ability === pair.a);
+      const creationB = this.creations.find(c => c.remaining > 0 && c.card.ability === pair.b);
+      if (creationA && creationB && this.distance(creationA.x, creationA.y, creationB.x, creationB.y) <= 3) {
+        this.applyResonanceEffect(pair.result, creationA, creationB);
+        this.addLog(`共鸣！${pair.text}。`, true);
+        // Spawn resonance particles
+        const posA = this.tileToWorld(creationA.x, creationA.y);
+        const posB = this.tileToWorld(creationB.x, creationB.y);
+        this.particleSystem.spawnResonanceEffect(
+          (posA.x + posB.x) / 2, 0.5, (posA.z + posB.z) / 2,
+          this.particleSystem.getAbilityColor(creationA.card.ability)
+        );
+      }
+    }
+  }
+
+  applyResonanceEffect(result, creationA, creationB) {
+    const midX = Math.round((creationA.x + creationB.x) / 2);
+    const midY = Math.round((creationA.y + creationB.y) / 2);
+
+    switch (result) {
+      case 'steam':
+        for (const cell of this.tilesWithin(midX, midY, 2)) {
+          if (this.getTerrain(cell.x, cell.y) === TILE.FOG) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+          }
+        }
+        break;
+      case 'peace':
+        if (this.isWarLevel()) {
+          this.warMeter = Math.max(0, this.warMeter - 1);
+        }
+        for (const unit of this.units.filter(u => this.isMessenger(u))) {
+          unit.guidedTurns = Math.max(unit.guidedTurns, 2);
+        }
+        break;
+      case 'sanctuary':
+        for (const cell of this.tilesWithin(midX, midY, 2)) {
+          if (this.getTerrain(cell.x, cell.y) === TILE.LAND) {
+            this.setTerrain(cell.x, cell.y, TILE.SACRED);
+          }
+        }
+        break;
+      case 'prism':
+        for (const unit of this.units.filter(u => u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, midX, midY) <= 3) {
+            unit.guidedTurns = Math.max(unit.guidedTurns, 2);
+            unit.immuneChaos = true;
+          }
+        }
+        break;
+      case 'clarity':
+        for (const unit of this.units.filter(u => u.status === 'active')) {
+          unit.guidedTurns = Math.max(unit.guidedTurns, 3);
+        }
+        break;
+      case 'renewal':
+        for (const cell of this.tilesWithin(midX, midY, 2)) {
+          const terrain = this.getTerrain(cell.x, cell.y);
+          if ([TILE.DARK, TILE.FOG, TILE.POISON, TILE.SWAMP].includes(terrain)) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+          }
+        }
+        break;
+    }
   }
 
   applyActiveCreationEffects() {
@@ -520,6 +665,111 @@ class CreatorExam3D {
             this.addLog(`「${card.name}」牵制了 ${unit.name}。`);
           }
         }
+      }
+
+      if (card.ability === 'freeze_water') {
+        let changed = 0;
+        for (const cell of cells) {
+          if (this.getTerrain(cell.x, cell.y) === TILE.WATER) {
+            this.setTempTerrain(creation, cell.x, cell.y, TILE.BRIDGE);
+            changed += 1;
+          }
+        }
+        if (changed) this.addLog(`「${card.name}」冻结了 ${changed} 格水域，形成临时冰桥。`);
+      }
+
+      if (card.ability === 'raise_earth') {
+        let changed = 0;
+        for (const cell of cells) {
+          const terrain = this.getTerrain(cell.x, cell.y);
+          if ([TILE.LAND, TILE.WATER, TILE.SWAMP].includes(terrain)) {
+            this.setTempTerrain(creation, cell.x, cell.y, TILE.HIGH);
+            changed += 1;
+          }
+        }
+        if (changed) this.addLog(`「${card.name}」抬升了 ${changed} 格地面形成高地。`);
+      }
+
+      if (card.ability === 'grow_forest') {
+        let changed = 0;
+        for (const cell of cells) {
+          const terrain = this.getTerrain(cell.x, cell.y);
+          if ([TILE.LAND, TILE.SWAMP].includes(terrain)) {
+            this.setTempTerrain(creation, cell.x, cell.y, TILE.FOREST);
+            changed += 1;
+          }
+        }
+        if (changed) this.addLog(`「${card.name}」种植了 ${changed} 格森林，阻挡灾害扩散。`);
+      }
+
+      if (card.ability === 'dig_channel') {
+        let changed = 0;
+        for (const cell of cells) {
+          if (this.getTerrain(cell.x, cell.y) === TILE.LAND) {
+            this.setTempTerrain(creation, cell.x, cell.y, TILE.WATER);
+            changed += 1;
+          }
+        }
+        if (changed) this.addLog(`「${card.name}」挖掘了 ${changed} 格水渠，引导洪水流向。`);
+      }
+
+      if (card.ability === 'trap') {
+        for (const unit of this.units.filter((u) => u.type === 'beast' && u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+            unit.stunned = true;
+            unit.anger = Math.max(0, (unit.anger || 0) - 1);
+            this.addLog(`「${card.name}」困住了 ${unit.name}，使其迟缓并降低怒气。`);
+          }
+        }
+      }
+
+      if (card.ability === 'dream_link') {
+        const civilians = this.units.filter((u) => this.isCivilian(u) && u.status === 'active');
+        if (civilians.length >= 2) {
+          for (let i = 0; i < civilians.length; i++) {
+            const unit = civilians[i];
+            if (this.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+              unit.guidedTurns = 3;
+              unit.immuneChaos = true;
+            }
+          }
+          this.addLog(`「${card.name}」连接了迷失者的梦境，使他们找到方向并免疫混乱。`);
+        }
+      }
+
+      if (card.ability === 'time_dilation') {
+        this.level.maxTurns += 2;
+        this.addLog(`「${card.name}」延缓了时间，剩余回合 +2！`, true);
+      }
+
+      if (card.ability === 'reveal_path') {
+        let guided = 0;
+        for (const unit of this.units.filter((u) => this.isCivilian(u) || this.isMessenger(u))) {
+          if (unit.status === 'active' && this.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+            unit.guidedTurns = 2;
+            unit.moveSpeed = (unit.moveSpeed || 1) + 1;
+            guided += 1;
+          }
+        }
+        if (guided) this.addLog(`「${card.name}」为 ${guided} 个单位揭示了快速通道。`);
+      }
+
+      if (card.ability === 'sun_blessing') {
+        let changed = 0;
+        for (const cell of this.tilesWithin(x, y, card.range + 1)) {
+          const terrain = this.getTerrain(cell.x, cell.y);
+          if (terrain === TILE.DARK || terrain === TILE.FOG) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+            changed += 1;
+          }
+        }
+        for (const unit of this.units.filter((u) => this.isCivilian(u) && u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+            unit.immuneChaos = true;
+            unit.guidedTurns = Math.max(unit.guidedTurns, 2);
+          }
+        }
+        if (changed) this.addLog(`「${card.name}」大范围驱散黑暗，赋予单位免疫与指引。`);
       }
 
       if (card.ability === 'memory_beacon') {
@@ -1049,6 +1299,29 @@ class CreatorExam3D {
     this.ui.endTurnBtn.disabled = this.gameState !== 'playing';
     this.ui.compileBtn.disabled = this.gameState !== 'playing';
     this.ui.placeBtn.disabled = !this.activeCard || this.activeCard.cost > this.miraclePoints || this.creationCharges <= 0 || this.gameState !== 'playing';
+
+    // Dynamic stat urgency classes
+    const entropyStat = this.ui.entropy.closest('.stat');
+    if (entropyStat) {
+      entropyStat.classList.remove('urgent', 'warning');
+      if (this.entropy >= this.level.entropyLimit) {
+        entropyStat.classList.add('urgent');
+      } else if (this.entropy >= this.level.entropyLimit * 0.7) {
+        entropyStat.classList.add('warning');
+      }
+    }
+
+    const turnStat = this.ui.turn.closest('.stat');
+    if (turnStat) {
+      turnStat.classList.remove('urgent', 'warning');
+      const turnRatio = this.turn / this.level.maxTurns;
+      if (turnRatio >= 0.9) {
+        turnStat.classList.add('urgent');
+      } else if (turnRatio >= 0.7) {
+        turnStat.classList.add('warning');
+      }
+    }
+
     this.updateSpecialMeters();
     this.updateUnitList();
     this.updateLogs();
@@ -1057,19 +1330,22 @@ class CreatorExam3D {
   updateSpecialMeters() {
     const meters = [];
     if (this.level.requiredRescue) {
-      meters.push({ label: '已救援', value: this.rescued, max: this.level.requiredRescue, text: `${this.rescued} / ${this.level.requiredRescue}` });
+      meters.push({ label: '已救援', value: this.rescued, max: this.level.requiredRescue, text: `${this.rescued} / ${this.level.requiredRescue}`, type: 'rescue' });
     }
     if (this.isWarLevel()) {
-      meters.push({ label: '战争值', value: this.warMeter, max: this.level.hazard?.warLimit || 9, text: `${this.warMeter} / ${this.level.hazard?.warLimit || 9}` });
+      meters.push({ label: '战争值', value: this.warMeter, max: this.level.hazard?.warLimit || 9, text: `${this.warMeter} / ${this.level.hazard?.warLimit || 9}`, type: 'war' });
     }
     const beast = this.units.find((unit) => unit.type === 'beast' && unit.status === 'active');
     if (beast) {
-      meters.push({ label: `${beast.name} 怒气`, value: beast.anger || 0, max: this.level.beastAngerLimit || 5, text: `${beast.anger || 0} / ${this.level.beastAngerLimit || 5}` });
+      meters.push({ label: `${beast.name} 怒气`, value: beast.anger || 0, max: this.level.beastAngerLimit || 5, text: `${beast.anger || 0} / ${this.level.beastAngerLimit || 5}`, type: 'anger' });
     }
 
     this.ui.specialMeters.innerHTML = meters.map((meter) => {
       const pct = Math.max(0, Math.min(100, (meter.value / meter.max) * 100));
-      return `<div class="meter"><div class="meter-label">${escapeHtml(meter.label)}：${escapeHtml(meter.text)}</div><div class="meter-bar"><div class="meter-fill" style="width:${pct}%"></div></div></div>`;
+      let fillClass = '';
+      if (pct >= 80) fillClass = 'danger';
+      else if (pct >= 50) fillClass = 'warning';
+      return `<div class="meter"><div class="meter-label">${escapeHtml(meter.label)}：${escapeHtml(meter.text)}</div><div class="meter-bar"><div class="meter-fill ${fillClass}" style="width:${pct}%"></div></div></div>`;
     }).join('');
   }
 
@@ -1092,7 +1368,12 @@ class CreatorExam3D {
   }
 
   updateLogs() {
-    this.ui.logList.innerHTML = this.logs.map((entry) => `<div class="log-item">${entry.important ? '<strong>✦</strong> ' : ''}${escapeHtml(entry.text)}</div>`).join('');
+    this.ui.logList.innerHTML = this.logs.map((entry) => {
+      let cls = 'log-item';
+      if (entry.important) cls += ' important';
+      if (entry.text.includes('共鸣')) cls += ' resonance';
+      return `<div class="${cls}">${entry.important ? '<strong>✦</strong> ' : ''}${escapeHtml(entry.text)}</div>`;
+    }).join('');
   }
 
   addLog(text, important = false) {

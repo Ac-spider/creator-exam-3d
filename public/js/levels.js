@@ -55,7 +55,7 @@ export const LEVELS = [
     shortTitle: '洪水村庄',
     story: '暴雨撕开了河堤，村民必须在水位吞没村庄前抵达右侧高地。你的造物不能直接移动村民，只能改变世界。',
     objective: '6 回合内至少救下 3 名村民。',
-    maxTurns: 6,
+    maxTurns: 7,
     creationCharges: 3,
     miraclePoints: 6,
     entropyLimit: 7,
@@ -75,7 +75,7 @@ export const LEVELS = [
       { type: 'villager', name: '木匠', x: 3, y: 4, goal: { x: 6, y: 4 } },
       { type: 'villager', name: '邮差', x: 4, y: 3, goal: { x: 6, y: 3 } }
     ],
-    hazard: { type: 'flood', spreadPerTurn: 3, source: 'left' },
+    hazard: { type: 'flood', spreadPerTurn: 2, source: 'left' },
     win: 'requiredRescue',
     tips: ['吸水、造桥、屏障和引导类造物都有效。', '洪水不会吞没高地，但会切断道路。']
   },
@@ -87,7 +87,7 @@ export const LEVELS = [
     objective: '8 回合内让至少 3 名矿工抵达出口。',
     maxTurns: 8,
     creationCharges: 3,
-    miraclePoints: 6,
+    miraclePoints: 7,
     entropyLimit: 7,
     requiredRescue: 3,
     map: [
@@ -105,7 +105,7 @@ export const LEVELS = [
       { type: 'miner', name: '矿工丙', x: 2, y: 6, goal: { x: 0, y: 0 } },
       { type: 'miner', name: '矿工丁', x: 4, y: 5, goal: { x: 0, y: 0 } }
     ],
-    hazard: { type: 'darkness', spreadPerTurn: 1 },
+    hazard: { type: 'darkness', spreadPerTurn: 2 },
     win: 'requiredRescue',
     tips: ['照明、引导、净化和改变地形类造物都能帮助矿工。', '矿工进入黑暗后会迷失。']
   },
@@ -129,7 +129,7 @@ export const LEVELS = [
       '.......'
     ],
     units: [
-      { type: 'beast', name: '古水巨兽', x: 0, y: 3, goal: { x: 6, y: 3 }, anger: 1 }
+      { type: 'beast', name: '古水巨兽', x: 0, y: 3, goal: { x: 6, y: 3 }, anger: 0 }
     ],
     hazard: { type: 'beast' },
     win: 'survive',
@@ -143,8 +143,8 @@ export const LEVELS = [
     story: '两个部落都认为对方偷走了星火。语言断裂让误会越来越深，边境上的战争值正在上升。',
     objective: '6 回合结束时战争值低于 5，并让两名使者在边境会合。',
     maxTurns: 6,
-    creationCharges: 3,
-    miraclePoints: 6,
+    creationCharges: 4,
+    miraclePoints: 7,
     entropyLimit: 7,
     map: [
       '..F.BF.',
@@ -159,7 +159,7 @@ export const LEVELS = [
       { type: 'tribeA', name: '东岸使者', x: 0, y: 2, goal: { x: 3, y: 2 } },
       { type: 'tribeB', name: '西岸使者', x: 6, y: 2, goal: { x: 3, y: 2 } }
     ],
-    hazard: { type: 'war', warMeter: 1, warLimit: 9 },
+    hazard: { type: 'war', warMeter: 1, warLimit: 8 },
     win: 'peace',
     tips: ['安抚、翻译、记忆、引导类造物是核心。', '雾会阻碍使者判断路线。']
   },
@@ -169,9 +169,9 @@ export const LEVELS = [
     shortTitle: '记忆瘟疫',
     story: '村民开始忘记回家的路。圣树仍记得所有人的名字，但雾和沼泽正在抹去道路。',
     objective: '7 回合内让至少 4 名村民抵达圣树。',
-    maxTurns: 7,
+    maxTurns: 8,
     creationCharges: 4,
-    miraclePoints: 7,
+    miraclePoints: 8,
     entropyLimit: 8,
     requiredRescue: 4,
     memoryChaos: true,
@@ -201,7 +201,7 @@ export const LEVELS = [
     shortTitle: '创世终考',
     story: '洪水、永夜和失语同时回到世界。前五关证明你能制造奇迹，现在你要证明你能让奇迹形成秩序。',
     objective: '7 回合内救下 3 名居民、守住城市，并让战争值低于 6。',
-    maxTurns: 7,
+    maxTurns: 8,
     creationCharges: 5,
     miraclePoints: 10,
     entropyLimit: 8,

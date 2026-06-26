@@ -177,28 +177,34 @@ export function localCompile(text, gameContext = {}) {
 
   // 新能力参数配置
   const rangeMap = {
-    force_field: 2, illuminate: 2, calm: 2, sun_blessing: 2,
+    force_field: 2, illuminate: 2, calm: 2, sun_blessing: 3,
     grow_forest: 2, dig_channel: 2, trap: 2, dream_link: 2,
     reveal_path: 1, freeze_water: 1, raise_earth: 1,
-    time_dilation: 0, slow_beast: 2
+    time_dilation: 0, slow_beast: 2, absorb_water: 2, cleanse: 2
   };
   const range = rangeMap[ability] ?? 1;
 
   const durationMap = {
     create_bridge: 3, freeze_water: 2, trap: 2, time_dilation: 1,
-    grow_forest: 4, raise_earth: 3
+    grow_forest: 4, raise_earth: 3, force_field: 2, sun_blessing: 3
   };
   const duration = isTooStrong ? 2 : (durationMap[ability] ?? 3);
 
   const costMap = {
-    force_field: 3, sun_blessing: 3, time_dilation: 3,
-    memory_beacon: 2, guide: 2, dream_link: 2, trap: 2
+    guide: 1, reveal_path: 1, block: 1,
+    absorb_water: 2, illuminate: 2, cleanse: 2, calm: 2, slow_beast: 2,
+    create_bridge: 2, freeze_water: 2, raise_earth: 2, grow_forest: 2,
+    dig_channel: 2, trap: 2, dream_link: 2, memory_beacon: 2,
+    force_field: 2, sun_blessing: 3, transform_land: 3, time_dilation: 2
   };
   const cost = isTooStrong ? 3 : (costMap[ability] ?? 2);
 
   const stabilityMap = {
-    force_field: 1, time_dilation: 2, sun_blessing: 1,
-    transform_land: 1, dig_channel: 1
+    guide: 0, reveal_path: 0, block: 0,
+    absorb_water: 1, illuminate: 1, cleanse: 1, calm: 1, slow_beast: 1,
+    create_bridge: 1, freeze_water: 1, raise_earth: 1, grow_forest: 1,
+    dig_channel: 1, trap: 1, dream_link: 1, memory_beacon: 1,
+    force_field: 1, sun_blessing: 1, transform_land: 1, time_dilation: 2
   };
   const stabilityCost = isTooStrong ? 2 : (stabilityMap[ability] ?? 0);
 
