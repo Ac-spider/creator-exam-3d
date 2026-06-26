@@ -1,6 +1,7 @@
 import { cloneLevel, LEVELS, SYMBOL_TO_TILE, TILE } from '../public/js/levels.js';
 import { localCompile } from '../public/js/aiClient.js';
 import { RESONANCE_CODEX, executeChainReaction } from '../public/js/chainReactionCodex.js';
+import { legacySystem } from '../public/js/legacySystem.js';
 
 const TERRAIN_LABELS = {
   [TILE.LAND]: '平地',
@@ -1443,6 +1444,16 @@ class DebugGame {
     // 触发NPC对救援事件的反应
     if (this.npcManager) {
       this.npcManager.reactToGameEvent('onRescue', { rescued: 1, unitName: unit.name });
+    }
+    // 记录传承
+    const levelStats = {
+      turn: this.turn,
+      maxTurns: this.level.maxTurns,
+      lost: this.lost
+    };
+    const legacy = legacySystem.recordRescue(unit, this.level.id, levelStats);
+    if (legacy && legacy.rescueCount > 1) {
+      this.log(`【传承】${unit.name} 再次出现！传承等级：${LEGACY_TIERS[legacy.tier]?.name || legacy.tier}`, true);
     }
   }
 
