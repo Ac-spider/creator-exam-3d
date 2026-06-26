@@ -1345,6 +1345,75 @@ runner.test('因果引擎 - 序列化与统计', async () => {
   runner.assert(graph2.nodes.size === 2, '反序列化后应有2个节点');
 });
 
+// 测试认知效果系统
+runner.test('认知效果 - 应扭曲文本并生成记忆碎片', async () => {
+  const { CognitiveEffects } = await import('../public/js/cognitiveEffects.js');
+  const fx = new CognitiveEffects();
+
+  // 测试文本扭曲
+  const text = '造物者创造了永恒之光';
+  const distorted = fx.distortText(text, 0.8);
+  runner.assert(distorted.length !== text.length, '扭曲后文本应改变');
+
+  // 测试矛盾对话
+  const dialogue = '我记得你救过他们';
+  let contradictory = fx.generateContradictoryDialogue(dialogue, '老渔夫', 0.8);
+  // If random chance didn't trigger, try again (Math.random() < 0.8 means 20% chance of failure)
+  if (contradictory === dialogue) {
+    contradictory = fx.generateContradictoryDialogue(dialogue, '老渔夫', 1.0);
+  }
+  runner.assert(contradictory !== dialogue, '高熵时应生成矛盾对话');
+
+  // 测试记忆碎片
+  fx.storeMemoryFragment('在洪水村庄救下了村民');
+  fx.storeMemoryFragment('创造了光之桥');
+  const fragments = fx.generateMemoryFragments(fx.memoryFragments, 0.8);
+  runner.assert(fragments.length > 0, '应生成记忆碎片');
+
+  // 测试既视感
+  const dejaVu = fx.generateDejaVu('在黑暗中创造了光之桥', ['在黑暗中创造了光之桥', '在矿井中创造了照明'], 0.8);
+  runner.assert(dejaVu !== null, '应检测到既视感');
+  runner.assert(dejaVu.type === 'deja_vu', '既视感类型应正确');
+
+  // 测试状态描述
+  const desc = fx.getDistortionDescription(6, 7);
+  runner.assert(desc.level === 'moderate', '裂隙6/7应为中度扭曲');
+  runner.assert(desc.effects.length > 0, '应包含效果列表');
+});
+
+runner.test('认知效果 - 序列化与反序列化', async () => {
+  const { CognitiveEffects } = await import('../public/js/cognitiveEffects.js');
+  const fx = new CognitiveEffects();
+
+  fx.updateDistortion(6, 7);
+  fx.storeMemoryFragment('测试记忆');
+
+  const serialized = fx.serialize();
+  runner.assert(serialized.distortionLevel > 0, '应序列化扭曲级别');
+
+  const fx2 = new CognitiveEffects();
+  fx2.deserialize(serialized);
+  runner.assert(fx2.distortionLevel === fx.distortionLevel, '反序列化后扭曲级别应一致');
+});
+
+// 测试VectorMemory认知偏差查询
+runner.test('VectorMemory - 认知偏差应影响检索结果', async () => {
+  const { VectorMemory } = await import('../public/js/vectorMemory.js');
+  const vm = new VectorMemory();
+
+  vm.addMemory('造物者用策略计算拯救了村庄', { type: 'rescue', playStyle: 'strategic' });
+  vm.addMemory('造物者用诗意创造照亮了黑暗', { type: 'creation', playStyle: 'creative' });
+  vm.addMemory('造物者用力量击败了巨兽', { type: 'battle', playStyle: 'aggressive' });
+
+  // 带确认偏差的查询
+  const biasedResults = vm.queryWithBias('创造与拯救', 2, { playStyle: 'creative' });
+  runner.assert(biasedResults.length > 0, '应返回偏差查询结果');
+
+  // 检查是否应用了偏差
+  const hasBias = biasedResults.some(r => r.biasApplied);
+  runner.assert(hasBias, '应至少有一个结果应用了偏差');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

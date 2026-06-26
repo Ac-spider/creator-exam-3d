@@ -129,6 +129,56 @@ export class VectorMemory {
     return memory;
   }
 
+  // Query with cognitive biases applied
+  queryWithBias(queryText, topK = 5, biasProfile = {}) {
+    const baseResults = this.query(queryText, topK * 2);
+
+    // Confirmation bias: boost memories matching player's playStyle
+    const playStyle = biasProfile.playStyle || 'balanced';
+    const styleKeywords = {
+      creative: ['创造', '奇迹', '诗意', '想象', '艺术'],
+      strategic: ['策略', '计划', '计算', '布局', '精密'],
+      aggressive: ['攻击', '战斗', '愤怒', '力量', '勇猛'],
+      careful: ['保护', '守护', '谨慎', '安全', '防御'],
+      balanced: ['平衡', '和谐', '适应', '灵活']
+    };
+    const keywords = styleKeywords[playStyle] || [];
+
+    const biasedResults = baseResults.map(result => {
+      let biasMultiplier = 1.0;
+
+      // Confirmation bias: boost if memory text contains style keywords
+      const text = result.text || '';
+      const styleMatch = keywords.some(k => text.includes(k));
+      if (styleMatch) {
+        biasMultiplier += 0.3; // 30% boost for matching memories
+      }
+
+      // Recency effect: boost recent memories
+      const age = Date.now() - (result.metadata?.timestamp || 0);
+      const recencyBoost = Math.max(0, 1 - age / (1000 * 60 * 60 * 24)); // Decay over 24 hours
+      biasMultiplier += recencyBoost * 0.5; // Up to 50% boost for recent memories
+
+      // Narrative bias: boost memories that fit common narrative patterns
+      const narrativePatterns = ['拯救', '牺牲', '背叛', '重生', '发现'];
+      const narrativeMatch = narrativePatterns.some(p => text.includes(p));
+      if (narrativeMatch) {
+        biasMultiplier += 0.15; // 15% boost for narrative-rich memories
+      }
+
+      return {
+        ...result,
+        similarity: result.similarity * biasMultiplier,
+        biasApplied: biasMultiplier > 1.0,
+        biasMultiplier: Math.round(biasMultiplier * 100) / 100
+      };
+    });
+
+    return biasedResults
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, topK);
+  }
+
   // Query similar memories using cosine similarity
   query(queryText, topK = 5) {
     const queryVector = this.encode(queryText);
