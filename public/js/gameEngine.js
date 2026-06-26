@@ -397,6 +397,12 @@ class GameEngine {
     this.spreadHazards();
     this.applyTileHazardsToUnits();
     this.decrementCreationDurations();
+
+    // Evolve world myths every 5 turns
+    if (this.turn % 5 === 0) {
+      worldLegendSystem.evolveMyths();
+    }
+
     this.checkEndCondition(true);
 
     if (this.gameState === 'playing') {

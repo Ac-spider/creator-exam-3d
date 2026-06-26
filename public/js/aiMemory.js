@@ -193,7 +193,12 @@ export class AIMemorySystem {
       tactical: '谋略',
       compassionate: '慈悲',
       bold: '果敢',
-      bittersweet: ' bittersweet'
+      bittersweet: ' bittersweet',
+      creative: '诗意',
+      strategic: '谋略',
+      aggressive: '果敢',
+      careful: '慈悲',
+      balanced: ' bittersweet'
     };
     const style = styleMap[profile.playStyle] || profile.playStyle || '未知';
     return `${style}风格，创意均分${profile.averageCreativity}，胜率${Math.round(profile.winRate * 100)}%`;

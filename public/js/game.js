@@ -8,6 +8,7 @@ import { NPCManager } from './npcManager.js';
 import { AbilityHandlers, applyAbility } from './abilityHandlers.js';
 import { Storyteller, defaultStoryteller } from './storyteller.js';
 import { GameEngine, TERRAIN_LABELS } from './gameEngine.js';
+import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -942,12 +943,15 @@ class CreatorExam3D extends GameEngine {
 
   // Override isPassable for simpler browser version (no trap avoidance)
   isPassable(x, y, unit) {
-    return this.creations.some((creation) => {
-      if (creation.remaining <= 0) return false;
-      if (creation.card.ability === 'force_field' && this.distance(x, y, creation.x, creation.y) <= creation.card.range) return true;
-      if (creation.card.ability === 'absorb_water' && this.distance(x, y, creation.x, creation.y) <= 1) return true;
-      return false;
-    });
+    const terrain = this.getTerrain(x, y);
+    if (terrain === TILE.MOUNTAIN || terrain === TILE.WALL) return false;
+    if (unit.type === 'beast') {
+      return ![TILE.WATER, TILE.FIELD].includes(terrain);
+    }
+    if (this.isMessenger(unit)) {
+      return ![TILE.WATER, TILE.MOUNTAIN, TILE.WALL, TILE.DARK, TILE.POISON].includes(terrain);
+    }
+    return ![TILE.WATER, TILE.MOUNTAIN, TILE.WALL, TILE.DARK, TILE.POISON].includes(terrain);
   }
 
   // Override nearActiveAbility for simpler browser version (no placed flag)
@@ -976,30 +980,28 @@ class CreatorExam3D extends GameEngine {
     return Math.min(range, 3);
   }
 
-  // Override applyChainReactions for simpler browser version (inline, not codex)
+  // Override applyChainReactions to use codex system + add particle effects
   applyChainReactions() {
-    const resonancePairs = [
-      { a: 'illuminate', b: 'absorb_water', result: 'steam', text: '照明与吸水共鸣，产生蒸汽驱散更多迷雾' },
-      { a: 'calm', b: 'memory_beacon', result: 'peace', text: '安抚与记忆共鸣，使者心中的疑虑消散' },
-      { a: 'force_field', b: 'transform_land', result: 'sanctuary', text: '结界与地形改造共鸣，形成神圣庇护所' },
-      { a: 'freeze_water', b: 'illuminate', result: 'prism', text: '冰与光共鸣，折射出指引道路的光棱' },
-      { a: 'guide', b: 'reveal_path', result: 'clarity', text: '引导与显路共鸣，所有单位获得清晰视野' },
-      { a: 'sun_blessing', b: 'cleanse', result: 'renewal', text: '日华与净化共鸣，大地焕发生机' }
-    ];
-
-    for (const pair of resonancePairs) {
-      const creationA = this.creations.find(c => c.remaining > 0 && c.card.ability === pair.a);
-      const creationB = this.creations.find(c => c.remaining > 0 && c.card.ability === pair.b);
-      if (creationA && creationB && this.distance(creationA.x, creationA.y, creationB.x, creationB.y) <= 3) {
-        this.applyResonanceEffect(pair.result, creationA, creationB);
-        this.addLog(`共鸣！${pair.text}。`, true);
-        // Spawn resonance particles
-        const posA = this.tileToWorld(creationA.x, creationA.y);
-        const posB = this.tileToWorld(creationB.x, creationB.y);
-        this.particleSystem.spawnResonanceEffect(
-          (posA.x + posB.x) / 2, 0.5, (posA.z + posB.z) / 2,
-          this.particleSystem.getAbilityColor(creationA.card.ability)
-        );
+    const discoveries = this.resonanceCodex.checkReactions(this);
+    for (const reaction of discoveries) {
+      this.addLog(`【新发现】连锁反应：${reaction.name}！${reaction.description}`, true);
+      executeChainReaction(this, reaction.id);
+    }
+    const discovered = this.resonanceCodex.getDiscovered();
+    for (const reaction of discovered) {
+      if (executeChainReaction(this, reaction.id)) {
+        reaction.usageCount++;
+        // Spawn resonance particles for known reactions
+        const creationA = this.creations.find(c => c.remaining > 0 && c.card.ability === reaction.abilityA);
+        const creationB = this.creations.find(c => c.remaining > 0 && c.card.ability === reaction.abilityB);
+        if (creationA && creationB) {
+          const posA = this.tileToWorld(creationA.x, creationA.y);
+          const posB = this.tileToWorld(creationB.x, creationB.y);
+          this.particleSystem.spawnResonanceEffect(
+            (posA.x + posB.x) / 2, 0.5, (posA.z + posB.z) / 2,
+            this.particleSystem.getAbilityColor(creationA.card.ability)
+          );
+        }
       }
     }
   }
