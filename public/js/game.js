@@ -5,11 +5,15 @@ import { cloneLevel, INSPIRATIONS, LEVELS, SYMBOL_TO_TILE, TILE } from './levels
 import { getMemorySystem } from './aiMemory.js';
 import { ParticleSystem, ScreenEffects } from './particles.js';
 import { NPCManager } from './npcManager.js';
-import { AbilityHandlers } from './abilityHandlers.js';
+import { AbilityHandlers, applyAbility } from './abilityHandlers.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
 const MAX_LOGS = 18;
+
+// AI Narrative endpoint configuration
+const NARRATIVE_ENDPOINT = '/api/narrative';
+const NARRATIVE_TIMEOUT = 5000; // 5s timeout to avoid blocking gameplay
 
 const TERRAIN_LABELS = {
   [TILE.LAND]: '平地',
@@ -1383,6 +1387,50 @@ class CreatorExam3D {
   }
 
   addEnvironmentalNarrative(eventType, context) {
+    // Try AI narrative first, fallback to local
+    this.fetchNarrative(eventType, context).then((text) => {
+      if (text) this.addLog(text, false);
+    }).catch(() => {
+      // Fallback to local hardcoded narratives
+      this.addLocalNarrative(eventType, context);
+    });
+  }
+
+  async fetchNarrative(type, context) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), NARRATIVE_TIMEOUT);
+
+      const response = await fetch(NARRATIVE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          context,
+          worldState: {
+            currentLevel: this.level?.id || 'unknown',
+            rescued: this.rescued || 0,
+            lost: this.lost || 0,
+            entropy: this.entropy || 0,
+            entropyLimit: this.level?.entropyLimit || 7,
+            creations: this.creations?.map((c) => c.card?.name).filter(Boolean) || [],
+            playStyle: this.memorySystem?.getProfileSummary?.() || '未知'
+          }
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data?.text || null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  addLocalNarrative(eventType, context) {
     const narratives = {
       placement: {
         absorb_water: '水面上泛起涟漪，仿佛大地在深呼吸。',
