@@ -1593,6 +1593,126 @@ runner.test('验证引擎 - 序列化与统计', async () => {
   runner.assert(serialized.validationLog.length === 2, '序列化应包含2条日志');
 });
 
+// 测试秘密知识经济系统
+runner.test('知识经济 - 应创建知识碎片并传播', async () => {
+  const { SocialGraph, KnowledgeFragment } = await import('../public/js/socialGraph.js');
+  const graph = new SocialGraph();
+
+  // 添加NPC
+  graph.addNode('npc1', { name: '老渔夫', dynamicTraits: { trustLevel: 50 } });
+  graph.addNode('npc2', { name: '小烛', dynamicTraits: { trustLevel: 70 } });
+  graph.addNode('npc3', { name: '守忆人', dynamicTraits: { trustLevel: 40 } });
+
+  // 创建关系
+  graph.addEdge('npc1', 'npc2', 'friend', 40);
+  graph.addEdge('npc2', 'npc3', 'friend', 35);
+
+  // 创建知识碎片
+  const fragment = graph.createKnowledgeFragment({
+    text: '造物者拥有改变地形的能力',
+    truth: 0.8,
+    source: 'npc1',
+    category: 'rumor'
+  });
+
+  runner.assert(fragment.id !== undefined, '应生成知识碎片ID');
+  runner.assert(fragment.knownBy.has('npc1'), '来源NPC应知晓此知识');
+
+  // 手动传播
+  const spread = graph.spreadKnowledge(fragment.id, 'npc1', 'npc2');
+  runner.assert(spread !== null, '朋友之间应能传播知识');
+  runner.assert(spread.knownBy.has('npc2'), '接收者应知晓知识');
+
+  // 验证知识
+  const verified = graph.verifyKnowledge(fragment.id, 'npc2', true);
+  runner.assert(verified !== null, '应能验证知识');
+  runner.assert(verified.verifiedBy.has('npc2'), '验证者应记录在案');
+  runner.assert(verified.truth > 0.8, '验证后真实性应提升');
+});
+
+runner.test('知识经济 - 秘密应触发阴谋形成', async () => {
+  const { SocialGraph } = await import('../public/js/socialGraph.js');
+  const graph = new SocialGraph();
+
+  // 添加NPC
+  graph.addNode('npc1', { name: '密谋者A', dynamicTraits: { trustLevel: 30 } });
+  graph.addNode('npc2', { name: '密谋者B', dynamicTraits: { trustLevel: 30 } });
+
+  // 创建朋友关系
+  graph.addEdge('npc1', 'npc2', 'friend', 40);
+
+  // 创建秘密
+  const secret = graph.createKnowledgeFragment({
+    text: '造物者其实无法控制巨兽',
+    truth: 0.3,
+    source: 'npc1',
+    category: 'secret'
+  });
+
+  // 传播秘密给第二个NPC
+  graph.spreadKnowledge(secret.id, 'npc1', 'npc2');
+
+  // 检查阴谋形成
+  const conspiracies = Array.from(graph.conspiracies.values());
+  runner.assert(conspiracies.length > 0, '两人共享秘密应形成阴谋');
+
+  const con = conspiracies[0];
+  runner.assert(con.members.has('npc1'), '阴谋应包含第一个成员');
+  runner.assert(con.members.has('npc2'), '阴谋应包含第二个成员');
+  runner.assert(con.discovered === false, '新阴谋应处于未被发现状态');
+
+  // 推进阴谋
+  graph.advanceConspiracy(con.id);
+  runner.assert(con.currentStage > 0, '阴谋应推进到下一阶段');
+});
+
+runner.test('知识经济 - 谣言应随传播变异', async () => {
+  const { SocialGraph } = await import('../public/js/socialGraph.js');
+  const graph = new SocialGraph();
+
+  graph.addNode('npc1', { name: '传播者', dynamicTraits: { trustLevel: 50 } });
+  graph.addNode('npc2', { name: '接收者', dynamicTraits: { trustLevel: 50 } });
+  graph.addEdge('npc1', 'npc2', 'friend', 50);
+
+  const fragment = graph.createKnowledgeFragment({
+    text: '洪水可能很快退去',
+    truth: 0.6,
+    source: 'npc1',
+    category: 'rumor'
+  });
+
+  // 多次传播
+  let current = fragment;
+  for (let i = 0; i < 5; i++) {
+    const mutated = graph.spreadKnowledge(current.id, 'npc1', 'npc2');
+    if (mutated) current = mutated;
+  }
+
+  runner.assert(current.spreadCount >= 5, '应记录传播次数');
+  runner.assert(current.truth <= 0.6, '传播后真实性应衰减');
+  runner.assert(current.getReliability() < 0.8, '可靠性应下降');
+});
+
+runner.test('知识经济 - 序列化与统计', async () => {
+  const { SocialGraph } = await import('../public/js/socialGraph.js');
+  const graph = new SocialGraph();
+
+  graph.addNode('npc1', { name: '测试', dynamicTraits: { trustLevel: 50 } });
+  graph.createKnowledgeFragment({ text: '测试知识', source: 'npc1', category: 'lore' });
+
+  const stats = graph.getKnowledgeStats();
+  runner.assert(stats.totalFragments === 1, '应记录1个知识碎片');
+  runner.assert(stats.categoryDistribution.lore === 1, '应有1个传说类知识');
+
+  const serialized = graph.serialize();
+  runner.assert(serialized.knowledgeFragments.length === 1, '序列化应包含知识碎片');
+
+  const graph2 = new SocialGraph();
+  graph2.deserialize(serialized);
+  runner.assert(graph2.knowledgeFragments.size === 1, '反序列化后应有1个知识碎片');
+  runner.assert(graph2.nodes.has('npc1'), '反序列化后应保留NPC');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
