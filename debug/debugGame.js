@@ -724,6 +724,27 @@ class DebugGame {
       }
     }
 
+    // 检查是否遇到NPC
+    if (this.npcManager) {
+      const npcsHere = this.npcManager.getNPCsAt(unit.x, unit.y);
+      for (const npc of npcsHere) {
+        if (npc.status !== 'met') {
+          npc.status = 'met';
+          this.log(`${unit.name} 遇到了 ${npc.name}...`, true);
+          // NPC给予单位增益
+          const buffType = npc.type === 'child' ? '希望' :
+                          npc.type === 'elder' ? '智慧' :
+                          npc.type === 'ghost' ? '勇气' : '祝福';
+          unit.guidedTurns = Math.max(unit.guidedTurns, 1);
+          if (npc.type === 'elder' || npc.type === 'divine') {
+            unit.immuneChaos = Math.max(unit.immuneChaos || 0, 1);
+          }
+          this.log(`${npc.name} 给予 ${unit.name} ${buffType}的${npc.type === 'child' ? '鼓励' : '指引'}！`);
+          this.npcManager.updateNPCMemory(npc.id, `${unit.name} 在危难中与我相遇，我给予了指引`);
+        }
+      }
+    }
+
     let next = null;
     if (this.level.memoryChaos && !guided && !immuneChaos && Math.random() < 0.45) {
       next = this.randomPassableNeighbor(unit);
