@@ -185,6 +185,20 @@ export class AIMemorySystem {
     };
   }
 
+  // Get short profile summary string for AI prompts
+  getProfileSummary() {
+    const profile = this.getPlayerProfile();
+    const styleMap = {
+      poetic: '诗意',
+      tactical: '谋略',
+      compassionate: '慈悲',
+      bold: '果敢',
+      bittersweet: ' bittersweet'
+    };
+    const style = styleMap[profile.playStyle] || profile.playStyle || '未知';
+    return `${style}风格，创意均分${profile.averageCreativity}，胜率${Math.round(profile.winRate * 100)}%`;
+  }
+
   // Generate world epic ending
   generateEpicEnding() {
     const profile = this.getPlayerProfile();
