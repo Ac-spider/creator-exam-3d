@@ -1486,6 +1486,113 @@ runner.test('生成式神话 - 序列化与统计', async () => {
   runner.assert(world2.currentAge === world.currentAge, '反序列化后纪元应一致');
 });
 
+// 测试语义验证引擎
+runner.test('验证引擎 - 应通过语法、语义、叙事三层验证', async () => {
+  const { ValidationEngine } = await import('../public/js/validationEngine.js');
+  const engine = new ValidationEngine();
+
+  // 测试语法验证 - 有效卡牌
+  const validCard = {
+    name: '测试造物',
+    ability: 'create_bridge',
+    range: 1,
+    duration: 3,
+    cost: 2,
+    stabilityCost: 1,
+    description: '测试描述',
+    side_effect: '测试副作用',
+    tags: ['测试']
+  };
+
+  const result1 = engine.validate(validCard, { targetTerrain: 'water', miraclePoints: 5, creationCharges: 3 });
+  runner.assert(result1.passed === true, '有效卡牌应通过验证');
+  runner.assert(result1.mutations.length === 0, '兼容地形不应产生变异');
+
+  // 测试语义验证 - 地形不匹配
+  const mismatchCard = {
+    name: '火焰结界',
+    ability: 'grow_forest',
+    range: 1,
+    duration: 3,
+    cost: 2,
+    stabilityCost: 1,
+    description: '在沼泽中种植森林',
+    side_effect: '测试副作用',
+    tags: ['测试']
+  };
+
+  const result2 = engine.validate(mismatchCard, { targetTerrain: 'water', miraclePoints: 5, creationCharges: 3 });
+  runner.assert(result2.warnings.length > 0, '地形不匹配应产生警告');
+  runner.assert(result2.mutations.length > 0, '严重不匹配应产生变异');
+  runner.assert(result2.validated.duration < mismatchCard.duration, '变异后持续时间应减少');
+
+  // 测试资源不足
+  const expensiveCard = {
+    name: '昂贵造物',
+    ability: 'transform_land',
+    range: 2,
+    duration: 4,
+    cost: 3,
+    stabilityCost: 2,
+    description: '测试',
+    side_effect: '测试',
+    tags: ['测试']
+  };
+
+  const result3 = engine.validate(expensiveCard, { targetTerrain: 'land', miraclePoints: 2, creationCharges: 1 });
+  runner.assert(result3.warnings.some(w => w.includes('奇迹点')), '资源不足应产生警告');
+  runner.assert(result3.validated.cost <= 2, '变异后消耗不应超过可用资源');
+
+  // 测试叙事验证 - 风格不一致
+  const narrativeCard = {
+    name: '风险造物',
+    ability: 'time_dilation',
+    range: 0,
+    duration: 1,
+    cost: 2,
+    stabilityCost: 2,
+    description: '测试',
+    side_effect: '测试',
+    tags: ['测试']
+  };
+
+  const result4 = engine.validate(narrativeCard, { targetTerrain: 'land' }, {
+    playStyle: 'careful',
+    totalCreations: 15,
+    favoriteAbilities: { guide: 10, calm: 5, block: 3 },
+    riskTolerance: 0.2
+  });
+  runner.assert(result4.warnings.some(w => w.includes('风格') || w.includes('风险')), '风格不一致应产生警告');
+  runner.assert(result4.narrativeConsistency < 1.0, '风格不一致应降低叙事一致性');
+});
+
+runner.test('验证引擎 - 序列化与统计', async () => {
+  const { ValidationEngine } = await import('../public/js/validationEngine.js');
+  const engine = new ValidationEngine();
+
+  const card = {
+    name: '测试',
+    ability: 'illuminate',
+    range: 1,
+    duration: 2,
+    cost: 1,
+    stabilityCost: 1,
+    description: '测试',
+    side_effect: '测试',
+    tags: ['测试']
+  };
+
+  engine.validate(card, { targetTerrain: 'dark' });
+  engine.validate(card, { targetTerrain: 'water' });
+
+  const stats = engine.getStats();
+  runner.assert(stats.total === 2, '应记录2次验证');
+  runner.assert(stats.passRate === 1.0, '通过率应为100%');
+
+  const serialized = engine.serialize();
+  runner.assert(serialized.validationLog.length === 2, '序列化应包含2条日志');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
