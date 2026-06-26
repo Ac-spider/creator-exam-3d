@@ -1713,6 +1713,112 @@ runner.test('知识经济 - 序列化与统计', async () => {
   runner.assert(graph2.nodes.has('npc1'), '反序列化后应保留NPC');
 });
 
+// 测试仪式熔炉系统
+runner.test('仪式熔炉 - 应匹配已知仪式并执行', async () => {
+  const { RitualForge } = await import('../public/js/ritualForge.js');
+  const forge = new RitualForge();
+
+  // 模拟造物（使用完整卡牌字段）
+  const creations = [
+    { id: 'c1', card: { name: '吸水蘑菇', ability: 'absorb_water', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } },
+    { id: 'c2', card: { name: '净化圣水', ability: 'cleanse', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } }
+  ];
+
+  const gameState = {
+    targetTerrain: 'water',
+    miraclePoints: 5,
+    entropy: 2,
+    entropyLimit: 7,
+    turn: 1
+  };
+
+  const result = forge.performRitual(creations, gameState);
+  runner.assert(result.success === true, '净水圣仪应成功执行');
+  runner.assert(result.ritual !== null, '应匹配到仪式配方');
+  runner.assert(result.ritual.id === 'water_purification', '应匹配净水圣仪');
+  runner.assert(result.entropyChange === 1, '应消耗1点熵值');
+  runner.assert(result.miracleCost === 1, '应消耗1点奇迹点');
+  runner.assert(result.narrative.length > 0, '应生成仪式叙事');
+});
+
+runner.test('仪式熔炉 - 涌现式仪式（无匹配配方）', async () => {
+  const { RitualForge } = await import('../public/js/ritualForge.js');
+  const forge = new RitualForge();
+
+  const creations = [
+    { id: 'c1', card: { name: '造桥', ability: 'create_bridge', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } },
+    { id: 'c2', card: { name: '照明', ability: 'illuminate', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } }
+  ];
+
+  const gameState = {
+    targetTerrain: 'land',
+    miraclePoints: 5,
+    entropy: 2,
+    entropyLimit: 7,
+    turn: 1
+  };
+
+  const result = forge.performRitual(creations, gameState);
+  runner.assert(result.success === true, '涌现式仪式应成功');
+  runner.assert(result.ritual === null, '不应匹配已知配方');
+  runner.assert(result.warnings.some(w => w.includes('涌现')), '应提示涌现式效果');
+  runner.assert(result.effects.length > 0, '应产生涌现效果');
+});
+
+runner.test('仪式熔炉 - 资源不足应失败', async () => {
+  const { RitualForge } = await import('../public/js/ritualForge.js');
+  const forge = new RitualForge();
+
+  const creations = [
+    { id: 'c1', card: { name: '吸水蘑菇', ability: 'absorb_water', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } },
+    { id: 'c2', card: { name: '净化圣水', ability: 'cleanse', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } }
+  ];
+
+  const gameState = {
+    targetTerrain: 'water',
+    miraclePoints: 0,
+    entropy: 2,
+    entropyLimit: 7,
+    turn: 1
+  };
+
+  const result = forge.performRitual(creations, gameState);
+  runner.assert(result.success === false, '资源不足应失败');
+  runner.assert(result.warnings.some(w => w.includes('奇迹点')), '应提示资源不足');
+});
+
+runner.test('仪式熔炉 - 序列化与统计', async () => {
+  const { RitualForge } = await import('../public/js/ritualForge.js');
+  const forge = new RitualForge();
+
+  const creations = [
+    { id: 'c1', card: { name: '吸水蘑菇', ability: 'absorb_water', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } },
+    { id: 'c2', card: { name: '净化圣水', ability: 'cleanse', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } }
+  ];
+
+  const gameState = {
+    targetTerrain: 'water',
+    miraclePoints: 5,
+    entropy: 2,
+    entropyLimit: 7,
+    turn: 1
+  };
+
+  forge.performRitual(creations, gameState);
+
+  const stats = forge.getStats();
+  runner.assert(stats.total === 1, '应记录1次仪式');
+  runner.assert(stats.successful === 1, '应有1次成功');
+  runner.assert(stats.discoveredRecipes >= 1, '应至少发现1个配方');
+
+  const serialized = forge.serialize();
+  runner.assert(serialized.discoveredRecipes.length >= 1, '序列化应包含发现的配方');
+
+  const forge2 = new RitualForge();
+  forge2.deserialize(serialized);
+  runner.assert(forge2.discoveredRecipes.size >= 1, '反序列化后应恢复配方');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
