@@ -1,4 +1,5 @@
 import { DebugGame } from './debugGame.js';
+import { Storyteller, STORYTELLER_PERSONALITIES } from '../public/js/storyteller.js';
 import readline from 'readline';
 import { writeFileSync, existsSync, readFileSync, mkdirSync } from 'fs';
 import path from 'path';
@@ -20,6 +21,7 @@ function question(prompt) {
 const game = new DebugGame();
 let watchMode = false;
 let snapshots = []; // 用于undo
+let storyteller = new Storyteller('cassandra'); // AI故事叙述者
 
 function printHelp() {
   console.log(`
@@ -64,6 +66,10 @@ function printHelp() {
   codex, cx           - 查看连锁反应图鉴
   legacy, leg         - 查看单位传承系统
   stats               - 查看游戏统计
+
+  【叙述者命令】
+  storyteller, st     - 查看当前AI叙述者状态
+  storyteller <name>  - 切换叙述者 (cassandra/phoebe/randy/narrator)
 
 【其他命令】
   reset, r            - 重置当前关卡
@@ -348,6 +354,18 @@ async function main() {
           if (changes.length) console.log('变化: ' + changes.join(' | '));
 
           if (watchMode || game.gameState !== 'playing') game.printMap();
+
+          // Storyteller 叙事触发
+          if (game.gameState === 'playing') {
+            const storyResult = storyteller.tellStory(game);
+            if (storyResult) {
+              console.log(`\n【叙事】${storyResult.narrative}`);
+              // 应用事件效果
+              if (storyResult.event) {
+                applyStorytellerEvent(storyResult.event);
+              }
+            }
+          }
           break;
         }
 
@@ -471,6 +489,12 @@ async function main() {
           break;
         }
 
+        case 'storyteller':
+        case 'st': {
+          handleStoryteller(parts[1]);
+          break;
+        }
+
         case 'quit':
         case 'q':
         case 'exit':
@@ -578,6 +602,104 @@ function handleStats() {
   const legacyStats = legacySystem.getStats();
   console.log(`传承单位: ${legacyStats.totalLegacyUnits}`);
   console.log(`特质解锁: ${legacyStats.completion.traits.percentage}%`);
+}
+
+// ========== 叙述者命令处理 ==========
+
+function applyStorytellerEvent(event) {
+  switch (event.effect) {
+    case 'guidance': {
+      const civilians = game.units.filter(u => game.isCivilian(u) && u.status === 'active');
+      if (civilians.length > 0) {
+        const target = civilians[Math.floor(Math.random() * civilians.length)];
+        target.guidedTurns = Math.max(target.guidedTurns, 2);
+        console.log(`【事件】${target.name} 获得了神秘指引`);
+      }
+      break;
+    }
+    case 'beastStunned': {
+      const beast = game.units.find(u => u.type === 'beast' && u.status === 'active');
+      if (beast) {
+        beast.stunned = true;
+        console.log(`【事件】${beast.name} 被神秘力量牵制`);
+      }
+      break;
+    }
+    case 'resonanceBoost': {
+      const activeCreations = game.creations.filter(c => c.placed && c.remaining > 0);
+      if (activeCreations.length >= 1) {
+        const target = activeCreations[Math.floor(Math.random() * activeCreations.length)];
+        target.remaining += 1;
+        console.log(`【事件】「${target.card.name}」的持续时间延长了`);
+      }
+      break;
+    }
+    case 'floodSpread': {
+      game.spreadTerrain(game.level.hazard?.type === 'flood' ? 'water' : 'land', 1);
+      console.log(`【事件】洪水额外扩散了 1 格`);
+      break;
+    }
+    case 'terrainChange': {
+      const x = Math.floor(Math.random() * 7);
+      const y = Math.floor(Math.random() * 7);
+      const terrains = ['land', 'water', 'dark', 'fog'];
+      const newTerrain = terrains[Math.floor(Math.random() * terrains.length)];
+      game.setTerrain(x, y, newTerrain);
+      console.log(`【事件】地形发生了变化`);
+      break;
+    }
+    case 'entropyFluctuation': {
+      const change = Math.random() < 0.5 ? -1 : 1;
+      game.entropy = Math.max(0, game.entropy + change);
+      console.log(`【事件】世界裂隙 ${change > 0 ? '增加' : '减少'}了 1`);
+      break;
+    }
+    case 'hazardRedirect': {
+      const x = Math.floor(Math.random() * 7);
+      const y = Math.floor(Math.random() * 7);
+      if (game.getTerrain(x, y) === 'land') {
+        game.setTerrain(x, y, 'water');
+        console.log(`【事件】洪水流向了新的方向`);
+      }
+      break;
+    }
+    case 'atmosphereChange':
+    case 'npcDialogue':
+      // 这些事件只产生叙事文本，不修改游戏状态
+      break;
+  }
+}
+
+function handleStoryteller(personalityName) {
+  if (personalityName) {
+    if (STORYTELLER_PERSONALITIES[personalityName]) {
+      storyteller = new Storyteller(personalityName);
+      console.log(`\n叙述者已切换为: ${storyteller.personality.name}`);
+      console.log(`  ${storyteller.personality.description}`);
+    } else {
+      console.log(`\n未知叙述者: ${personalityName}`);
+      console.log('可用叙述者: cassandra(卡珊德拉), phoebe(菲比), randy(兰迪), narrator(说书人)');
+    }
+    return;
+  }
+
+  const stats = storyteller.getStats();
+  console.log('\n╔════════════════════════════════════════════════════════════╗');
+  console.log('║              AI故事叙述者                                  ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
+  console.log(`\n当前叙述者: ${stats.personality}`);
+  console.log(`  ${storyteller.personality.description}`);
+  console.log(`\n叙事张力: ${storyteller.tension.toFixed(2)}`);
+  console.log(`已触发事件: ${stats.eventsTriggered}`);
+  console.log(`平均张力: ${stats.averageTension.toFixed(2)}`);
+  console.log(`玩家技能评估: ${stats.playerSkill.toFixed(2)}`);
+
+  if (storyteller.eventHistory.length > 0) {
+    console.log('\n--- 最近事件 ---');
+    for (const event of storyteller.eventHistory.slice(-5)) {
+      console.log(`  [回合${event.turn}] ${event.event} - ${event.narrative}`);
+    }
+  }
 }
 
 // ========== 叙事命令处理 ==========

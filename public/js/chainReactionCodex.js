@@ -1,6 +1,8 @@
 // Chain Reaction Codex System
 // Tracks discovered resonance combinations and provides in-game encyclopedia
 
+import { TILE } from './levels.js';
+
 export const RESONANCE_CODEX = {
   // All possible chain reactions
   reactions: new Map([
@@ -281,8 +283,8 @@ function applySteamFog(game) {
 
   const midX = Math.round((illuminate.x + absorb.x) / 2);
   const midY = Math.round((illuminate.y + absorb.y) / 2);
-  if (game.getTerrain(midX, midY) === 0) { // TILE.LAND
-    game.setTerrain(midX, midY, 10); // TILE.FOG
+  if (game.getTerrain(midX, midY) === TILE.LAND) {
+    game.setTerrain(midX, midY, TILE.FOG);
     game.log(`照明与吸水产生共鸣，${game.tileName(midX, midY)} 升起蒸汽迷雾`);
     return true;
   }
@@ -291,7 +293,7 @@ function applySteamFog(game) {
 
 function applyIndestructibleBarrier(game) {
   for (const creation of game.creations.filter(c => c.placed && c.remaining > 0 && c.card.ability === 'block')) {
-    const hadForest = creation.restores?.some(r => r.prev === 7 || r.prev === 'forest'); // TILE.FOREST
+    const hadForest = creation.restores?.some(r => r.prev === TILE.FOREST || r.prev === 'forest');
     if (hadForest && creation.remaining < 6) {
       creation.remaining += 1;
       game.log(`「${creation.card.name}」在森林中获得加固，持续时间延长`);
@@ -334,7 +336,7 @@ function applyFrozenHighGround(game) {
         const raiseCells = game.tilesWithin(raise.x, raise.y, raise.card.range);
         for (const fc of freezeCells) {
           for (const rc of raiseCells) {
-            if (fc.x === rc.x && fc.y === rc.y && game.getTerrain(fc.x, fc.y) === 2) { // TILE.HIGH
+            if (fc.x === rc.x && fc.y === rc.y && game.getTerrain(fc.x, fc.y) === TILE.HIGH) { // TILE.HIGH
               const tempRestore = freeze.restores?.find(r => r.x === fc.x && r.y === fc.y);
               if (tempRestore) {
                 const idx = freeze.restores.indexOf(tempRestore);
@@ -363,7 +365,7 @@ function applyFrostwood(game) {
 
     let changed = 0;
     for (const cell of overlap) {
-      if (game.getTerrain(cell.x, cell.y) === 7) { // TILE.FOREST
+      if (game.getTerrain(cell.x, cell.y) === TILE.FOREST) { // TILE.FOREST
         // 霜木林：永久森林，不可被灾害改变
         const tempRestore = forest.restores?.find(r => r.x === cell.x && r.y === cell.y);
         if (tempRestore) {
@@ -475,7 +477,7 @@ function applySunHighland(game) {
   if (game.distance(sun.x, sun.y, raise.x, raise.y) <= 3) {
     let changed = 0;
     const highCells = game.tilesWithin(raise.x, raise.y, raise.card.range)
-      .filter(c => game.getTerrain(c.x, c.y) === 2); // TILE.HIGH
+      .filter(c => game.getTerrain(c.x, c.y) === TILE.HIGH); // TILE.HIGH
 
     for (const cell of highCells) {
       const neighbors = game.tilesWithin(cell.x, cell.y, 2);

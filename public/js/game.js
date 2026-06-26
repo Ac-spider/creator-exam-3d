@@ -7,6 +7,8 @@ import { ParticleSystem, ScreenEffects } from './particles.js';
 import { NPCManager } from './npcManager.js';
 import { AbilityHandlers, applyAbility } from './abilityHandlers.js';
 
+import { Storyteller, defaultStoryteller } from './storyteller.js';
+
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
 const MAX_LOGS = 18;
@@ -95,6 +97,7 @@ class CreatorExam3D {
     this.particleSystem = null;
     this.screenEffects = null;
     this.npcManager = null;
+    this.storyteller = defaultStoryteller;
     this.lastFrameTime = 0;
 
     this.ui = this.collectUi();
@@ -434,12 +437,85 @@ class CreatorExam3D {
     this.checkEndCondition(true);
     if (this.gameState === 'playing') {
       this.turn += 1;
+      // Storyteller 叙事触发
+      const storyResult = this.storyteller.tellStory(this);
+      if (storyResult) {
+        this.addLog(`【叙事】${storyResult.narrative}`, true);
+        this.applyStorytellerEvent(storyResult.event);
+      }
       if (this.turn > this.level.maxTurns) {
         this.checkEndCondition(true, true);
       }
     }
     this.renderWorld();
     this.updateUi();
+  }
+
+  applyStorytellerEvent(event) {
+    switch (event.effect) {
+      case 'guidance': {
+        const civilians = this.units.filter(u => this.isCivilian(u) && u.status === 'active');
+        if (civilians.length > 0) {
+          const target = civilians[Math.floor(Math.random() * civilians.length)];
+          target.guidedTurns = Math.max(target.guidedTurns, 2);
+          this.addLog(`【事件】${target.name} 获得了神秘指引`);
+        }
+        break;
+      }
+      case 'beastStunned': {
+        const beast = this.units.find(u => u.type === 'beast' && u.status === 'active');
+        if (beast) {
+          beast.stunned = true;
+          this.addLog(`【事件】${beast.name} 被神秘力量牵制`);
+        }
+        break;
+      }
+      case 'resonanceBoost': {
+        const activeCreations = this.creations.filter(c => c.placed && c.remaining > 0);
+        if (activeCreations.length >= 1) {
+          const target = activeCreations[Math.floor(Math.random() * activeCreations.length)];
+          target.remaining += 1;
+          this.addLog(`【事件】「${target.card.name}」的持续时间延长了`);
+        }
+        break;
+      }
+      case 'floodSpread': {
+        this.spreadTerrain(TILE.WATER, 1);
+        this.addLog(`【事件】洪水额外扩散了 1 格`);
+        break;
+      }
+      case 'terrainChange': {
+        const x = Math.floor(Math.random() * BOARD_SIZE);
+        const y = Math.floor(Math.random() * BOARD_SIZE);
+        const terrains = [TILE.LAND, TILE.WATER, TILE.DARK, TILE.FOG];
+        const newTerrain = terrains[Math.floor(Math.random() * terrains.length)];
+        const oldTerrain = this.getTerrain(x, y);
+        if (oldTerrain !== newTerrain && oldTerrain !== TILE.WALL && oldTerrain !== TILE.MOUNTAIN) {
+          this.setTerrain(x, y, newTerrain);
+          this.addLog(`【事件】地形发生了变化`);
+        }
+        break;
+      }
+      case 'entropyFluctuation': {
+        const change = Math.random() < 0.5 ? -1 : 1;
+        this.entropy = Math.max(0, this.entropy + change);
+        this.addLog(`【事件】世界裂隙 ${change > 0 ? '增加' : '减少'}了 1`);
+        break;
+      }
+      case 'hazardRedirect': {
+        const x = Math.floor(Math.random() * BOARD_SIZE);
+        const y = Math.floor(Math.random() * BOARD_SIZE);
+        if (this.getTerrain(x, y) === TILE.LAND) {
+          this.setTerrain(x, y, TILE.WATER);
+          this.addLog(`【事件】洪水流向了新的方向`);
+        }
+        break;
+      }
+      case 'atmosphereChange':
+      case 'npcDialogue':
+        // 纯叙事事件，不修改游戏状态
+        break;
+    }
   }
 
   checkChainReactions() {

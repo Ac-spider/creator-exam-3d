@@ -344,3 +344,8 @@ export class Storyteller {
 
 // Default storyteller instance
 export const defaultStoryteller = new Storyteller('cassandra');
+
+// CommonJS compatibility for Node.js
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Storyteller, STORYTELLER_PERSONALITIES, defaultStoryteller };
+}
