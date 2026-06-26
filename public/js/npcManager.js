@@ -2,10 +2,14 @@
 // Handles NPC states, memories, and dialogue generation
 // Enhanced with dynamic mood system and game event reactions
 
+import { SocialGraph } from './socialGraph.js';
+
 export class NPCManager {
   constructor(level) {
     this.level = level;
     this.npcs = this.initializeNPCs();
+    this.socialGraph = new SocialGraph();
+    this.initSocialGraph();
     this.dialogueHistory = [];
     this.worldState = {
       atmosphere: '平静',
@@ -241,6 +245,18 @@ export class NPCManager {
     return npcConfigs[this.level.id] || [];
   }
 
+  initSocialGraph() {
+    // Add all NPCs to social graph
+    for (const npc of this.npcs) {
+      this.socialGraph.addNode(npc.id, npc);
+    }
+    // Create default faction for this level
+    const factionId = this.level?.id || 'default';
+    for (const npc of this.npcs) {
+      this.socialGraph.joinFaction(npc.id, factionId);
+    }
+  }
+
   // ========== 动态情绪系统 ==========
 
   reactToGameEvent(eventType, eventData = {}) {
@@ -260,6 +276,19 @@ export class NPCManager {
 
     // 更新世界状态
     this.updateWorldState(eventType, eventData);
+
+    // Record social event for relationship changes
+    if (eventType === 'onRescue' || eventType === 'onLoss') {
+      const impact = eventType === 'onRescue' ? 'positive' : 'negative';
+      const witnesses = this.npcs.map(n => n.id);
+      this.socialGraph.recordSocialEvent({
+        type: eventType === 'onRescue' ? 'rescue' : 'loss',
+        actor: 'player',
+        target: eventData.unitName || 'unknown',
+        witnesses,
+        impact
+      });
+    }
 
     // 返回所有NPC的当前状态摘要
     return this.getNPCSummary();

@@ -1070,6 +1070,55 @@ runner.test('性能优化 - 路径缓存应减少计算', () => {
   runner.assert(time1 < 100, '寻路应在100ms内完成');
 });
 
+// 测试 SocialGraph 系统
+runner.test('SocialGraph - 应构建关系网并传播情绪', async () => {
+  const { SocialGraph, RELATIONSHIP_TYPES } = await import('../public/js/socialGraph.js');
+  const graph = new SocialGraph();
+
+  // 添加节点
+  graph.addNode('npc1', { name: '老渔夫', mood: '担忧', dynamicTraits: { trustLevel: 50, fearLevel: 30, hopeLevel: 40 } });
+  graph.addNode('npc2', { name: '小烛', mood: '好奇', dynamicTraits: { trustLevel: 70, fearLevel: 20, hopeLevel: 80 } });
+  graph.addNode('npc3', { name: '守忆人', mood: '困惑', dynamicTraits: { trustLevel: 45, fearLevel: 55, hopeLevel: 35 } });
+
+  // 创建关系 (使用高强度确保传播)
+  graph.addEdge('npc1', 'npc2', 'friend', 50);
+  graph.addEdge('npc2', 'npc3', 'friend', 50);
+
+  // 测试关系查询
+  const rel1 = graph.getRelationship('npc1', 'npc2');
+  runner.assert(rel1.type === 'friend', '应创建朋友关系');
+  runner.assert(rel1.strength > 0, '关系强度应为正');
+
+  // 测试情绪传播 (使用高强度确保超过阈值)
+  // npc1->npc2: factor=(2/3)*(50/50)=0.667, intensity=80*0.667*1=53.3 > 15 ✓
+  // npc2->npc3: 53.3*0.667*0.7=24.9 > 15 ✓
+  const initialHope = graph.nodes.get('npc3').hopeLevel;
+  graph.spreadMood('npc1', '希望', 80);
+  const newHope = graph.nodes.get('npc3').hopeLevel;
+  runner.assert(newHope > initialHope, '情绪应通过关系网传播');
+
+  // 测试直接邻居传播
+  const npc2Hope = graph.nodes.get('npc2').hopeLevel;
+  runner.assert(npc2Hope > 80, '直接邻居应受到更强影响');
+
+  // 测试社交事件
+  graph.recordSocialEvent({
+    type: 'rescue',
+    actor: 'player',
+    target: 'npc2',
+    witnesses: ['npc1', 'npc3'],
+    impact: 'positive'
+  });
+
+  const relAfter = graph.getRelationship('npc1', 'player');
+  runner.assert(relAfter.strength > 0, '见证救援后关系应改善');
+
+  // 测试网络统计
+  const stats = graph.getNetworkStats();
+  runner.assert(stats.totalNodes === 3, '应有3个节点');
+  runner.assert(stats.totalEdges >= 2, '应有至少2条边');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
