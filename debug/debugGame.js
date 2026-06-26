@@ -301,9 +301,9 @@ class DebugGame {
 
   place(creationId, x, y) {
     if (this.gameState !== 'playing') return { error: '本关已结束' };
+    if (!this.inBounds(x, y)) return { error: '坐标超出地图范围' };
     const creation = this.creations.find((c) => c.id === creationId && !c.placed);
     if (!creation) return { error: '找不到未放置的造物' };
-    if (!this.inBounds(x, y)) return { error: '坐标超出地图范围' };
 
     const card = creation.card;
     if (this.unitAt(x, y) && ['block', 'force_field'].includes(card.ability)) {
