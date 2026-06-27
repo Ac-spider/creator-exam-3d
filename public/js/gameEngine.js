@@ -64,7 +64,8 @@ class GameEngine {
       onTurnEnd: options.onTurnEnd || (() => {}),
       onStateChange: options.onStateChange || (() => {}),
       onHazardSpread: options.onHazardSpread || (() => {}),
-      onCreationExpire: options.onCreationExpire || (() => {})
+      onCreationExpire: options.onCreationExpire || (() => {}),
+      onWorldEvent: options.onWorldEvent || (() => {})
     };
     this.reset();
   }
@@ -175,6 +176,20 @@ class GameEngine {
     if (this.worldState.actions.length > 50) {
       this.worldState.actions = this.worldState.actions.slice(-50);
     }
+  }
+
+  emitWorldEvent(type, payload = {}, options = {}) {
+    const event = {
+      type,
+      regionId: this.level?.id || 'unknown',
+      actorId: options.actorId || 'player',
+      turn: this.turn,
+      payload,
+      importance: options.importance ?? 0.5,
+      tags: options.tags || []
+    };
+    this.hooks.onWorldEvent(event);
+    return event;
   }
 
   analyzePlayStyle() {
@@ -366,6 +381,17 @@ class GameEngine {
     }
 
     this.updateWorldState({ type: 'creation_placed', detail: card.name, creationName: card.name });
+    this.emitWorldEvent('creation_placed', {
+      creationId: creation.id,
+      creationName: card.name,
+      ability: card.ability,
+      x,
+      y,
+      entropyDelta: card.stabilityCost
+    }, {
+      importance: Math.min(1, 0.4 + card.stabilityCost * 0.2),
+      tags: ['creation', card.ability]
+    });
     this.hooks.onPlacement(creation, x, y);
     this.checkEndCondition(false);
     return { success: true };
@@ -1093,6 +1119,16 @@ class GameEngine {
       legacyUnits: this.units.filter(u => u.isLegacy).length
     };
     persistentWorld.recordLevelCompletion(this.level.id, 'won', stats);
+    this.emitWorldEvent('region_resolved', {
+      message,
+      rescued: this.rescued,
+      lost: this.lost,
+      entropy: this.entropy,
+      result: 'won'
+    }, {
+      importance: 0.9,
+      tags: ['region', 'victory']
+    });
   }
 
   failLevel(message) {
@@ -1113,6 +1149,16 @@ class GameEngine {
       legacyUnits: this.units.filter(u => u.isLegacy).length
     };
     persistentWorld.recordLevelCompletion(this.level.id, 'lost', stats);
+    this.emitWorldEvent('region_lost', {
+      message,
+      rescued: this.rescued,
+      lost: this.lost,
+      entropy: this.entropy,
+      result: 'lost'
+    }, {
+      importance: 0.9,
+      tags: ['region', 'loss']
+    });
   }
 
   // ========== Chain Reactions ==========
@@ -1517,6 +1563,15 @@ class GameEngine {
     this.rescued += 1;
     this.log(`${unit.name} 抵达安全点`, true);
     this.updateWorldState({ type: 'unit_rescued', detail: unit.name });
+    this.emitWorldEvent('unit_rescued', {
+      unitId: unit.id,
+      unitName: unit.name,
+      unitType: unit.type,
+      residentId: unit.residentId || null
+    }, {
+      importance: 0.8,
+      tags: ['rescue', unit.type]
+    });
     const levelStats = { turn: this.turn, maxTurns: this.level.maxTurns, lost: this.lost };
     const legacy = legacySystem.recordRescue(unit, this.level.id, levelStats);
     if (legacy && legacy.rescueCount > 1) {

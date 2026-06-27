@@ -2541,6 +2541,190 @@ runner.test('敌方意图 - 序列化与统计', async () => {
   runner.assert(intentSystem2.previews.length > 0, '反序列化后应恢复预览');
 });
 
+// ========== 世界模拟系统测试 (Phase 1) ==========
+
+runner.test('EventBus - 应记录、查询并序列化世界事件', async () => {
+  const { EventBus } = await import('../public/js/eventBus.js');
+  const bus = new EventBus({ maxEvents: 3 });
+
+  const first = bus.emit({
+    type: 'creation_placed',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { creationName: '云鲸群', entropyDelta: 1 },
+    importance: 0.8,
+    tags: ['creation', 'water']
+  });
+
+  runner.assert(first.id, '事件应生成id');
+  runner.assertEqual(first.type, 'creation_placed', '事件类型应保留');
+  runner.assertEqual(first.regionId, 'flood-village', '区域ID应保留');
+  runner.assertEqual(first.payload.creationName, '云鲸群', 'payload应保留');
+
+  bus.emit({ type: 'unit_rescued', regionId: 'flood-village', payload: { unitName: '小烛' }, tags: ['rescue'] });
+  bus.emit({ type: 'region_resolved', regionId: 'flood-village', payload: { result: 'won' }, tags: ['region'] });
+  bus.emit({ type: 'unit_lost', regionId: 'night-mine', payload: { unitName: '矿工甲' }, tags: ['loss'] });
+
+  runner.assertEqual(bus.events.length, 3, '应按maxEvents裁剪旧事件');
+  runner.assertEqual(bus.query({ type: 'unit_lost' }).length, 1, '应能按类型查询');
+  runner.assertEqual(bus.query({ regionId: 'flood-village' }).length, 2, '应能按区域查询');
+  runner.assertEqual(bus.query({ tag: 'region' }).length, 1, '应能按标签查询');
+
+  const serialized = bus.serialize();
+  const restored = new EventBus();
+  restored.deserialize(serialized);
+  runner.assertEqual(restored.events.length, 3, '反序列化应恢复事件');
+});
+
+runner.test('EventBus - 监听与派发', async () => {
+  const { EventBus } = await import('../public/js/eventBus.js');
+  const bus = new EventBus();
+
+  const received = [];
+  const unsubscribe = bus.on('test_event', (event) => {
+    received.push(event);
+  });
+
+  bus.emit({ type: 'test_event', payload: { value: 1 } });
+  bus.emit({ type: 'test_event', payload: { value: 2 } });
+
+  runner.assertEqual(received.length, 2, '监听器应收到2个事件');
+  runner.assertEqual(received[0].payload.value, 1, '第一个事件payload正确');
+
+  unsubscribe();
+  bus.emit({ type: 'test_event', payload: { value: 3 } });
+  runner.assertEqual(received.length, 2, '取消订阅后不应再收到事件');
+});
+
+runner.test('ResidentRegistry - 应为关键NPC提供稳定居民身份', async () => {
+  const { ResidentRegistry } = await import('../public/js/residentRegistry.js');
+  const registry = new ResidentRegistry();
+
+  const xiaozhu = registry.getResident('resident-xiaozhu');
+  runner.assert(xiaozhu, '应存在小烛居民档案');
+  runner.assertEqual(xiaozhu.residentId, 'resident-xiaozhu', '小烛ID应稳定');
+  runner.assert(xiaozhu.homeRegionId === 'flood-village', '小烛应归属洪水村庄');
+
+  registry.recordMemory('resident-xiaozhu', {
+    type: 'rescue',
+    text: '玩家在洪水村庄救下了小烛',
+    regionId: 'flood-village',
+    importance: 0.9
+  });
+
+  const projection = registry.projectForRegion('resident-xiaozhu', 'highland-refuge');
+  runner.assertEqual(projection.residentId, 'resident-xiaozhu', '当前区域投影应保留residentId');
+  runner.assert(projection.memories.some(memory => memory.text.includes('救下了小烛')), '投影应包含长期记忆');
+
+  const serialized = registry.serialize();
+  const restored = new ResidentRegistry({ seedDefaults: false });
+  restored.deserialize(serialized);
+  runner.assert(restored.getResident('resident-xiaozhu'), '反序列化应恢复居民');
+});
+
+runner.test('ResidentRegistry - 别名解析与区域查询', async () => {
+  const { ResidentRegistry } = await import('../public/js/residentRegistry.js');
+  const registry = new ResidentRegistry();
+
+  const byAlias = registry.getResident('小烛');
+  runner.assert(byAlias, '应能通过中文名解析');
+  runner.assertEqual(byAlias.residentId, 'resident-xiaozhu', '别名应解析到正确居民');
+
+  const floodVillageResidents = registry.getResidentsForRegion('flood-village');
+  runner.assert(floodVillageResidents.length >= 2, '洪水村庄应至少有2个居民');
+
+  const nonExistent = registry.getResident('不存在的人');
+  runner.assertEqual(nonExistent, null, '不存在的居民应返回null');
+});
+
+runner.test('WorldSimulation - 应从区域事件生成跨区域剧情钩子', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 3,
+    payload: {
+      unitName: '小烛',
+      residentId: 'resident-xiaozhu'
+    },
+    tags: ['rescue', 'resident']
+  });
+
+  world.recordGameEvent({
+    type: 'creation_placed',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 4,
+    payload: {
+      creationName: '幼年太阳',
+      ability: 'sun_blessing',
+      entropyDelta: 2
+    },
+    tags: ['creation', 'entropy']
+  });
+
+  const hooks = world.getFutureHooks('flood-village');
+  runner.assert(hooks.some(hook => hook.type === 'resident_migration'), '救援居民应生成迁移钩子');
+  runner.assert(hooks.some(hook => hook.type === 'entropy_scar'), '高熵造物应生成污染钩子');
+
+  const xiaozhu = world.residentRegistry.getResident('resident-xiaozhu');
+  runner.assert(xiaozhu.memories.some(memory => memory.text.includes('小烛')), '居民应记住相关事件');
+
+  const serialized = world.serialize();
+  const restored = new WorldSimulation();
+  restored.deserialize(serialized);
+  runner.assert(restored.getFutureHooks('flood-village').length >= 2, '反序列化应恢复futureHooks');
+});
+
+runner.test('GameEngine - 应通过onWorldEvent发出规范世界事件', () => {
+  const events = [];
+  const game = new DebugGame({
+    onWorldEvent: event => events.push(event)
+  });
+  game.levelIndex = 0;
+  game.reset();
+
+  const result = game.createAndPlace('造一座桥', 3, 3);
+  runner.assertTrue(result.success, '造物应成功放置');
+  runner.assert(events.some(event => event.type === 'creation_placed'), '应发出creation_placed事件');
+
+  const villager = game.units.find(unit => unit.type === 'villager' && unit.status === 'active');
+  game.rescueUnit(villager);
+  runner.assert(events.some(event => event.type === 'unit_rescued'), '应发出unit_rescued事件');
+
+  // Test emitWorldEvent directly
+  game.gameState = 'playing';
+  game.emitWorldEvent('region_resolved', { result: 'won' }, { importance: 0.9, tags: ['region'] });
+  runner.assert(events.some(event => event.type === 'region_resolved'), '应发出region_resolved事件');
+});
+
+runner.test('WorldSimulation集成 - GameEngine事件应生成futureHooks', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+  const game = new DebugGame({
+    onWorldEvent: event => world.recordGameEvent(event)
+  });
+
+  game.levelIndex = 0;
+  game.reset();
+
+  const villager = game.units.find(unit => unit.name === '小烛');
+  if (villager) {
+    villager.residentId = 'resident-xiaozhu';
+    game.rescueUnit(villager);
+  }
+
+  const hooks = world.getFutureHooks('flood-village');
+  runner.assert(hooks.some(hook => hook.type === 'resident_migration'), '救下小烛应生成跨区域迁移钩子');
+
+  const projection = world.residentRegistry.projectForRegion('resident-xiaozhu', 'highland-refuge');
+  runner.assert(projection.memories.some(memory => memory.text.includes('小烛')), '小烛投影应保留救援记忆');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

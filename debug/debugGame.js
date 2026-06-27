@@ -13,8 +13,8 @@ import { CreatorWorkshop } from '../public/js/creatorWorkshop.js';
 import { EnemyIntentSystem } from '../public/js/enemyIntent.js';
 
 class DebugGame extends GameEngine {
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
     this.npcManager = new NPCManager(this.level || { id: 'default', title: '默认关卡', map: [], units: [] });
     this.ritualForge = new RitualForge();
     this.cognitiveAbyss = new CognitiveAbyss();

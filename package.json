@@ -8,7 +8,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "debug": "node debug/cli.js",
-    "check": "node --check server.js && node --check public/js/aiClient.js && node --check public/js/levels.js && node --check public/js/game.js"
+    "check": "node debug/syntax-check.js"
   },
   "dependencies": {},
   "engines": {
