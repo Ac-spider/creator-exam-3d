@@ -54,8 +54,7 @@ class DebugGame extends GameEngine {
   // Override winLevel to add NPC reactions
   winLevel(message) {
     if (this.gameState !== 'playing') return;
-    this.gameState = 'won';
-    this.log(`通过：${message}`, true);
+    super.winLevel(message);
     if (this.npcManager) {
       this.npcManager.reactToGameEvent('onWin', { message });
     }
@@ -64,8 +63,7 @@ class DebugGame extends GameEngine {
   // Override failLevel to add NPC reactions
   failLevel(message) {
     if (this.gameState !== 'playing') return;
-    this.gameState = 'lost';
-    this.log(`失败：${message}`, true);
+    super.failLevel(message);
     if (this.npcManager) {
       this.npcManager.reactToGameEvent('onLose', { message });
     }

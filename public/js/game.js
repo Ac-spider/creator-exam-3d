@@ -447,6 +447,8 @@ class CreatorExam3D extends GameEngine {
       this.addLog(`副作用触发：${card.side_effect} 世界裂隙 +${card.stabilityCost}。`);
     }
 
+    this.recordCreationPlacement(creation, x, y);
+
     // Environmental narrative for placement
     this.addEnvironmentalNarrative('placement', { card, x, y, terrain: this.getTerrain(x, y) });
 
@@ -684,6 +686,7 @@ class CreatorExam3D extends GameEngine {
       lost: this.lost,
       entropy: this.entropy
     });
+    this.emitRegionResolvedEvent(message);
 
     // Screen effects for victory
     this.screenEffects.flash('#9dffb3', 500);
@@ -711,6 +714,7 @@ class CreatorExam3D extends GameEngine {
       lost: this.lost,
       entropy: this.entropy
     });
+    this.emitRegionLostEvent(message);
 
     // Screen shake for failure
     this.screenEffects.shake(8, 500);
@@ -745,6 +749,8 @@ class CreatorExam3D extends GameEngine {
         unit.lost = true;
         this.lost += 1;
         this.addLog(`${unit.name} 被${TERRAIN_LABELS[terrain]}吞没。`);
+        this.updateWorldState({ type: 'unit_lost', detail: unit.name });
+        this.emitUnitLostEvent(unit, terrain);
 
         // Environmental narrative for loss
         this.addEnvironmentalNarrative('loss', { levelId: this.level.id });

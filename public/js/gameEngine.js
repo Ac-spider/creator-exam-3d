@@ -192,6 +192,61 @@ class GameEngine {
     return event;
   }
 
+  recordCreationPlacement(creation, x, y) {
+    const card = creation.card;
+    this.updateWorldState({ type: 'creation_placed', detail: card.name, creationName: card.name });
+    return this.emitWorldEvent('creation_placed', {
+      creationId: creation.id,
+      creationName: card.name,
+      ability: card.ability,
+      x,
+      y,
+      entropyDelta: card.stabilityCost
+    }, {
+      importance: Math.min(1, 0.4 + card.stabilityCost * 0.2),
+      tags: ['creation', card.ability]
+    });
+  }
+
+  emitUnitLostEvent(unit, terrain) {
+    return this.emitWorldEvent('unit_lost', {
+      unitId: unit.id,
+      unitName: unit.name,
+      unitType: unit.type,
+      residentId: unit.residentId || null,
+      terrain
+    }, {
+      importance: 0.8,
+      tags: ['loss', unit.type, terrain]
+    });
+  }
+
+  emitRegionResolvedEvent(message) {
+    return this.emitWorldEvent('region_resolved', {
+      message,
+      rescued: this.rescued,
+      lost: this.lost,
+      entropy: this.entropy,
+      result: 'won'
+    }, {
+      importance: 0.9,
+      tags: ['region', 'victory']
+    });
+  }
+
+  emitRegionLostEvent(message) {
+    return this.emitWorldEvent('region_lost', {
+      message,
+      rescued: this.rescued,
+      lost: this.lost,
+      entropy: this.entropy,
+      result: 'lost'
+    }, {
+      importance: 0.9,
+      tags: ['region', 'loss']
+    });
+  }
+
   analyzePlayStyle() {
     const actions = this.worldState.actions;
     const creationCount = actions.filter(a => a.type === 'creation_placed').length;
@@ -380,18 +435,7 @@ class GameEngine {
       this.log(`副作用触发：世界裂隙 +${card.stabilityCost}`);
     }
 
-    this.updateWorldState({ type: 'creation_placed', detail: card.name, creationName: card.name });
-    this.emitWorldEvent('creation_placed', {
-      creationId: creation.id,
-      creationName: card.name,
-      ability: card.ability,
-      x,
-      y,
-      entropyDelta: card.stabilityCost
-    }, {
-      importance: Math.min(1, 0.4 + card.stabilityCost * 0.2),
-      tags: ['creation', card.ability]
-    });
+    this.recordCreationPlacement(creation, x, y);
     this.hooks.onPlacement(creation, x, y);
     this.checkEndCondition(false);
     return { success: true };
@@ -1039,6 +1083,7 @@ class GameEngine {
         this.lost += 1;
         this.log(`${unit.name} 被${TERRAIN_LABELS[terrain]}吞没`);
         this.updateWorldState({ type: 'unit_lost', detail: unit.name });
+        this.emitUnitLostEvent(unit, terrain);
       }
     }
   }
@@ -1119,16 +1164,7 @@ class GameEngine {
       legacyUnits: this.units.filter(u => u.isLegacy).length
     };
     persistentWorld.recordLevelCompletion(this.level.id, 'won', stats);
-    this.emitWorldEvent('region_resolved', {
-      message,
-      rescued: this.rescued,
-      lost: this.lost,
-      entropy: this.entropy,
-      result: 'won'
-    }, {
-      importance: 0.9,
-      tags: ['region', 'victory']
-    });
+    this.emitRegionResolvedEvent(message);
   }
 
   failLevel(message) {
@@ -1149,16 +1185,7 @@ class GameEngine {
       legacyUnits: this.units.filter(u => u.isLegacy).length
     };
     persistentWorld.recordLevelCompletion(this.level.id, 'lost', stats);
-    this.emitWorldEvent('region_lost', {
-      message,
-      rescued: this.rescued,
-      lost: this.lost,
-      entropy: this.entropy,
-      result: 'lost'
-    }, {
-      importance: 0.9,
-      tags: ['region', 'loss']
-    });
+    this.emitRegionLostEvent(message);
   }
 
   // ========== Chain Reactions ==========

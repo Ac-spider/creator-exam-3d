@@ -2696,10 +2696,36 @@ runner.test('GameEngine - 应通过onWorldEvent发出规范世界事件', () => 
   game.rescueUnit(villager);
   runner.assert(events.some(event => event.type === 'unit_rescued'), '应发出unit_rescued事件');
 
-  // Test emitWorldEvent directly
-  game.gameState = 'playing';
-  game.emitWorldEvent('region_resolved', { result: 'won' }, { importance: 0.9, tags: ['region'] });
+  game.winLevel('测试通过');
   runner.assert(events.some(event => event.type === 'region_resolved'), '应发出region_resolved事件');
+});
+
+runner.test('GameEngine - 应为失败和单位迷失发出世界事件', () => {
+  const events = [];
+  const game = new DebugGame({
+    onWorldEvent: event => events.push(event)
+  });
+  game.levelIndex = 0;
+  game.reset();
+
+  const villager = game.units.find(unit => unit.type === 'villager' && unit.status === 'active');
+  game.setTerrain(villager.x, villager.y, 'water');
+  game.applyTileHazardsToUnits();
+  runner.assert(events.some(event => event.type === 'unit_lost'), '单位迷失应发出unit_lost事件');
+
+  game.gameState = 'playing';
+  game.failLevel('测试失败');
+  runner.assert(events.some(event => event.type === 'region_lost'), '失败应发出region_lost事件');
+});
+
+runner.test('浏览器入口 - 应调用统一世界事件辅助方法', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  runner.assert(source.includes('recordCreationPlacement(creation, x, y)'), '浏览器造物放置应调用recordCreationPlacement');
+  runner.assert(source.includes('emitUnitLostEvent(unit, terrain)'), '浏览器单位迷失应调用emitUnitLostEvent');
+  runner.assert(source.includes('emitRegionResolvedEvent(message)'), '浏览器胜利应调用emitRegionResolvedEvent');
+  runner.assert(source.includes('emitRegionLostEvent(message)'), '浏览器失败应调用emitRegionLostEvent');
 });
 
 runner.test('WorldSimulation集成 - GameEngine事件应生成futureHooks', async () => {
