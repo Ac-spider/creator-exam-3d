@@ -2384,6 +2384,163 @@ runner.test('造物者工坊 - 序列化与统计', async () => {
   runner.assert(workshop2.dismantleHistory.length === 1, '反序列化后应保留拆解历史');
 });
 
+// 测试敌方意图预览系统
+runner.test('敌方意图 - 应生成巨兽意图预览', async () => {
+  const { EnemyIntentSystem } = await import('../public/js/enemyIntent.js');
+  const intentSystem = new EnemyIntentSystem();
+
+  // 模拟游戏引擎状态
+  const mockEngine = {
+    units: [
+      { id: 'beast1', name: '古水巨兽', type: 'beast', status: 'active', x: 1, y: 1, goal: { x: 5, y: 5 }, anger: 3, stunned: false },
+      { id: 'civ1', name: '村民', type: 'civilian', status: 'active', x: 2, y: 2, goal: { x: 6, y: 6 }, guidedTurns: 0, immuneChaos: 0, dreamLinked: null }
+    ],
+    level: { hazard: { type: 'flood', spreadPerTurn: 2 }, maxTurns: 10, memoryChaos: false, beastAngerLimit: 5 },
+    turn: 3,
+    isCivilian: (u) => u.type === 'civilian',
+    isMessenger: (u) => u.type === 'messenger',
+    nextStepToward: (u, g) => ({ x: u.x + 1, y: u.y + 1 }),
+    distance: (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2),
+    nearActiveAbility: () => false,
+    creations: [],
+    getTerrain: () => 'land'
+  };
+
+  const gameState = { turn: 3 };
+  const result = intentSystem.generatePreviews(gameState, mockEngine);
+
+  runner.assert(result.previews.length > 0, '应生成意图预览');
+  runner.assert(result.narrative.length > 0, '应生成叙事');
+
+  const beastPreview = result.previews.find(p => p.unitType === 'beast');
+  runner.assert(beastPreview !== undefined, '应有巨兽意图');
+  runner.assert(beastPreview.threat !== undefined, '威胁等级应定义');
+});
+
+runner.test('敌方意图 - 应生成村民意图预览', async () => {
+  const { EnemyIntentSystem } = await import('../public/js/enemyIntent.js');
+  const intentSystem = new EnemyIntentSystem();
+
+  const mockEngine = {
+    units: [
+      { id: 'civ1', name: '村民甲', type: 'civilian', status: 'active', x: 2, y: 2, goal: { x: 6, y: 6 }, guidedTurns: 2, immuneChaos: 0, dreamLinked: null },
+      { id: 'civ2', name: '村民乙', type: 'civilian', status: 'active', x: 3, y: 3, goal: { x: 6, y: 6 }, guidedTurns: 0, immuneChaos: 0, dreamLinked: 'civ1' }
+    ],
+    level: { hazard: null, maxTurns: 10, memoryChaos: true, beastAngerLimit: 5 },
+    turn: 3,
+    isCivilian: (u) => u.type === 'civilian',
+    isMessenger: (u) => u.type === 'messenger',
+    nextStepToward: (u, g) => ({ x: u.x + 1, y: u.y + 1 }),
+    distance: (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2),
+    nearActiveAbility: () => false,
+    creations: [],
+    getTerrain: () => 'land'
+  };
+
+  const gameState = { turn: 3 };
+  const result = intentSystem.generatePreviews(gameState, mockEngine);
+
+  const civilianPreviews = result.previews.filter(p => p.category === 'civilian');
+  runner.assert(civilianPreviews.length >= 2, '应有2个村民意图');
+
+  const guided = civilianPreviews.find(p => p.intentType === 'guided');
+  runner.assert(guided !== undefined, '应有受引导意图');
+
+  const dreamLinked = civilianPreviews.find(p => p.intentType === 'dreamLinked');
+  runner.assert(dreamLinked !== undefined, '应有梦境连接意图');
+});
+
+runner.test('敌方意图 - 被困巨兽应正确识别', async () => {
+  const { EnemyIntentSystem } = await import('../public/js/enemyIntent.js');
+  const intentSystem = new EnemyIntentSystem();
+
+  const mockEngine = {
+    units: [
+      { id: 'beast1', name: '古水巨兽', type: 'beast', status: 'active', x: 1, y: 1, goal: { x: 5, y: 5 }, anger: 0, stunned: false }
+    ],
+    level: { hazard: null, maxTurns: 10, memoryChaos: false, beastAngerLimit: 5 },
+    turn: 3,
+    isCivilian: (u) => u.type === 'civilian',
+    isMessenger: (u) => u.type === 'messenger',
+    nextStepToward: (u, g) => null, // 无路可走
+    distance: (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2),
+    nearActiveAbility: () => false,
+    creations: [
+      { placed: true, remaining: 3, card: { ability: 'trap' }, x: 1, y: 1 }
+    ],
+    getTerrain: () => 'land'
+  };
+
+  const gameState = { turn: 3 };
+  const result = intentSystem.generatePreviews(gameState, mockEngine);
+
+  const trapped = result.previews.find(p => p.intentType === 'trapped');
+  runner.assert(trapped !== undefined, '应有被困意图');
+  runner.assert(trapped.confidence === 1.0, '被困意图应有100%置信度');
+});
+
+runner.test('敌方意图 - 应生成战略建议', async () => {
+  const { EnemyIntentSystem } = await import('../public/js/enemyIntent.js');
+  const intentSystem = new EnemyIntentSystem();
+
+  const mockEngine = {
+    units: [
+      { id: 'beast1', name: '古水巨兽', type: 'beast', status: 'active', x: 1, y: 1, goal: { x: 5, y: 5 }, anger: 5, stunned: false },
+      { id: 'civ1', name: '村民', type: 'civilian', status: 'active', x: 2, y: 2, goal: { x: 6, y: 6 }, guidedTurns: 0, immuneChaos: 0, dreamLinked: null }
+    ],
+    level: { hazard: { type: 'flood', spreadPerTurn: 2 }, maxTurns: 10, memoryChaos: true, beastAngerLimit: 5 },
+    turn: 3,
+    isCivilian: (u) => u.type === 'civilian',
+    isMessenger: (u) => u.type === 'messenger',
+    nextStepToward: (u, g) => ({ x: u.x + 1, y: u.y + 1 }),
+    distance: (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2),
+    nearActiveAbility: () => false,
+    creations: [],
+    getTerrain: () => 'land'
+  };
+
+  const gameState = { turn: 3 };
+  const result = intentSystem.generatePreviews(gameState, mockEngine);
+
+  runner.assert(result.narrative !== undefined, '应返回结果');
+
+  const stats = intentSystem.getStats();
+  runner.assert(stats.currentTurnPreviews > 0, '应记录当前回合预览');
+});
+
+runner.test('敌方意图 - 序列化与统计', async () => {
+  const { EnemyIntentSystem } = await import('../public/js/enemyIntent.js');
+  const intentSystem = new EnemyIntentSystem();
+
+  const mockEngine = {
+    units: [
+      { id: 'beast1', name: '古水巨兽', type: 'beast', status: 'active', x: 1, y: 1, goal: { x: 5, y: 5 }, anger: 0, stunned: false }
+    ],
+    level: { hazard: null, maxTurns: 10, memoryChaos: false, beastAngerLimit: 5 },
+    turn: 3,
+    isCivilian: (u) => u.type === 'civilian',
+    isMessenger: (u) => u.type === 'messenger',
+    nextStepToward: (u, g) => ({ x: u.x + 1, y: u.y + 1 }),
+    distance: (x1, y1, x2, y2) => Math.abs(x1 - x2) + Math.abs(y1 - y2),
+    nearActiveAbility: () => false,
+    creations: [],
+    getTerrain: () => 'land'
+  };
+
+  const gameState = { turn: 3 };
+  intentSystem.generatePreviews(gameState, mockEngine);
+
+  const stats = intentSystem.getStats();
+  runner.assert(stats.currentTurnPreviews > 0, '应有预览');
+
+  const serialized = intentSystem.serialize();
+  runner.assert(serialized.previews.length > 0, '序列化应包含预览');
+
+  const intentSystem2 = new EnemyIntentSystem();
+  intentSystem2.deserialize(serialized);
+  runner.assert(intentSystem2.previews.length > 0, '反序列化后应恢复预览');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

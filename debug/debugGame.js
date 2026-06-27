@@ -10,6 +10,7 @@ import { VerificationCorruption } from '../public/js/verificationCorruption.js';
 import { OathManager } from '../public/js/oathbinding.js';
 import { RiftEchoSystem } from '../public/js/riftEchoes.js';
 import { CreatorWorkshop } from '../public/js/creatorWorkshop.js';
+import { EnemyIntentSystem } from '../public/js/enemyIntent.js';
 
 class DebugGame extends GameEngine {
   constructor() {
@@ -21,6 +22,7 @@ class DebugGame extends GameEngine {
     this.oathManager = new OathManager();
     this.riftEchoSystem = new RiftEchoSystem();
     this.creatorWorkshop = new CreatorWorkshop();
+    this.enemyIntentSystem = new EnemyIntentSystem();
   }
 
   reset() {
@@ -32,6 +34,7 @@ class DebugGame extends GameEngine {
     this.oathManager = new OathManager();
     this.riftEchoSystem = new RiftEchoSystem();
     this.creatorWorkshop = new CreatorWorkshop();
+    this.enemyIntentSystem = new EnemyIntentSystem();
     // Add legacy NPCs from previous rescues
     if (this.legacyUnits && this.legacyUnits.length > 0) {
       for (const npc of this.legacyUnits) {
