@@ -130,6 +130,52 @@ export class WorldSimulation {
     return Array.from(this.futureHooks.values()).flat();
   }
 
+  proposeExplorationChoices(options = {}) {
+    const sourceRegionId = options.sourceRegionId || 'unknown';
+    const count = options.count || 3;
+    const hooks = this.getFutureHooks(sourceRegionId);
+    const choices = [];
+
+    for (let i = 0; i < count; i++) {
+      const hook = hooks[i];
+      const id = hook ? hook.id : `exploration-${sourceRegionId}-${i}`;
+      const title = hook ? hook.summary : `探索区域 ${sourceRegionId} 的未知方向 ${i + 1}`;
+      choices.push({
+        id,
+        title,
+        regionId: hook?.sourceRegionId || sourceRegionId,
+        hookType: hook?.type || 'exploration',
+        priority: hook?.priority || 0.5
+      });
+    }
+
+    return choices;
+  }
+
+  async resolveExplorationChoice(choiceId, options = {}) {
+    return {
+      id: choiceId,
+      title: options.title || '未命名区域',
+      units: options.units || [],
+      objective: options.objective || 'requiredRescue',
+      win: options.win || 'requiredRescue'
+    };
+  }
+
+  tickResidents(regionId, context = {}) {
+    const residents = this.residentRegistry.getResidentsByRegion?.(regionId) || [];
+    const actions = [];
+    for (const resident of residents) {
+      actions.push({
+        residentId: resident.residentId,
+        action: 'idle',
+        regionId,
+        ...context
+      });
+    }
+    return actions;
+  }
+
   serialize() {
     return {
       version: 1,

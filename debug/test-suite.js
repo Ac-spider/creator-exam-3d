@@ -2776,6 +2776,51 @@ runner.test('WorldSimulation集成 - GameEngine事件应生成futureHooks', asyn
   runner.assert(projection.memories.some(memory => memory.text.includes('小烛')), '小烛投影应保留救援记忆');
 });
 
+runner.test('WorldSession - should own open-world transitions without depending on DOM', async () => {
+  const { WorldSession } = await import('../public/js/worldSession.js');
+  const session = new WorldSession();
+
+  session.recordTacticalEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { residentId: 'resident-xiaozhu', unitName: 'Xiaozhu' },
+    importance: 0.9,
+    tags: ['resident']
+  });
+  const choices = session.proposeNextRoutes({ outcome: 'won', count: 3 });
+
+  runner.assert(choices.length > 0, 'session should generate next routes');
+  runner.assertEqual(session.currentRegionId, 'flood-village', 'session should own current region id');
+  runner.assert(session.serialize().worldSimulation, 'session should serialize world simulation');
+  runner.assert(session.serialize().currentRegionId, 'session should serialize playable current region');
+  for (const method of ['tickWorld', 'tickResidents', 'applyManagementDecision', 'talkToResident', 'updateTacticalSnapshot']) {
+    runner.assertEqual(typeof session[method], 'function', `WorldSession should expose ${method}`);
+  }
+
+  const restored = new WorldSession();
+  restored.deserialize(session.serialize());
+  runner.assertEqual(restored.currentRegionId, 'flood-village', 'session restore should keep current region id');
+  runner.assertFalse(restored.serialize().hasOwnProperty('document'), 'session state should not include DOM');
+});
+
+runner.test('GameplayAdapter - should convert GameEngine events into persistent world events', async () => {
+  const { GameplayAdapter } = await import('../public/js/gameplayAdapter.js');
+  const adapter = new GameplayAdapter();
+
+  const event = adapter.toWorldEvent({
+    type: 'unit_rescued',
+    regionId: 'level-0',
+    turn: 4,
+    unit: { residentId: 'resident-a', name: 'Ada' }
+  });
+
+  runner.assertEqual(event.type, 'unit_rescued', 'event type should be preserved');
+  runner.assertEqual(event.payload.residentId, 'resident-a', 'resident id should be copied');
+  runner.assert(event.importance >= 0.5, 'persistent event should have importance');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

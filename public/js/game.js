@@ -10,6 +10,7 @@ import { Storyteller, defaultStoryteller } from './storyteller.js';
 import { GameEngine, TERRAIN_LABELS } from './gameEngine.js';
 import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
 import { buildContinuityViewModel } from './continuityPresenter.js';
+import { WorldSession } from './worldSession.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -111,6 +112,7 @@ class CreatorExam3D extends GameEngine {
 
     // Initialize new systems
     this.memorySystem = getMemorySystem();
+    this.worldSession = new WorldSession();
     this.particleSystem = null;
     this.screenEffects = null;
     this.npcManager = null;
