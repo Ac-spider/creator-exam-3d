@@ -1,6 +1,7 @@
 import { WORLD_SCHEMA_VERSION } from './memoryStore.js';
 
 export const SAVE_SLOT_PREFIX = 'creator_exam_world_slot:';
+export const SCHEMA_VERSION = 2;
 
 function now() {
   return Date.now();
@@ -123,6 +124,50 @@ export class SaveSlotManager {
     } catch (error) {
       this.lastError = { code: 'import_failed', message: error.message };
       return false;
+    }
+  }
+
+  migrateSlot(data) {
+    if (data.version === 1) {
+      return {
+        ...data,
+        version: 2,
+        worldData: {
+          ...data.worldData,
+          residentAgentSystem: data.worldData?.residentAgentSystem || { version: 1, recentEventsByResident: [] }
+        }
+      };
+    }
+    return data;
+  }
+
+  save(slotName, worldData) {
+    const envelope = {
+      version: SCHEMA_VERSION,
+      savedAt: Date.now(),
+      worldData
+    };
+    this.storage.setItem(this.makeKey(slotName), JSON.stringify(envelope));
+    this.lastError = null;
+    return envelope;
+  }
+
+  load(slotName) {
+    const raw = this.storage.getItem(this.makeKey(slotName));
+    if (!raw) return { loaded: false, error: 'not_found', message: '存档不存在' };
+    try {
+      let data = JSON.parse(raw);
+      if (data.version > SCHEMA_VERSION) {
+        return { loaded: false, error: 'future_version', message: `存档版本 ${data.version} 高于当前支持版本 ${SCHEMA_VERSION}` };
+      }
+      if (data.version < SCHEMA_VERSION) {
+        data = this.migrateSlot(data);
+      }
+      this.lastError = null;
+      return { loaded: true, data };
+    } catch (error) {
+      this.lastError = { code: 'load_failed', message: error.message };
+      return { loaded: false, error: 'parse_failed', message: error.message };
     }
   }
 }

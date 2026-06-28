@@ -1,5 +1,5 @@
 export const WORLD_STORAGE_KEY = 'creator_exam_world_state';
-export const WORLD_SCHEMA_VERSION = 1;
+export const WORLD_SCHEMA_VERSION = 2;
 
 export function createMemoryStorage(initial = {}) {
   const data = { ...initial };
@@ -59,9 +59,25 @@ export class MemoryStore {
   migrate(snapshot) {
     if (!snapshot || typeof snapshot !== 'object') throw new Error('snapshot must be an object');
     if (snapshot.version === WORLD_SCHEMA_VERSION) return snapshot;
+
+    // Version 1 → 2: add residentAgentSystem if missing
+    if (snapshot.version === 1) {
+      const migrated = {
+        ...snapshot,
+        version: 2,
+        worldSimulation: {
+          ...snapshot.worldSimulation,
+          residentAgentSystem: snapshot.worldSimulation?.residentAgentSystem || { version: 1, recentEventsByResident: [] }
+        }
+      };
+      return migrated;
+    }
+
+    // Legacy (no version) migration
     if (!snapshot.version && snapshot.worldSimulation) {
       return { version: WORLD_SCHEMA_VERSION, savedAt: Date.now(), worldSimulation: snapshot.worldSimulation };
     }
+
     throw new Error(`unsupported world schema version: ${snapshot.version}`);
   }
 }

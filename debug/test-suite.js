@@ -3331,6 +3331,71 @@ runner.test('MemoryStore - 应迁移旧快照并拒绝损坏存档', async () =>
   runner.assertEqual(store2.lastError.code, 'load_failed', 'lastError.code应为load_failed');
 });
 
+runner.test('MemoryStore - 应迁移版本1到版本2', async () => {
+  const { createMemoryStorage, MemoryStore } = await import('../public/js/memoryStore.js');
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+
+  const storage = createMemoryStorage();
+  const store = new MemoryStore({ storage });
+  const v1Snapshot = {
+    version: 1,
+    savedAt: Date.now(),
+    worldSimulation: {
+      version: 1,
+      eventBus: {},
+      residentRegistry: {},
+      futureHooks: []
+    }
+  };
+  storage.setItem('creator_exam_world_state', JSON.stringify(v1Snapshot));
+
+  const world = new WorldSimulation();
+  const loaded = store.loadWorld(world);
+  runner.assertTrue(loaded, 'loadWorld应返回true');
+  runner.assertTrue(world.residentAgentSystem !== undefined, 'world.residentAgentSystem应存在');
+});
+
+runner.test('SaveSlotManager - 应拒绝未来版本的存档', async () => {
+  const { SaveSlotManager, SCHEMA_VERSION } = await import('../public/js/saveSlotManager.js');
+  const { createMemoryStorage } = await import('../public/js/memoryStore.js');
+
+  const storage = createMemoryStorage();
+  const manager = new SaveSlotManager({ storage });
+  const futureSave = {
+    version: 999,
+    savedAt: Date.now(),
+    worldData: {}
+  };
+  storage.setItem(manager.makeKey('test-slot'), JSON.stringify(futureSave));
+
+  const result = manager.load('test-slot');
+  runner.assertEqual(result.loaded, false, '应拒绝未来版本');
+  runner.assertEqual(result.error, 'future_version', 'error应为future_version');
+});
+
+runner.test('SaveSlotManager - 应迁移旧版本存档', async () => {
+  const { SaveSlotManager, SCHEMA_VERSION } = await import('../public/js/saveSlotManager.js');
+  const { createMemoryStorage } = await import('../public/js/memoryStore.js');
+
+  const storage = createMemoryStorage();
+  const manager = new SaveSlotManager({ storage });
+  const oldSave = {
+    version: 1,
+    savedAt: Date.now(),
+    worldData: {
+      eventBus: {},
+      residentRegistry: {},
+      futureHooks: []
+    }
+  };
+  storage.setItem(manager.makeKey('test-slot'), JSON.stringify(oldSave));
+
+  const result = manager.load('test-slot');
+  runner.assertTrue(result.loaded, '应加载成功');
+  runner.assertEqual(result.data.version, 2, '迁移后版本应为2');
+  runner.assertTrue(result.data.worldData.residentAgentSystem !== undefined, 'residentAgentSystem应被添加');
+});
+
 runner.test('浏览器入口 - 世界事件后应触发MemoryStore保存', async () => {
   const fs = await import('node:fs');
   const source = fs.readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
