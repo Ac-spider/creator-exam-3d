@@ -3004,6 +3004,105 @@ runner.test('Resident Dialogue UI - game.js should call resident dialogue API wi
   }
 });
 
+runner.test('ResidentAgentSystem - 居民应观察事件并产生合法行动', async () => {
+  const { ResidentAgentSystem, RESIDENT_ACTION_TYPES } = await import('../public/js/residentAgentSystem.js');
+  const { ResidentRegistry } = await import('../public/js/residentRegistry.js');
+
+  const registry = new ResidentRegistry({ seedDefaults: false });
+  registry.registerResident({
+    residentId: 'resident-xiaozhu',
+    name: '小烛',
+    role: '洪水村庄孩子',
+    type: 'child',
+    homeRegionId: 'flood-village',
+    currentRegionId: 'flood-village',
+    personality: '天真、活泼、充满想象力',
+    dialogueStyle: '说话快，经常问问题，用词简单但富有诗意',
+    mood: '好奇',
+    attitudeToPlayer: '崇拜',
+    aliases: ['child-xiaozhu', '小烛'],
+    longTermGoal: '找到一个不会被洪水带走的家'
+  });
+
+  const system = new ResidentAgentSystem({ residentRegistry: registry });
+
+  system.observeEvent({
+    id: 'evt-1',
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { residentId: 'resident-xiaozhu', unitName: '小烛' },
+    importance: 0.9
+  });
+
+  const resident = registry.getResident('resident-xiaozhu');
+  runner.assertTrue(resident.memories.some(memory => memory.type === 'unit_rescued'), '居民应有 unit_rescued 记忆');
+
+  const action = system.tickResident('resident-xiaozhu', { regionId: 'flood-village', turn: 5 });
+  runner.assertTrue(RESIDENT_ACTION_TYPES.includes(action.type), `行动类型 ${action.type} 应在 RESIDENT_ACTION_TYPES 中`);
+  runner.assertEqual(action.residentId, 'resident-xiaozhu', '行动应关联到 resident-xiaozhu');
+  runner.assertTrue(action.reason.includes('unit_rescued'), `行动原因应包含 unit_rescued，实际为: ${action.reason}`);
+});
+
+runner.test('WorldSimulation - 居民行动应由真实世界事件驱动', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { residentId: 'resident-xiaozhu', unitName: '小烛' },
+    importance: 0.9,
+    tags: ['resident']
+  });
+
+  const actions = world.tickResidents('flood-village', { turn: 4 });
+  runner.assertTrue(actions.some(action => action.residentId === 'resident-xiaozhu'), 'actions 应包含 resident-xiaozhu 的行动');
+
+  const residentActionEvents = world.eventBus.query({ type: 'resident_action' });
+  runner.assertTrue(residentActionEvents.some(event => event.payload && event.payload.residentId === 'resident-xiaozhu'), 'eventBus 应包含 resident-xiaozhu 的 resident_action 事件');
+});
+
+runner.test('NPCManager - 当前区域NPC投影应保留residentId和长期记忆', async () => {
+  const { NPCManager } = await import('../public/js/npcManager.js');
+  const { ResidentRegistry } = await import('../public/js/residentRegistry.js');
+  const { LEVELS } = await import('../public/js/levels.js');
+
+  const registry = new ResidentRegistry({ seedDefaults: false });
+  registry.registerResident({
+    residentId: 'resident-xiaozhu',
+    name: '小烛',
+    role: '洪水村庄孩子',
+    type: 'child',
+    homeRegionId: 'flood-village',
+    currentRegionId: 'flood-village',
+    personality: '天真、活泼、充满想象力',
+    dialogueStyle: '说话快，经常问问题，用词简单但富有诗意',
+    mood: '好奇',
+    attitudeToPlayer: '崇拜',
+    aliases: ['child-xiaozhu', '小烛'],
+    longTermGoal: '找到一个不会被洪水带走的家'
+  });
+
+  registry.recordMemory('resident-xiaozhu', {
+    type: 'unit_rescued',
+    text: '小烛记得自己在洪水村庄被救下',
+    regionId: 'flood-village',
+    importance: 0.9
+  });
+
+  const projection = registry.projectForRegion('resident-xiaozhu', 'flood-village');
+  const manager = new NPCManager(LEVELS[0], { residentProjections: [projection] });
+
+  const npc = manager.getNPC('resident-xiaozhu');
+  runner.assertTrue(npc, 'getNPC(resident-xiaozhu) 应返回NPC');
+  runner.assertEqual(npc.residentId, 'resident-xiaozhu', 'NPC 应保留 residentId');
+  runner.assertTrue(npc.memories.some(memory => memory.text.includes('被救下')), 'NPC 应包含长期记忆');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

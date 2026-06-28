@@ -5,9 +5,10 @@
 import { SocialGraph } from './socialGraph.js';
 
 export class NPCManager {
-  constructor(level) {
+  constructor(level, options = {}) {
     this.level = level;
-    this.npcs = this.initializeNPCs();
+    this.residentProjections = options.residentProjections || [];
+    this.npcs = this.mergeResidentProjections(this.initializeNPCs());
     this.socialGraph = new SocialGraph();
     this.initSocialGraph();
     this.dialogueHistory = [];
@@ -105,6 +106,24 @@ export class NPCManager {
       losses: 0,
       hazardsTriggered: 0
     };
+  }
+
+  mergeResidentProjections(npcs) {
+    const merged = [...npcs];
+    for (const projection of this.residentProjections) {
+      const existing = merged.find(npc => npc.id === projection.id || npc.name === projection.name || npc.residentId === projection.residentId);
+      const projectedNpc = {
+        ...projection,
+        id: projection.residentId,
+        residentId: projection.residentId,
+        attitude: projection.attitude || projection.attitudeToPlayer || '中立',
+        memories: Array.isArray(projection.memories) ? projection.memories : [],
+        dynamicTraits: projection.dynamicTraits || {}
+      };
+      if (existing) Object.assign(existing, projectedNpc);
+      else merged.push(projectedNpc);
+    }
+    return merged;
   }
 
   initializeNPCs() {
@@ -522,7 +541,7 @@ export class NPCManager {
   // ========== 原有方法 ==========
 
   getNPC(npcId) {
-    return this.npcs.find(n => n.id === npcId || n.name === npcId);
+    return this.npcs.find(n => n.id === npcId || n.name === npcId || n.residentId === npcId);
   }
 
   getNPCSummary() {

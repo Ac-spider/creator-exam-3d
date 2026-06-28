@@ -1,5 +1,6 @@
 import { EventBus } from './eventBus.js';
 import { ResidentRegistry } from './residentRegistry.js';
+import { ResidentAgentSystem } from './residentAgentSystem.js';
 
 function hookId(type, eventId) {
   return `hook-${type}-${eventId}`;
@@ -19,6 +20,9 @@ export class WorldSimulation {
   constructor(options = {}) {
     this.eventBus = options.eventBus || new EventBus();
     this.residentRegistry = options.residentRegistry || new ResidentRegistry();
+    this.residentAgentSystem = options.residentAgentSystem || new ResidentAgentSystem({
+      residentRegistry: this.residentRegistry
+    });
     this.futureHooks = new Map();
   }
 
@@ -26,6 +30,7 @@ export class WorldSimulation {
     const event = this.eventBus.emit(rawEvent);
     this.ensureResidentFromEvent(event);
     this.updateResidentMemories(event);
+    this.residentAgentSystem.observeEvent(event);
     for (const hook of this.deriveFutureHooks(event)) {
       this.addFutureHook(event.regionId, hook);
     }
@@ -163,14 +168,16 @@ export class WorldSimulation {
   }
 
   tickResidents(regionId, context = {}) {
-    const residents = this.residentRegistry.getResidentsByRegion?.(regionId) || [];
-    const actions = [];
-    for (const resident of residents) {
-      actions.push({
-        residentId: resident.residentId,
-        action: 'idle',
-        regionId,
-        ...context
+    const actions = this.residentAgentSystem.tickRegion(regionId, context);
+    for (const action of actions) {
+      this.eventBus.emit({
+        type: 'resident_action',
+        regionId: action.regionId,
+        actorId: action.residentId,
+        turn: action.turn,
+        payload: action,
+        importance: action.type === 'idle' ? 0.2 : 0.6,
+        tags: ['resident', action.type]
       });
     }
     return actions;
@@ -211,6 +218,7 @@ export class WorldSimulation {
       version: 1,
       eventBus: this.eventBus.serialize(),
       residentRegistry: this.residentRegistry.serialize(),
+      residentAgentSystem: this.residentAgentSystem.serialize(),
       futureHooks: Array.from(this.futureHooks.entries())
     };
   }
@@ -218,6 +226,7 @@ export class WorldSimulation {
   deserialize(data = {}) {
     this.eventBus.deserialize(data.eventBus || {});
     this.residentRegistry.deserialize(data.residentRegistry || {});
+    this.residentAgentSystem.deserialize(data.residentAgentSystem || {});
     this.futureHooks = new Map(Array.isArray(data.futureHooks) ? data.futureHooks : []);
   }
 }
