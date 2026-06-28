@@ -24,12 +24,12 @@ export class AIGateway {
 
   async requestJson(request) {
     if (this.stats.remainingCalls <= 0) {
-      return { data: request.fallback, fromCache: false, budgetExceeded: true };
+      return { data: request.fallback, fromCache: false, budgetExceeded: true, source: 'fallback_budget' };
     }
 
     const cacheKey = request.cacheKey || JSON.stringify(request.messages);
     if (this.cache.has(cacheKey)) {
-      return { data: this.cache.get(cacheKey), fromCache: true };
+      return { data: this.cache.get(cacheKey), fromCache: true, source: 'cache' };
     }
 
     this.stats.totalCalls++;
@@ -38,11 +38,11 @@ export class AIGateway {
     let lastError = null;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       try {
-        const result = await this._callProvider(request);
+        const result = await this._callProviderWithTimeout(request);
         if (result.ok && result.json) {
           this.stats.successCalls++;
           this.cache.set(cacheKey, result.json);
-          return { data: result.json, fromCache: false };
+          return { data: result.json, fromCache: false, source: 'provider' };
         }
         if (result.reason === 'missing_key') {
           break;
@@ -53,13 +53,16 @@ export class AIGateway {
     }
 
     this.stats.fallbackCalls++;
-    return { data: request.fallback, fromCache: false, error: lastError?.message || 'provider_failed' };
+    return { data: request.fallback, fromCache: false, error: lastError?.message || 'provider_failed', source: 'fallback' };
   }
 
-  async _callProvider(request) {
+  async _callProviderWithTimeout(request) {
     if (!this.provider) {
       return { ok: false, json: null, reason: 'no_provider' };
     }
-    return await this.provider(request);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('timeout')), this.timeoutMs);
+    });
+    return Promise.race([this.provider(request), timeoutPromise]);
   }
 }

@@ -42,11 +42,11 @@ export function fallbackRegionCandidate(input = {}) {
 }
 
 export function fallbackResidentDialogue(input = {}) {
-  const name = String(input.residentName || 'Resident').slice(0, 40);
+  const name = String(input.residentName || '居民').slice(0, 40);
   const memory = String(input.memoryText || '').slice(0, 240);
   const player = String(input.playerText || '').slice(0, 240);
   return {
-    text: `${name} looks at you and says: "I remember. The water, the fear... and you."`,
+    text: `${name}低声说：我记得，${memory}。`,
     intent: { type: 'speak', confidence: 0.6 },
     memory,
     playerText: player
