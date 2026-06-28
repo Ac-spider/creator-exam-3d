@@ -44,9 +44,10 @@ export class RegionManager {
     }
 
     const validation = this.validator.validateRegion(candidate)
-    const region = validation.ok ? {
+    const viability = validation.ok ? this.validator.simulateRegionViability(candidate, { maxTurns: candidate.maxTurns }) : { ok: false, errors: [] }
+    const region = (validation.ok && viability.ok) ? {
       ...candidate,
-      generation: { source: candidate.generation?.source || 'candidate', validation }
+      generation: { source: candidate.generation?.source || 'candidate', validation, viability }
     } : fallbackRegion(input.sourceRegionId, hooks)
 
     this.regions.set(region.id, region)
