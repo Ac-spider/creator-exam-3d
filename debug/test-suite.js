@@ -3839,6 +3839,135 @@ runner.test('Continuity UI - game.js应渲染压力条', async () => {
   runner.assert(source.includes('meter-fill'), 'game.js应渲染meter-fill压力条');
 });
 
+runner.test('ContentCodex - 应包含12+居民原型', async () => {
+  const { RESIDENT_PROTOTYPES, ContentCodex } = await import('../public/js/contentCodex.js')
+  runner.assertTrue(RESIDENT_PROTOTYPES.length >= 12, `居民原型数量应为12+，实际为${RESIDENT_PROTOTYPES.length}`)
+
+  const codex = new ContentCodex()
+  const xiaozhu = codex.getResidentPrototype('xiaozhu')
+  runner.assertTrue(xiaozhu !== null, '应能通过id获取小烛')
+  runner.assertEqual(xiaozhu.name, '小烛', '小烛名称应正确')
+  runner.assertTrue(xiaozhu.tags.includes('refugee'), '小烛应包含refugee标签')
+})
+
+runner.test('ContentCodex - 应包含20+区域主题', async () => {
+  const { REGION_THEMES, ContentCodex } = await import('../public/js/contentCodex.js')
+  runner.assertTrue(REGION_THEMES.length >= 20, `区域主题数量应为20+，实际为${REGION_THEMES.length}`)
+
+  const codex = new ContentCodex()
+  const floodVillage = codex.getRegionTheme('flood-village')
+  runner.assertTrue(floodVillage !== null, '应能通过id获取洪水村庄')
+  runner.assertEqual(floodVillage.title, '洪水村庄', '洪水村庄标题应正确')
+  runner.assertTrue(floodVillage.residentTags.includes('refugee'), '洪水村庄应适合refugee居民')
+
+  const randomRegion = codex.pickRandomRegionTheme('wet')
+  runner.assertTrue(randomRegion !== null, '应能按bias随机选择区域')
+  runner.assertEqual(randomRegion.mapBias, 'wet', '随机选择的区域bias应为wet')
+})
+
+runner.test('ContentCodex - 应检查结局条件', async () => {
+  const { ENDING_SEEDS, ContentCodex } = await import('../public/js/contentCodex.js')
+  runner.assertTrue(ENDING_SEEDS.length >= 4, `结局种子数量应为4+，实际为${ENDING_SEEDS.length}`)
+
+  const codex = new ContentCodex()
+  const goldenAge = codex.checkEndingConditions({ safety: 90, reputation: 80, resources: 70 })
+  runner.assertTrue(goldenAge !== null, '满足条件时应返回结局')
+  runner.assertEqual(goldenAge.id, 'golden_age', '应返回golden_age结局')
+
+  const noEnding = codex.checkEndingConditions({ safety: 10, reputation: 10 })
+  runner.assertTrue(noEnding === null, '不满足条件时应返回null')
+})
+
+runner.test('ContentCodex - 应序列化和反序列化', async () => {
+  const { ContentCodex } = await import('../public/js/contentCodex.js')
+  const codex = new ContentCodex()
+
+  const serialized = codex.serialize()
+  runner.assertEqual(serialized.version, 1, '序列化版本应为1')
+  runner.assertTrue(serialized.residents.length > 0, '序列化应包含居民id列表')
+  runner.assertTrue(serialized.regions.length > 0, '序列化应包含区域id列表')
+
+  const codex2 = new ContentCodex()
+  codex2.deserialize(serialized)
+  runner.assertTrue(codex2.getResidentPrototype('xiaozhu') !== null, '反序列化后应能查询居民')
+  runner.assertTrue(codex2.getRegionTheme('flood-village') !== null, '反序列化后应能查询区域')
+})
+
+runner.test('JournalPresenter - 应生成发现日志', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js')
+  const { buildJournalViewModel } = await import('../public/js/journalPresenter.js')
+
+  const world = new WorldSimulation()
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { unitName: '小烛', residentId: 'resident-xiaozhu' },
+    importance: 0.9,
+    tags: ['rescue', 'resident']
+  })
+
+  world.recordGameEvent({
+    type: 'creation_placed',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 3,
+    payload: { creationName: '云桥', entropyDelta: 1 },
+    importance: 0.8,
+    tags: ['creation']
+  })
+
+  const model = buildJournalViewModel(world, { currentTurn: 3, recentTurnThreshold: 1 })
+  runner.assertTrue(model.discoveries.length >= 2, '发现日志应包含至少2条记录')
+  runner.assertTrue(model.discoveries.some(d => d.type === 'unit_rescued'), '应包含unit_rescued发现')
+  runner.assertTrue(model.discoveries.some(d => d.type === 'creation_placed'), '应包含creation_placed发现')
+  runner.assertTrue(model.discoveries.some(d => d.isNew), '应有最近发生的发现标记为isNew')
+  runner.assertTrue(model.stats.totalDiscoveries >= 2, 'stats.totalDiscoveries应>=2')
+  runner.assertTrue(model.stats.regionsVisited >= 1, 'stats.regionsVisited应>=1')
+})
+
+runner.test('JournalPresenter - 应包含谣言和未解决张力', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js')
+  const { buildJournalViewModel } = await import('../public/js/journalPresenter.js')
+
+  const world = new WorldSimulation()
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { unitName: '小烛', residentId: 'resident-xiaozhu' },
+    importance: 0.9,
+    tags: ['rescue', 'resident']
+  })
+
+  world.recordGameEvent({
+    type: 'creation_placed',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 3,
+    payload: { creationName: '裂隙塔', entropyDelta: 3 },
+    importance: 0.8,
+    tags: ['creation', 'entropy']
+  })
+
+  const model = buildJournalViewModel(world, { currentTurn: 4 })
+  runner.assertTrue(model.unresolvedTensions.length > 0, '应包含未解决张力')
+  runner.assertTrue(model.unresolvedTensions.some(t => t.type === 'resident_migration'), '应包含resident_migration张力')
+  runner.assertTrue(model.unresolvedTensions.some(t => t.type === 'entropy_scar'), '应包含entropy_scar张力')
+  runner.assertTrue(model.stats.totalTensions > 0, 'stats.totalTensions应>0')
+
+  const resident = world.residentRegistry.getResident('resident-xiaozhu')
+  runner.assertTrue(resident.memories.length > 0, '居民应有记忆')
+
+  const model2 = buildJournalViewModel(world, { currentTurn: 4 })
+  runner.assertTrue(model2.rumors.length > 0, '应包含谣言')
+  runner.assertTrue(model2.rumors.some(r => r.residentName === '小烛'), '应包含小烛的谣言')
+  runner.assertTrue(model2.rumors.every(r => r.credibility >= 0 && r.credibility <= 1), '可信度应在0-1之间')
+  runner.assertTrue(model2.stats.totalRumors > 0, 'stats.totalRumors应>0')
+})
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
