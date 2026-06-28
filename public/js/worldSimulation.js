@@ -1,6 +1,7 @@
 import { EventBus } from './eventBus.js';
 import { ResidentRegistry } from './residentRegistry.js';
 import { ResidentAgentSystem } from './residentAgentSystem.js';
+import { AIDirector } from './aiDirector.js';
 
 function hookId(type, eventId) {
   return `hook-${type}-${eventId}`;
@@ -22,6 +23,9 @@ export class WorldSimulation {
     this.residentRegistry = options.residentRegistry || new ResidentRegistry();
     this.residentAgentSystem = options.residentAgentSystem || new ResidentAgentSystem({
       residentRegistry: this.residentRegistry
+    });
+    this.aiDirector = options.aiDirector || new AIDirector({
+      worldSimulation: this
     });
     this.futureHooks = new Map();
   }
@@ -219,6 +223,7 @@ export class WorldSimulation {
       eventBus: this.eventBus.serialize(),
       residentRegistry: this.residentRegistry.serialize(),
       residentAgentSystem: this.residentAgentSystem.serialize(),
+      aiDirector: this.aiDirector.serialize(),
       futureHooks: Array.from(this.futureHooks.entries())
     };
   }
@@ -227,6 +232,7 @@ export class WorldSimulation {
     this.eventBus.deserialize(data.eventBus || {});
     this.residentRegistry.deserialize(data.residentRegistry || {});
     this.residentAgentSystem.deserialize(data.residentAgentSystem || {});
+    this.aiDirector.deserialize(data.aiDirector || {});
     this.futureHooks = new Map(Array.isArray(data.futureHooks) ? data.futureHooks : []);
   }
 }

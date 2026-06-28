@@ -3514,6 +3514,66 @@ runner.test('DebugSnapshot - toJson应返回有效JSON', async () => {
   runner.assertTrue(typeof parsed === 'object', 'JSON.parse(json)应成功并返回对象');
 });
 
+runner.test('AIDirector - 应注册故事弧线并评估节拍', async () => {
+  const { AIDirector } = await import('../public/js/aiDirector.js');
+  const director = new AIDirector();
+  director.registerArc('arc-1', {
+    title: '洪水余波',
+    beats: [{ id: 'b1', type: 'inciting_incident', priority: 1 }],
+    priority: 0.8
+  });
+  const beats = director.evaluateBeats('flood-village', { turn: 5, entropy: 3 });
+  runner.assertEqual(beats.length, 1, '应返回1个节拍');
+  runner.assertEqual(beats[0].type, 'inciting_incident', '节拍类型应为inciting_incident');
+});
+
+runner.test('AIDirector - 应遵守节奏门控', async () => {
+  const { AIDirector } = await import('../public/js/aiDirector.js');
+  const director = new AIDirector();
+  director.registerArc('arc-1', {
+    title: '洪水余波',
+    beats: [
+      { id: 'b1', type: 'inciting_incident', priority: 1 },
+      { id: 'b2', type: 'rising_action', priority: 1 }
+    ],
+    priority: 0.8
+  });
+  const beats1 = director.evaluateBeats('flood-village', { turn: 1 });
+  runner.assertEqual(beats1.length, 1, '首次评估应返回节拍');
+  await director.resolveBeat(beats1[0], { regionId: 'flood-village', turn: 1 });
+  const beats2 = director.evaluateBeats('flood-village', { turn: 2 });
+  runner.assertEqual(beats2.length, 0, '间隔不足3回合不应返回节拍');
+  const beats3 = director.evaluateBeats('flood-village', { turn: 5 });
+  runner.assertEqual(beats3.length, 1, '间隔5回合后应返回节拍');
+});
+
+runner.test('AIDirector - 应序列化和反序列化', async () => {
+  const { AIDirector } = await import('../public/js/aiDirector.js');
+  const director = new AIDirector();
+  director.registerArc('arc-1', {
+    title: '洪水余波',
+    beats: [
+      { id: 'b1', type: 'inciting_incident', priority: 1 },
+      { id: 'b2', type: 'rising_action', priority: 1 }
+    ],
+    priority: 0.8
+  });
+  const beats = director.evaluateBeats('flood-village', { turn: 1 });
+  await director.resolveBeat(beats[0], { regionId: 'flood-village', turn: 1 });
+  const serialized = director.serialize();
+  const director2 = new AIDirector();
+  director2.deserialize(serialized);
+  runner.assertEqual(director2.getActiveArcs().length, 1, '反序列化后应有1个活跃弧线');
+  runner.assertEqual(director2.beatHistory.length, 1, '反序列化后应有1个节拍历史');
+});
+
+runner.test('WorldSimulation - 应包含AIDirector序列化', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+  const serialized = world.serialize();
+  runner.assertTrue(serialized.aiDirector !== undefined, 'serialize()应包含aiDirector');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
