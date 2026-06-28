@@ -3340,6 +3340,50 @@ runner.test('浏览器入口 - 世界事件后应触发MemoryStore保存', async
   runner.assert(source.includes('loadWorld') || source.includes('loadWorld('), 'game.js应包含loadWorld调用');
 });
 
+// ========== 连续性UI测试 (Continuity UI) ==========
+
+runner.test('ContinuityPresenter - 应格式化居民记忆和futureHooks', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const { buildContinuityViewModel } = await import('../public/js/continuityPresenter.js');
+
+  const world = new WorldSimulation();
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { unitName: '小烛', residentId: 'resident-xiaozhu' },
+    importance: 0.9,
+    tags: ['rescue', 'resident']
+  });
+
+  const model = buildContinuityViewModel(world, { currentRegionId: 'flood-village' });
+  runner.assertTrue(model.residents.some(row => row.residentId === 'resident-xiaozhu'), '模型应包含resident-xiaozhu');
+  runner.assertTrue(model.futureHooks.some(row => row.type === 'resident_migration'), '模型应包含resident_migration钩子');
+  runner.assertTrue(model.eventSummary.totalEvents >= 1, '事件总数应>=1');
+});
+
+runner.test('Continuity UI - DOM应包含连续性面板挂载点', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+
+  for (const id of ['continuity-panel', 'continuity-residents', 'continuity-hooks']) {
+    runner.assert(html.includes(id), `index.html应包含${id}`);
+  }
+  runner.assert(css.includes('.continuity-panel'), 'styles.css应包含.continuity-panel样式');
+});
+
+runner.test('Continuity UI - game.js应通过Presenter渲染而不直接改世界状态', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  runner.assert(source.includes('buildContinuityViewModel'), 'game.js应导入buildContinuityViewModel');
+  runner.assert(source.includes('renderContinuity'), 'game.js应包含renderContinuity方法');
+  runner.assert(source.includes('continuityResidents'), 'game.js应包含continuityResidents UI引用');
+  runner.assert(source.includes('continuityHooks'), 'game.js应包含continuityHooks UI引用');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

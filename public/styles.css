@@ -783,6 +783,41 @@ button.loading {
   margin-bottom: 6px;
 }
 
+.continuity-panel {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(223, 202, 146, 0.28);
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, rgba(48, 37, 26, 0.78), rgba(19, 29, 34, 0.72)),
+    radial-gradient(circle at top right, rgba(230, 169, 82, 0.18), transparent 42%);
+}
+
+.continuity-block + .continuity-block {
+  margin-top: 12px;
+}
+
+.continuity-block h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: #dfca92;
+}
+
+.continuity-list {
+  display: grid;
+  gap: 8px;
+}
+
+.continuity-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4ead1;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 @media (max-width: 760px) {
   .save-slot-controls {
     grid-template-columns: 1fr 1fr;

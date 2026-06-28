@@ -162,6 +162,7 @@ class CreatorExam3D extends GameEngine {
 
     this.renderWorld();
     this.updateUi();
+    this.renderContinuity();
   }
 
   collectUi() {
@@ -215,7 +216,9 @@ class CreatorExam3D extends GameEngine {
       residentDialogueList: document.getElementById('resident-dialogue-list'),
       residentDialogueInput: document.getElementById('resident-dialogue-input'),
       residentDialogueSend: document.getElementById('resident-dialogue-send'),
-      residentDialogueLog: document.getElementById('resident-dialogue-log')
+      residentDialogueLog: document.getElementById('resident-dialogue-log'),
+      continuityResidents: document.getElementById('continuity-residents'),
+      continuityHooks: document.getElementById('continuity-hooks')
     };
   }
 
@@ -724,6 +727,7 @@ class CreatorExam3D extends GameEngine {
       entropy: this.entropy
     });
     this.emitRegionResolvedEvent(message);
+    this.renderContinuity();
 
     // Screen effects for victory
     this.screenEffects.flash('#9dffb3', 500);
@@ -752,6 +756,7 @@ class CreatorExam3D extends GameEngine {
       entropy: this.entropy
     });
     this.emitRegionLostEvent(message);
+    this.renderContinuity();
 
     // Screen shake for failure
     this.screenEffects.shake(8, 500);
@@ -792,6 +797,7 @@ class CreatorExam3D extends GameEngine {
         this.addLog(`${unit.name} 被${TERRAIN_LABELS[terrain]}吞没。`);
         this.updateWorldState({ type: 'unit_lost', detail: unit.name });
         this.emitUnitLostEvent(unit, terrain);
+        this.renderContinuity();
 
         // Environmental narrative for loss
         this.addEnvironmentalNarrative('loss', { levelId: this.level.id });
@@ -1767,27 +1773,24 @@ class CreatorExam3D extends GameEngine {
   }
 
   renderContinuity() {
-    const vm = buildContinuityViewModel(this.worldState || {});
-    if (!vm) return;
-    const container = document.getElementById('continuity-panel');
-    if (!container) return;
-    const html = vm.residents.map((resident) => {
-      const name = escapeHtml(resident.name);
-      const mood = escapeHtml(resident.mood);
-      const memory = escapeHtml(resident.latestMemory);
-      const hooks = (resident.hooks || []).map((hook) => {
-        const hookType = escapeHtml(hook.type);
-        const hookSummary = escapeHtml(hook.summary);
-        return `<li>${hookType}: ${hookSummary}</li>`;
-      }).join('');
-      return `<div class="resident-card">
-        <h4>${name}</h4>
-        <p class="mood">${mood}</p>
-        <p class="memory">${memory}</p>
-        <ul class="hooks">${hooks}</ul>
-      </div>`;
-    }).join('');
-    container.innerHTML = html;
+    if (!this.worldSimulation || !this.ui?.continuityResidents || !this.ui?.continuityHooks) return;
+    const model = buildContinuityViewModel(this.worldSimulation, {
+      currentRegionId: this.level?.id || 'unknown'
+    });
+
+    this.ui.continuityResidents.innerHTML = model.residents.map(resident => `
+      <div class="continuity-item">
+        <strong>${escapeHtml(resident.name)}</strong> · ${escapeHtml(resident.mood)}<br>
+        ${escapeHtml(resident.latestMemory)}
+      </div>
+    `).join('') || '<div class="continuity-item">暂无居民记忆</div>';
+
+    this.ui.continuityHooks.innerHTML = model.futureHooks.map(hook => `
+      <div class="continuity-item">
+        <strong>${escapeHtml(hook.type)}</strong><br>
+        ${escapeHtml(hook.summary)}
+      </div>
+    `).join('') || '<div class="continuity-item">暂无未解决线索</div>';
   }
 
   showExplorationChoices(choices, winMessage) {
