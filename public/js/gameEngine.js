@@ -73,8 +73,13 @@ class GameEngine {
   // ========== State Management ==========
 
   reset() {
-    this.level = cloneLevel(LEVELS[this.levelIndex]);
-    this.terrain = this.level.map.map((row) => row.split('').map((char) => SYMBOL_TO_TILE[char] || TILE.LAND));
+    if (this.levelIndex === -1 && this.level) {
+      // Region loaded via loadRegion; keep level but reinitialize derived state
+      this.terrain = this.level.map.map((row) => row.split('').map((char) => SYMBOL_TO_TILE[char] || TILE.LAND))
+    } else {
+      this.level = cloneLevel(LEVELS[this.levelIndex])
+      this.terrain = this.level.map.map((row) => row.split('').map((char) => SYMBOL_TO_TILE[char] || TILE.LAND))
+    }
     this.units = this.level.units.map((unit, unitIndex) => ({
       id: `${this.level.id}-${unitIndex}`,
       status: 'active',
@@ -84,23 +89,23 @@ class GameEngine {
       guidedTurns: 0,
       met: false,
       ...unit
-    }));
-    this.creations = [];
-    this.turn = 1;
-    this.rescued = 0;
-    this.lost = 0;
-    this.entropy = 0;
-    this.creationCharges = this.level.creationCharges;
-    this.miraclePoints = this.level.miraclePoints;
-    this.warMeter = Number(this.level.hazard?.warMeter || 0);
-    this.peaceTalks = 0;
-    this.gameState = 'playing';
-    this.logs = [];
-    this.worldState = this.initWorldState();
-    this.resonanceCodex = RESONANCE_CODEX;
-    this.resonanceCodex.reset();
-    this.npcManager = null;
-    this.legacyUnits = [];
+    }))
+    this.creations = []
+    this.turn = 1
+    this.rescued = 0
+    this.lost = 0
+    this.entropy = 0
+    this.creationCharges = this.level.creationCharges
+    this.miraclePoints = this.level.miraclePoints
+    this.warMeter = Number(this.level.hazard?.warMeter || 0)
+    this.peaceTalks = 0
+    this.gameState = 'playing'
+    this.logs = []
+    this.worldState = this.initWorldState()
+    this.resonanceCodex = RESONANCE_CODEX
+    this.resonanceCodex.reset()
+    this.npcManager = null
+    this.legacyUnits = []
   }
 
   loadLevel(index) {
@@ -120,6 +125,23 @@ class GameEngine {
     this.legacyUnits = legacyNPCs;
 
     this.hooks.onStateChange();
+  }
+
+  loadRegion(regionData) {
+    if (!regionData?.id || !Array.isArray(regionData.map)) {
+      throw new Error('loadRegion requires validated region data')
+    }
+    this.level = {
+      ...regionData,
+      map: regionData.map.map(row => String(row)),
+      units: (regionData.units || []).map(unit => ({
+        ...unit,
+        goal: unit.goal ? { ...unit.goal } : undefined
+      }))
+    }
+    this.levelIndex = -1
+    this.reset()
+    return this.level
   }
 
   initWorldState() {

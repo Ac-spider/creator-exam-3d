@@ -92,6 +92,9 @@ class CreatorExam3D extends GameEngine {
       },
       onCreationExpire: (creation) => {
         // No-op: rendering handled in renderWorld
+      },
+      onWorldEvent: (event) => {
+        this.recordGameEvent(event)
       }
     });
 
@@ -765,6 +768,10 @@ class CreatorExam3D extends GameEngine {
       return;
     }
     this.loadLevel(this.levelIndex + 1);
+  }
+
+  loadNextRegion(regionData) {
+    this.loadRegion(regionData)
   }
 
   // Override applyTileHazardsToUnits for browser-specific effects
