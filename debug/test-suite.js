@@ -3212,6 +3212,62 @@ runner.test('浏览器入口 - 后续区域选择不得绕过RegionManager和loa
   runner.assert(source.includes('recordGameEvent') || source.includes('onWorldEvent'), 'game.js必须保留世界事件流');
 });
 
+runner.test('MemoryStore - 应保存并恢复完整世界快照', async () => {
+  const { createMemoryStorage, MemoryStore } = await import('../public/js/memoryStore.js');
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+
+  const storage = createMemoryStorage();
+  const store = new MemoryStore({ storage });
+  const world = new WorldSimulation();
+
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 3,
+    payload: { unitName: '小烛', residentId: 'resident-xiaozhu' },
+    tags: ['rescue', 'resident']
+  });
+
+  store.saveWorld(world);
+
+  const reloaded = new WorldSimulation();
+  const loaded = store.loadWorld(reloaded);
+  runner.assertTrue(loaded, 'loadWorld应返回true');
+
+  runner.assertEqual(reloaded.eventBus.query({ type: 'unit_rescued' }).length, 1, '应恢复1个unit_rescued事件');
+  runner.assertTrue(reloaded.getFutureHooks('flood-village').some(hook => hook.type === 'resident_migration'), '应恢复resident_migration钩子');
+  runner.assertTrue(reloaded.residentRegistry.getResident('resident-xiaozhu').memories.length > 0, '居民记忆应恢复');
+});
+
+runner.test('MemoryStore - 应迁移旧快照并拒绝损坏存档', async () => {
+  const { createMemoryStorage, MemoryStore } = await import('../public/js/memoryStore.js');
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+
+  const storage1 = createMemoryStorage();
+  const store1 = new MemoryStore({ storage: storage1 });
+  const oldSnapshot = { worldSimulation: { version: 1, eventBus: {}, residentRegistry: {}, residentAgentSystem: {}, futureHooks: [] } };
+  storage1.setItem('creator_exam_world_state', JSON.stringify(oldSnapshot));
+  const world1 = new WorldSimulation();
+  runner.assertTrue(store1.loadWorld(world1), '旧快照应迁移成功');
+
+  const storage2 = createMemoryStorage();
+  const store2 = new MemoryStore({ storage: storage2 });
+  storage2.setItem('creator_exam_world_state', '{broken-json');
+  const world2 = new WorldSimulation();
+  runner.assertFalse(store2.loadWorld(world2), '损坏存档应返回false');
+  runner.assertEqual(store2.lastError.code, 'load_failed', 'lastError.code应为load_failed');
+});
+
+runner.test('浏览器入口 - 世界事件后应触发MemoryStore保存', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  runner.assert(source.includes('MemoryStore'), 'game.js应导入MemoryStore');
+  runner.assert(source.includes('saveWorld') || source.includes('saveWorld('), 'game.js应包含saveWorld调用');
+  runner.assert(source.includes('loadWorld') || source.includes('loadWorld('), 'game.js应包含loadWorld调用');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

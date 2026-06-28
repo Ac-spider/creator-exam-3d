@@ -1,4 +1,5 @@
 import { WorldSimulation } from '../public/js/worldSimulation.js'
+import { MemoryStore, createMemoryStorage } from '../public/js/memoryStore.js'
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
@@ -18,13 +19,19 @@ world.recordGameEvent({
 
 world.tickResidents('flood-village', { turn: 4 })
 
-const saved = world.serialize()
-const reloaded = new WorldSimulation()
-reloaded.deserialize(saved)
-reloaded.residentRegistry.moveResident('resident-xiaozhu', 'highland-refuge')
+const storage = createMemoryStorage()
+const store = new MemoryStore({ storage })
+store.saveWorld(world)
 
-const actions = reloaded.tickResidents('highland-refuge', { turn: 1 })
-const projection = reloaded.residentRegistry.projectForRegion('resident-xiaozhu', 'highland-refuge')
+const restoredWorld = new WorldSimulation()
+const loaded = store.loadWorld(restoredWorld)
+assert(loaded === true, 'MemoryStore must successfully load the saved world')
+assert(restoredWorld.getFutureHooks('flood-village').length > 0, 'future hooks must survive save and reload')
+
+restoredWorld.residentRegistry.moveResident('resident-xiaozhu', 'highland-refuge')
+
+const actions = restoredWorld.tickResidents('highland-refuge', { turn: 1 })
+const projection = restoredWorld.residentRegistry.projectForRegion('resident-xiaozhu', 'highland-refuge')
 
 assert(projection.residentId === 'resident-xiaozhu', 'residentId must survive reload and region move')
 assert(projection.memories.some(memory => memory.type === 'unit_rescued'), 'resident memory must survive reload')

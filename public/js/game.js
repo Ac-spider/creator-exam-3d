@@ -12,6 +12,7 @@ import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
 import { buildContinuityViewModel } from './continuityPresenter.js';
 import { ResidentDialogueSystem } from './residentDialogueSystem.js';
 import { SaveSlotManager } from './saveSlotManager.js';
+import { MemoryStore } from './memoryStore.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -94,7 +95,10 @@ class CreatorExam3D extends GameEngine {
         // No-op: rendering handled in renderWorld
       },
       onWorldEvent: (event) => {
-        this.recordGameEvent(event)
+        this.recordGameEvent(event);
+        if (this.memoryStore && this.worldSession?.worldSimulation) {
+          this.memoryStore.saveWorld(this.worldSession.worldSimulation);
+        }
       }
     });
 
@@ -117,6 +121,8 @@ class CreatorExam3D extends GameEngine {
     // Initialize new systems
     this.memorySystem = getMemorySystem();
     this.worldSession = new WorldSession();
+    this.memoryStore = new MemoryStore();
+    this.memoryStore.loadWorld(this.worldSession.worldSimulation);
     this.saveSlotManager = new SaveSlotManager();
     this.residentDialogueSystem = new ResidentDialogueSystem();
     this.particleSystem = null;
