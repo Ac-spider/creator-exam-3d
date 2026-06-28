@@ -40,6 +40,6 @@ const game = new DebugGame();
 game.loadRegion(region);
 game.endTurn();
 
-assert(game.level.id === 'scenario-highland-refuge', 'generated region must load');
+assert(game.level && game.level.id === region.id, 'generated region must load');
 assert(game.units.some(unit => unit.residentId === 'resident-xiaozhu'), 'resident unit must survive region generation');
 console.log('Region scenario passed.');
