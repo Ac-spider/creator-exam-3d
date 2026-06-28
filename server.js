@@ -250,6 +250,40 @@ function extractJson(text) {
   return null;
 }
 
+function buildFallbackCreation(text) {
+  const clean = String(text || '').trim();
+  const ability = /water|flood|river|雨|水|洪/.test(clean) ? 'absorb_water'
+    : /light|lamp|sun|光|灯|照/.test(clean) ? 'illuminate'
+    : /bridge|road|path|桥|路/.test(clean) ? 'create_bridge'
+    : /calm|peace|talk|安抚|沟通/.test(clean) ? 'calm'
+    : 'guide';
+  return {
+    name: clean.slice(0, 12) || 'Local Gift',
+    type: '奇迹',
+    ability,
+    tags: ['local', ability],
+    range: ability === 'illuminate' ? 2 : 1,
+    duration: 3,
+    cost: 2,
+    stabilityCost: 0,
+    description: `A local rule-safe creation inferred from "${clean}".`,
+    side_effect: 'Local fallback keeps play moving without external AI.',
+    source: 'local-server'
+  };
+}
+
+function buildFallbackNarrative(type, context = {}, worldState = {}) {
+  const level = worldState.currentLevel || 'unknown region';
+  const name = context.unitName || context.creationName || 'someone';
+  const textByType = {
+    rescue: `${name} remembers the moment in ${level}. The rescue becomes a rumor that can pull future paths toward safer ground.`,
+    loss: `${level} grows quieter after the loss. Residents will carry this absence into later choices and conversations.`,
+    placement: `The new creation changes how people speak about ${level}. Some call it a miracle, others a warning.`,
+    hazard: `The hazard shifts across ${level}, leaving a visible scar for future travelers to interpret.`
+  };
+  return textByType[type] || `${level} records a new event. The world keeps the consequence and waits for the player to follow it.`;
+}
+
 async function handleCompileCreation(req, res) {
   let payload;
   try {
@@ -267,7 +301,7 @@ async function handleCompileCreation(req, res) {
   }
 
   if (!AI_API_KEY) {
-    sendJson(res, 503, { error: 'ai_not_configured', fallback: true });
+    sendJson(res, 200, buildFallbackCreation(playerText));
     return;
   }
 
@@ -421,7 +455,13 @@ async function handleNarrative(req, res) {
   const state = worldState || {};
 
   if (!AI_API_KEY) {
-    sendJson(res, 503, { error: 'ai_not_configured', fallback: true });
+    sendJson(res, 200, {
+      type: narrativeType,
+      text: buildFallbackNarrative(narrativeType, ctx, state),
+      context: ctx,
+      worldState: state,
+      source: 'local-server'
+    });
     return;
   }
 
@@ -587,7 +627,11 @@ async function handleGenerateRegion(req, res) {
   const state = playerState || {};
 
   if (!AI_API_KEY) {
-    sendJson(res, 503, { error: 'ai_not_configured', fallback: true });
+    const region = generateFallbackRegion(state, regionCount);
+    sendJson(res, 200, {
+      region,
+      generation: { source: 'local-server', reason: 'no-api-key' }
+    });
     return;
   }
 

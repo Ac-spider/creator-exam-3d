@@ -24,11 +24,28 @@ export class WorldSimulation {
 
   recordGameEvent(rawEvent) {
     const event = this.eventBus.emit(rawEvent);
+    this.ensureResidentFromEvent(event);
     this.updateResidentMemories(event);
     for (const hook of this.deriveFutureHooks(event)) {
       this.addFutureHook(event.regionId, hook);
     }
     return event;
+  }
+
+  ensureResidentFromEvent(event) {
+    const payload = event.payload || {};
+    if (!payload.residentId) return null;
+    const resident = this.residentRegistry.upsertResident({
+      residentId: payload.residentId,
+      name: payload.unitName || payload.residentName || payload.residentId,
+      currentRegionId: event.regionId,
+      homeRegionId: event.regionId,
+      mood: event.type === 'unit_lost' ? 'grieving' : 'alert',
+      currentGoal: event.type === 'unit_lost'
+        ? 'leave a trace for whoever can still help'
+        : 'decide whether to trust the player again'
+    });
+    return resident;
   }
 
   updateResidentMemories(event) {

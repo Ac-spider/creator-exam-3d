@@ -9,6 +9,7 @@ import { AbilityHandlers, applyAbility } from './abilityHandlers.js';
 import { Storyteller, defaultStoryteller } from './storyteller.js';
 import { GameEngine, TERRAIN_LABELS } from './gameEngine.js';
 import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
+import { buildContinuityViewModel } from './continuityPresenter.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -17,6 +18,12 @@ const MAX_LOGS = 18;
 // AI Narrative endpoint configuration
 const NARRATIVE_ENDPOINT = '/api/narrative';
 const NARRATIVE_TIMEOUT = 5000; // 5s timeout to avoid blocking gameplay
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = String(text || '');
+  return div.innerHTML;
+}
 
 const MATERIAL_COLORS = {
   [TILE.LAND]: 0x52634c,
@@ -1552,11 +1559,13 @@ class CreatorExam3D extends GameEngine {
   }
 
   addEnvironmentalNarrative(eventType, context) {
-    // Try AI narrative first, fallback to local
     this.fetchNarrative(eventType, context).then((text) => {
-      if (text) this.addLog(text, false);
+      if (text) {
+        this.addLog(text, false);
+      } else {
+        this.addLocalNarrative(eventType, context);
+      }
     }).catch(() => {
-      // Fallback to local hardcoded narratives
       this.addLocalNarrative(eventType, context);
     });
   }
@@ -1723,6 +1732,58 @@ class CreatorExam3D extends GameEngine {
     return path.length > 1 ? path : null;
   }
 
+  renderContinuity() {
+    const vm = buildContinuityViewModel(this.worldState || {});
+    if (!vm) return;
+    const container = document.getElementById('continuity-panel');
+    if (!container) return;
+    const html = vm.residents.map((resident) => {
+      const name = escapeHtml(resident.name);
+      const mood = escapeHtml(resident.mood);
+      const memory = escapeHtml(resident.latestMemory);
+      const hooks = (resident.hooks || []).map((hook) => {
+        const hookType = escapeHtml(hook.type);
+        const hookSummary = escapeHtml(hook.summary);
+        return `<li>${hookType}: ${hookSummary}</li>`;
+      }).join('');
+      return `<div class="resident-card">
+        <h4>${name}</h4>
+        <p class="mood">${mood}</p>
+        <p class="memory">${memory}</p>
+        <ul class="hooks">${hooks}</ul>
+      </div>`;
+    }).join('');
+    container.innerHTML = html;
+  }
+
+  showExplorationChoices(choices, winMessage) {
+    const container = document.getElementById('exploration-choices');
+    if (!container) return;
+    const html = choices.map((vm) => {
+      const id = escapeHtml(vm.id);
+      const title = escapeHtml(vm.title);
+      const description = escapeHtml(vm.description);
+      const meta = escapeHtml(vm.meta);
+      const badge = escapeHtml(vm.badge);
+      return `<button class="exploration-choice" data-choice-id="${id}">
+        <span class="badge">${badge}</span>
+        <h4>${title}</h4>
+        <p>${description}</p>
+        <span class="meta">${meta}</span>
+      </button>`;
+    }).join('');
+    container.innerHTML = html;
+    if (winMessage) {
+      this.showModal('区域完成', winMessage, '继续', '继续');
+    }
+  }
+
+  async handleExplorationChoice(choiceId) {
+    if (this.explorationDirector) {
+      await this.explorationDirector.resolveChoice(choiceId);
+    }
+  }
+
   animate(now) {
     requestAnimationFrame((t) => this.animate(t));
     const deltaTime = Math.min((now - this.lastFrameTime) / 1000 || 0.016, 0.1); // Limit max delta
@@ -1754,15 +1815,6 @@ function roundRect(ctx, x, y, width, height, radius) {
   ctx.arcTo(x, y + height, x, y, radius);
   ctx.arcTo(x, y, x + width, y, radius);
   ctx.closePath();
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 window.addEventListener('DOMContentLoaded', () => {

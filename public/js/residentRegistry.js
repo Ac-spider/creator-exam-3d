@@ -134,6 +134,50 @@ export class ResidentRegistry {
     return resident;
   }
 
+  upsertResident(profile) {
+    if (!profile?.residentId) {
+      throw new Error('ResidentRegistry.upsertResident requires residentId');
+    }
+    const existing = this.getResident(profile.residentId);
+    if (!existing) {
+      const defaults = {
+        name: profile.name || profile.unitName || profile.residentId,
+        role: 'Wandering resident',
+        type: 'villager',
+        homeRegionId: profile.homeRegionId || profile.currentRegionId || 'unknown',
+        currentRegionId: profile.currentRegionId || profile.homeRegionId || 'unknown',
+        mood: '平静',
+        attitudeToPlayer: '中立',
+        longTermGoal: '在裂隙之地生存',
+        currentGoal: '观察世界变化',
+        aliases: [],
+        relationships: {},
+        flags: {}
+      };
+      return this.registerResident({ ...defaults, ...profile });
+    }
+    if (profile.currentRegionId !== undefined) {
+      existing.currentRegionId = profile.currentRegionId;
+    }
+    if (profile.mood !== undefined) {
+      existing.mood = profile.mood;
+    }
+    if (profile.attitudeToPlayer !== undefined) {
+      existing.attitudeToPlayer = profile.attitudeToPlayer;
+    }
+    if (profile.currentGoal !== undefined) {
+      existing.currentGoal = profile.currentGoal;
+    }
+    if (profile.relationships) {
+      Object.assign(existing.relationships, profile.relationships);
+    }
+    if (profile.flags) {
+      Object.assign(existing.flags, profile.flags);
+    }
+    this.indexResident(existing);
+    return existing;
+  }
+
   indexResident(resident) {
     this.aliasIndex.set(resident.residentId, resident.residentId);
     this.aliasIndex.set(resident.name, resident.residentId);

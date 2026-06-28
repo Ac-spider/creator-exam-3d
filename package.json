@@ -8,7 +8,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "debug": "node debug/cli.js",
-    "check": "node debug/syntax-check.js"
+    "check": "node debug/syntax-check.js",
+    "test:reality": "node debug/current-code-reality-tests.js"
   },
   "dependencies": {},
   "engines": {
