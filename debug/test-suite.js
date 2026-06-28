@@ -3701,6 +3701,144 @@ runner.test('WorldSimulation - 应包含scheduleSystem序列化', async () => {
   runner.assertTrue(serialized.scheduleSystem !== undefined, 'serialize()应包含scheduleSystem');
 });
 
+runner.test('WorldEconomySystem - 压力更新和边界限制', async () => {
+  const { WorldEconomySystem, PRESSURE_CATEGORIES } = await import('../public/js/worldEconomySystem.js');
+  const system = new WorldEconomySystem();
+
+  runner.assertEqual(PRESSURE_CATEGORIES.length, 5, '应有5个压力类别');
+  runner.assertTrue(PRESSURE_CATEGORIES.includes('safety'), '应包含safety');
+  runner.assertTrue(PRESSURE_CATEGORIES.includes('resources'), '应包含resources');
+  runner.assertTrue(PRESSURE_CATEGORIES.includes('morale'), '应包含morale');
+  runner.assertTrue(PRESSURE_CATEGORIES.includes('reputation'), '应包含reputation');
+  runner.assertTrue(PRESSURE_CATEGORIES.includes('threat'), '应包含threat');
+
+  runner.assertEqual(system.getPressure('safety'), 50, '初始压力应为50');
+  system.setPressure('safety', 80);
+  runner.assertEqual(system.getPressure('safety'), 80, '设置压力应为80');
+  system.updatePressure('safety', 30);
+  runner.assertEqual(system.getPressure('safety'), 100, '增量更新后应为100');
+  system.updatePressure('safety', 10);
+  runner.assertEqual(system.getPressure('safety'), 100, '超过100应限制为100');
+  system.setPressure('safety', -10);
+  runner.assertEqual(system.getPressure('safety'), 0, '低于0应限制为0');
+});
+
+runner.test('WorldEconomySystem - 临界压力应发出事件', async () => {
+  const { WorldEconomySystem } = await import('../public/js/worldEconomySystem.js');
+  const { EventBus } = await import('../public/js/eventBus.js');
+
+  const eventBus = new EventBus();
+  const system = new WorldEconomySystem({ eventBus });
+  const criticalEvents = [];
+  eventBus.on('pressure_critical', (event) => criticalEvents.push(event));
+
+  system.setPressure('threat', 100);
+  system.tick(5, []);
+  runner.assertEqual(criticalEvents.filter(e => e.type === 'pressure_critical').length, 1, '压力达到100时应发出pressure_critical事件');
+  runner.assertEqual(criticalEvents[0].category, 'threat', '事件应包含正确类别');
+
+  system.setPressure('safety', 100);
+  system.tick(6, []);
+  runner.assertEqual(criticalEvents.filter(e => e.type === 'pressure_critical').length, 3, '第二次tick应再发出两个事件（threat和safety）');
+});
+
+runner.test('WorldEconomySystem - 序列化和反序列化', async () => {
+  const { WorldEconomySystem } = await import('../public/js/worldEconomySystem.js');
+
+  const system = new WorldEconomySystem();
+  system.setPressure('morale', 75);
+  system.setPressure('threat', 30);
+  system.recordDecision({
+    id: 'dec-1',
+    type: 'aid',
+    description: '向难民提供物资',
+    costs: { budget: 5 },
+    effects: { morale: 10, resources: -2 },
+    turn: 3
+  });
+
+  const serialized = system.serialize();
+  runner.assertEqual(serialized.version, 1, '序列化版本应为1');
+  runner.assertEqual(serialized.pressures.length, 5, '应序列化5个压力');
+  runner.assertEqual(serialized.decisions.length, 1, '应序列化1个决策');
+  runner.assertEqual(serialized.budget.spent, 5, '预算花费应为5');
+
+  const restored = new WorldEconomySystem();
+  restored.deserialize(serialized);
+  runner.assertEqual(restored.getPressure('morale'), 85, '反序列化后morale应为85（含决策效果）');
+  runner.assertEqual(restored.getPressure('threat'), 30, '反序列化后threat应为30');
+  runner.assertEqual(restored.decisions.length, 1, '反序列化后应有1个决策');
+  runner.assertEqual(restored.budget.spent, 5, '反序列化后预算花费应为5');
+});
+
+runner.test('WorldSimulation - 应包含economySystem序列化', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+  const serialized = world.serialize();
+  runner.assertTrue(serialized.economySystem !== undefined, 'serialize()应包含economySystem');
+});
+
+runner.test('WorldSimulation - 事件应触发经济系统tick', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+
+  world.recordGameEvent({
+    type: 'unit_lost',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { unitName: '测试居民' },
+    importance: 0.8,
+    tags: ['loss']
+  });
+
+  const safety = world.economySystem.getPressure('safety');
+  const morale = world.economySystem.getPressure('morale');
+  runner.assertEqual(safety, 45, 'unit_lost应使safety减少5');
+  runner.assertEqual(morale, 47, 'unit_lost应使morale减少3');
+});
+
+runner.test('ContinuityPresenter - 应包含pressures字段', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const { buildContinuityViewModel } = await import('../public/js/continuityPresenter.js');
+
+  const world = new WorldSimulation();
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { unitName: '小烛', residentId: 'resident-xiaozhu' },
+    importance: 0.9,
+    tags: ['rescue', 'resident']
+  });
+
+  const model = buildContinuityViewModel(world, { currentRegionId: 'flood-village' });
+  runner.assertTrue(Array.isArray(model.pressures), '模型应包含pressures数组');
+  runner.assertEqual(model.pressures.length, 5, '应有5个压力条目');
+  runner.assertTrue(model.pressures.some(p => p.category === 'morale'), '应包含morale压力');
+  runner.assertTrue(model.pressures.some(p => p.value !== undefined), '压力应包含value字段');
+  runner.assertTrue(model.pressures.some(p => p.status !== undefined), '压力应包含status字段');
+});
+
+runner.test('Continuity UI - DOM应包含压力面板挂载点', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+
+  runner.assert(html.includes('continuity-pressures'), 'index.html应包含continuity-pressures');
+  runner.assert(css.includes('.continuity-panel'), 'styles.css应包含.continuity-panel样式');
+});
+
+runner.test('Continuity UI - game.js应渲染压力条', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  runner.assert(source.includes('continuityPressures'), 'game.js应包含continuityPressures UI引用');
+  runner.assert(source.includes('model.pressures'), 'game.js应使用model.pressures');
+  runner.assert(source.includes('meter-fill'), 'game.js应渲染meter-fill压力条');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

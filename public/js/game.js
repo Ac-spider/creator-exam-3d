@@ -219,7 +219,8 @@ class CreatorExam3D extends GameEngine {
       residentDialogueSend: document.getElementById('resident-dialogue-send'),
       residentDialogueLog: document.getElementById('resident-dialogue-log'),
       continuityResidents: document.getElementById('continuity-residents'),
-      continuityHooks: document.getElementById('continuity-hooks')
+      continuityHooks: document.getElementById('continuity-hooks'),
+      continuityPressures: document.getElementById('continuity-pressures')
     };
   }
 
@@ -1792,6 +1793,20 @@ class CreatorExam3D extends GameEngine {
         ${escapeHtml(hook.summary)}
       </div>
     `).join('') || '<div class="continuity-item">暂无未解决线索</div>';
+
+    if (this.ui.continuityPressures) {
+      this.ui.continuityPressures.innerHTML = model.pressures.map(p => {
+        const pct = Math.max(0, Math.min(100, p.value));
+        let barClass = '';
+        if (pct >= 90) barClass = 'danger';
+        else if (pct >= 70) barClass = 'warning';
+        return `<div class="continuity-item">
+          <strong>${escapeHtml(p.category)}</strong> · ${escapeHtml(p.status)}<br>
+          <div class="meter-bar"><div class="meter-fill ${barClass}" style="width:${pct}%"></div></div>
+          ${pct}% ${p.trend > 0 ? '↑' : p.trend < 0 ? '↓' : '→'}
+        </div>`;
+      }).join('') || '<div class="continuity-item">暂无压力数据</div>';
+    }
   }
 
   showExplorationChoices(choices, winMessage) {

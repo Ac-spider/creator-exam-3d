@@ -19,10 +19,19 @@ export function buildContinuityViewModel(worldSimulation, options = {}) {
   })).sort((a, b) => b.priority - a.priority);
 
   const events = worldSimulation.eventBus.recent(20);
+  const economySummary = worldSimulation.economySystem.getSummary();
+  const pressures = Object.entries(economySummary.pressures).map(([category, data]) => ({
+    category,
+    value: data.value,
+    trend: data.trend,
+    status: data.status
+  }));
+
   return {
     currentRegionId,
     residents,
     futureHooks,
+    pressures,
     eventSummary: {
       totalEvents: worldSimulation.eventBus.events.length,
       recent: events.map(event => ({

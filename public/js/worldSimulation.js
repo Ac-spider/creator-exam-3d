@@ -3,6 +3,7 @@ import { ResidentRegistry } from './residentRegistry.js';
 import { ResidentAgentSystem } from './residentAgentSystem.js';
 import { AIDirector } from './aiDirector.js';
 import { ResidentScheduleSystem } from './residentScheduleSystem.js';
+import { WorldEconomySystem } from './worldEconomySystem.js';
 
 function hookId(type, eventId) {
   return `hook-${type}-${eventId}`;
@@ -31,6 +32,9 @@ export class WorldSimulation {
     this.scheduleSystem = options.scheduleSystem || new ResidentScheduleSystem({
       residentRegistry: this.residentRegistry
     });
+    this.economySystem = options.economySystem || new WorldEconomySystem({
+      eventBus: this.eventBus
+    });
     this.futureHooks = new Map();
   }
 
@@ -42,6 +46,7 @@ export class WorldSimulation {
     for (const hook of this.deriveFutureHooks(event)) {
       this.addFutureHook(event.regionId, hook);
     }
+    this.economySystem.tick(event.turn || 0, [event]);
     return event;
   }
 
@@ -230,6 +235,7 @@ export class WorldSimulation {
       residentAgentSystem: this.residentAgentSystem.serialize(),
       aiDirector: this.aiDirector.serialize(),
       scheduleSystem: this.scheduleSystem.serialize(),
+      economySystem: this.economySystem.serialize(),
       futureHooks: Array.from(this.futureHooks.entries())
     };
   }
@@ -240,6 +246,7 @@ export class WorldSimulation {
     this.residentAgentSystem.deserialize(data.residentAgentSystem || {});
     this.aiDirector.deserialize(data.aiDirector || {});
     this.scheduleSystem.deserialize(data.scheduleSystem || {});
+    this.economySystem.deserialize(data.economySystem || {});
     this.futureHooks = new Map(Array.isArray(data.futureHooks) ? data.futureHooks : []);
   }
 }
