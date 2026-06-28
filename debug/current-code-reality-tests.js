@@ -134,7 +134,7 @@ async function assertNoKeyServerFallbacks() {
     const creation = await postJson(baseUrl, '/api/compile-creation', { text: 'create a small guiding lantern' });
     assert.equal(creation.status, 200, 'compile-creation must return a playable local card without API key');
     assert.ok(creation.json.ability, 'fallback card must include ability');
-    assert.equal(creation.json.source, 'local-server');
+    assert.equal(creation.json.source, 'fallback');
 
     const narrative = await postJson(baseUrl, '/api/narrative', {
       type: 'rescue',
@@ -143,7 +143,7 @@ async function assertNoKeyServerFallbacks() {
     });
     assert.equal(narrative.status, 200, 'narrative must return local text without API key');
     assert.ok(String(narrative.json.text || '').length >= 20, 'fallback narrative must contain visible story text');
-    assert.equal(narrative.json.source, 'local-server');
+    assert.equal(narrative.json.source, 'fallback_no_key');
 
     const region = await postJson(baseUrl, '/api/generate-region', {
       playerState: { currentRegionId: 'flood-village' },
@@ -153,7 +153,7 @@ async function assertNoKeyServerFallbacks() {
     const regionData = region.json.region || region.json;
     assert.ok(Array.isArray(regionData.map), 'fallback region must include map rows');
     assert.ok(Array.isArray(regionData.units), 'fallback region must include units');
-    assert.equal(region.json.generation?.source || regionData.generation?.source, 'local-server');
+    assert.ok(region.json.source === 'fallback_no_key' || region.json.fallback === true, 'fallback region source should be explicit');
   });
 }
 

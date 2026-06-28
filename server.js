@@ -3,6 +3,12 @@ import { readFile, stat } from 'fs/promises';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { AIGateway } from './server/aiGateway.js';
+import {
+  fallbackRegionEnvelope,
+  fallbackResidentDialogueEnvelope,
+  fallbackCard
+} from './server/aiFallbacks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +20,34 @@ const PORT = Number(process.env.PORT || 3000);
 const AI_API_KEY = process.env.AI_API_KEY || '';
 const AI_BASE_URL = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
 const AI_MODEL = process.env.AI_MODEL || 'gpt-4o-mini';
+
+const aiGateway = new AIGateway({
+  budget: { maxCalls: clampNumber(process.env.AI_BUDGET_MAX_CALLS, 0, 1000, 20) },
+  retries: clampNumber(process.env.AI_RETRIES, 0, 3, 1),
+  timeoutMs: clampNumber(process.env.AI_TIMEOUT_MS, 1000, 60000, 12000),
+  provider: async (request) => {
+    if (!AI_API_KEY) {
+      return { ok: false, json: null, reason: 'missing_key' };
+    }
+    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${AI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        temperature: request.temperature ?? 0.7,
+        messages: request.messages
+      })
+    });
+    if (!response.ok) return { ok: false, json: null };
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.message?.reasoning_content || '';
+    const json = extractJson(content);
+    return { ok: Boolean(json), json };
+  }
+});
 
 const ABILITIES = new Set([
   'absorb_water',
@@ -301,7 +335,7 @@ async function handleCompileCreation(req, res) {
   }
 
   if (!AI_API_KEY) {
-    sendJson(res, 200, buildFallbackCreation(playerText));
+    sendJson(res, 200, fallbackCard(playerText));
     return;
   }
 
@@ -413,6 +447,50 @@ async function handleCompileCreation(req, res) {
   }
 }
 
+async function handleResidentDialogue(req, res) {
+  let payload;
+  try {
+    payload = JSON.parse(await readRequestBody(req));
+  } catch (_error) {
+    sendJson(res, 400, { error: 'invalid_json' });
+    return;
+  }
+
+  const residentName = String(payload?.residentName || 'Resident').slice(0, 40);
+  const memoryText = String(payload?.memoryText || '').slice(0, 240);
+  const playerText = String(payload?.playerText || '').slice(0, 240);
+  const fallback = fallbackResidentDialogueEnvelope({
+    residentName,
+    memoryText,
+    playerText,
+    source: AI_API_KEY ? 'fallback_invalid' : 'fallback_no_key'
+  });
+
+  if (!AI_API_KEY) {
+    sendJson(res, 200, fallback);
+    return;
+  }
+
+  const result = await aiGateway.requestJson({
+    kind: 'resident_dialogue',
+    temperature: 0.65,
+    cacheKey: `resident-dialogue:${payload?.residentId || residentName}:${memoryText}:${playerText}`,
+    fallback,
+    messages: [
+      {
+        role: 'system',
+        content: 'Return JSON only: {"dialogue":{"text":"short in-character reply","intent":{"type":"speak","confidence":0.6}}}. Intent type must be speak, request_help, move_region, assist_unit, spread_knowledge, withdraw, or idle.'
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({ residentName, memoryText, playerText })
+      }
+    ]
+  });
+
+  sendJson(res, 200, result.data);
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   let pathname = decodeURIComponent(url.pathname);
@@ -457,10 +535,11 @@ async function handleNarrative(req, res) {
   if (!AI_API_KEY) {
     sendJson(res, 200, {
       type: narrativeType,
-      text: buildFallbackNarrative(narrativeType, ctx, state),
+      text: `Local chronicle: ${input || 'the world answers without waiting for a distant oracle.'}`,
       context: ctx,
       worldState: state,
-      source: 'local-server'
+      fallback: true,
+      source: 'fallback_no_key'
     });
     return;
   }
@@ -623,15 +702,20 @@ async function handleGenerateRegion(req, res) {
     return;
   }
 
+  const sourceRegionId = payload?.sourceRegionId || payload?.playerState?.currentRegionId || 'unknown';
+  const hooks = Array.isArray(payload?.hooks) ? payload.hooks : [];
+  const worldSummary = payload?.worldSummary || {};
   const { playerState, difficulty = 'normal', regionCount = 0 } = payload || {};
   const state = playerState || {};
 
   if (!AI_API_KEY) {
-    const region = generateFallbackRegion(state, regionCount);
-    sendJson(res, 200, {
-      region,
-      generation: { source: 'local-server', reason: 'no-api-key' }
-    });
+    sendJson(res, 200, fallbackRegionEnvelope({
+      sourceRegionId,
+      hooks,
+      worldSummary,
+      playerState: state,
+      source: 'fallback_no_key'
+    }));
     return;
   }
 
@@ -672,6 +756,7 @@ async function handleGenerateRegion(req, res) {
     sendJson(res, 200, {
       region,
       generated: true,
+      source: 'ai',
       playerState: state
     });
   } catch (error) {
@@ -931,7 +1016,12 @@ const server = createServer(async (req, res) => {
   // Debug logging
   console.log(`[DEBUG] ${req.method} ${req.url}`);
   if (req.method === 'GET' && req.url?.startsWith('/health')) {
-    sendJson(res, 200, { ok: true, aiConfigured: Boolean(AI_API_KEY), model: AI_MODEL });
+    sendJson(res, 200, {
+      ok: true,
+      aiConfigured: Boolean(AI_API_KEY),
+      model: AI_MODEL,
+      aiBudget: aiGateway.getStats()
+    });
     return;
   }
 
@@ -947,6 +1037,11 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url?.startsWith('/api/generate-region')) {
     await handleGenerateRegion(req, res);
+    return;
+  }
+
+  if (req.method === 'POST' && req.url?.startsWith('/api/resident-dialogue')) {
+    await handleResidentDialogue(req, res);
     return;
   }
 
