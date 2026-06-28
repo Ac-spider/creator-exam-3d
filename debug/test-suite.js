@@ -2821,6 +2821,85 @@ runner.test('GameplayAdapter - should convert GameEngine events into persistent 
   runner.assert(event.importance >= 0.5, 'persistent event should have importance');
 });
 
+runner.test('ResidentRegistry - upsertResident should create and merge durable residents', async () => {
+  const { ResidentRegistry } = await import('../public/js/residentRegistry.js');
+  const registry = new ResidentRegistry({ seedDefaults: false });
+
+  const created = registry.upsertResident({
+    residentId: 'resident-ada',
+    name: 'Ada',
+    currentRegionId: 'refuge',
+    mood: 'hopeful'
+  });
+  runner.assertEqual(created.residentId, 'resident-ada', 'created resident id should be preserved');
+  runner.assertEqual(registry.getResidentsForRegion('refuge').length, 1, 'created resident should be queryable by region');
+
+  const merged = registry.upsertResident({
+    residentId: 'resident-ada',
+    name: 'Ada Renamed',
+    currentGoal: 'map the route network'
+  });
+  runner.assertEqual(merged.name, 'Ada', 'upsert should not overwrite stable identity with later event text');
+  runner.assertEqual(merged.currentGoal, 'map the route network', 'upsert should merge mutable current goal');
+});
+
+runner.test('WorldSimulation - unknown resident events should register durable residents', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+  world.recordGameEvent({
+    type: 'unit_rescued',
+    regionId: 'generated-refuge',
+    actorId: 'player',
+    turn: 1,
+    payload: { residentId: 'resident-new-0', unitName: 'New Resident 0' },
+    importance: 0.8,
+    tags: ['resident']
+  });
+
+  const resident = world.residentRegistry.getResident('resident-new-0');
+  runner.assert(resident, 'unknown resident should be registered from event');
+  runner.assertEqual(resident.name, 'New Resident 0', 'registered resident should use unitName');
+  runner.assert(resident.memories.some(memory => memory.type === 'unit_rescued'), 'registered resident should receive event memory');
+});
+
+runner.test('ResidentDialogueSystem - should cite resident memory and return safe intent', async () => {
+  const { ResidentDialogueSystem } = await import('../public/js/residentDialogueSystem.js');
+
+  const system = new ResidentDialogueSystem();
+  const response = system.generateLocalDialogue({
+    resident: {
+      residentId: 'resident-xiaozhu',
+      name: 'Xiaozhu',
+      mood: 'hopeful',
+      attitudeToPlayer: 'friendly',
+      currentGoal: 'find a safer region',
+      memories: [{ text: 'Xiaozhu was rescued in flood-village', importance: 0.9 }]
+    },
+    playerText: 'Do you remember what happened?'
+  });
+
+  runner.assert(response.text.includes('Xiaozhu'), 'dialogue should include resident name');
+  runner.assert(response.text.includes('flood-village'), 'dialogue should cite latest memory');
+  runner.assert(['speak', 'request_help', 'move_region', 'assist_unit', 'spread_knowledge', 'withdraw', 'idle'].includes(response.intent.type), 'intent should be whitelisted');
+});
+
+runner.test('ResidentDialogueSystem - should sanitize invalid AI dialogue candidates', async () => {
+  const { ResidentDialogueSystem } = await import('../public/js/residentDialogueSystem.js');
+
+  const system = new ResidentDialogueSystem();
+  const sanitized = system.sanitizeCandidate({
+    text: '',
+    intent: { type: 'delete_world', confidence: 4 }
+  }, {
+    resident: { name: 'Mender', memories: [{ text: 'Mender saw the bridge collapse' }] },
+    playerText: 'Help me'
+  });
+
+  runner.assert(sanitized.text.includes('Mender'), 'sanitized dialogue should fall back to resident name');
+  runner.assertEqual(sanitized.intent.type, 'speak', 'invalid intent should become speak');
+  runner.assert(sanitized.intent.confidence >= 0 && sanitized.intent.confidence <= 1, 'confidence should be clamped');
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
