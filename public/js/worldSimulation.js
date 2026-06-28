@@ -176,6 +176,36 @@ export class WorldSimulation {
     return actions;
   }
 
+  recordResidentDialogue(dialogueEvent = {}) {
+    const event = this.eventBus.emit({
+      type: 'resident_dialogue',
+      regionId: dialogueEvent.regionId || 'unknown',
+      actorId: dialogueEvent.residentId || 'unknown',
+      turn: dialogueEvent.turn || 0,
+      payload: {
+        residentId: dialogueEvent.residentId,
+        residentName: dialogueEvent.residentName,
+        playerText: dialogueEvent.playerText,
+        residentText: dialogueEvent.residentText,
+        intent: dialogueEvent.intent
+      },
+      importance: 0.7,
+      tags: ['dialogue', 'resident']
+    });
+
+    const resident = this.residentRegistry.getResident(dialogueEvent.residentId);
+    if (resident) {
+      resident.memories.push({
+        type: 'resident_dialogue',
+        text: dialogueEvent.residentText || '',
+        turn: dialogueEvent.turn || 0,
+        importance: 0.7
+      });
+    }
+
+    return event;
+  }
+
   serialize() {
     return {
       version: 1,

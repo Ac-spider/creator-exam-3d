@@ -10,7 +10,7 @@ import { Storyteller, defaultStoryteller } from './storyteller.js';
 import { GameEngine, TERRAIN_LABELS } from './gameEngine.js';
 import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
 import { buildContinuityViewModel } from './continuityPresenter.js';
-import { WorldSession } from './worldSession.js';
+import { ResidentDialogueSystem } from './residentDialogueSystem.js';
 import { SaveSlotManager } from './saveSlotManager.js';
 
 const TILE_SIZE = 1.55;
@@ -115,6 +115,7 @@ class CreatorExam3D extends GameEngine {
     this.memorySystem = getMemorySystem();
     this.worldSession = new WorldSession();
     this.saveSlotManager = new SaveSlotManager();
+    this.residentDialogueSystem = new ResidentDialogueSystem();
     this.particleSystem = null;
     this.screenEffects = null;
     this.npcManager = null;
@@ -125,6 +126,7 @@ class CreatorExam3D extends GameEngine {
     this.initScene();
     this.bindEvents();
     this.bindSaveSlotUI();
+    this.bindResidentDialogueUI();
     this.loadLevel(0);
     this.animate();
   }
@@ -199,7 +201,12 @@ class CreatorExam3D extends GameEngine {
       saveSlotDelete: document.getElementById('save-slot-delete'),
       saveSlotExport: document.getElementById('save-slot-export'),
       saveSlotImport: document.getElementById('save-slot-import'),
-      saveSlotImportData: document.getElementById('save-slot-import-data')
+      saveSlotImportData: document.getElementById('save-slot-import-data'),
+      residentDialoguePanel: document.getElementById('resident-dialogue-panel'),
+      residentDialogueList: document.getElementById('resident-dialogue-list'),
+      residentDialogueInput: document.getElementById('resident-dialogue-input'),
+      residentDialogueSend: document.getElementById('resident-dialogue-send'),
+      residentDialogueLog: document.getElementById('resident-dialogue-log')
     };
   }
 
@@ -1869,6 +1876,91 @@ class CreatorExam3D extends GameEngine {
         this.ui.saveSlotName.value = button.dataset.slotSelect;
       });
     });
+  }
+
+  bindResidentDialogueUI() {
+    this.ui.residentDialogueSend?.addEventListener('click', () => this.sendResidentDialogue());
+    this.renderResidentDialogueList();
+  }
+
+  renderResidentDialogueList() {
+    if (!this.ui.residentDialogueList) return;
+    const residents = this.worldSimulation?.residentRegistry?.getResidentsForRegion(this.level?.id) || [];
+    this.ui.residentDialogueList.innerHTML = residents.map(resident => `
+      <div class="resident-card" data-resident-id="${resident.residentId}">
+        <strong>${resident.name}</strong> · ${resident.mood}
+        <br><em>${resident.currentGoal || 'No current goal'}</em>
+      </div>
+    `).join('');
+    this.ui.residentDialogueList.querySelectorAll('.resident-card').forEach(card => {
+      card.addEventListener('click', () => {
+        this.selectedResidentId = card.dataset.residentId;
+        this.addLog?.(`Selected resident: ${card.querySelector('strong')?.textContent || ''}`);
+      });
+    });
+  }
+
+  async sendResidentDialogue() {
+    const text = this.ui.residentDialogueInput?.value?.trim();
+    if (!text || !this.selectedResidentId) {
+      this.addLog?.('Select a resident and type a message first.');
+      return;
+    }
+    const resident = this.worldSimulation?.residentRegistry?.getResident(this.selectedResidentId);
+    if (!resident) {
+      this.addLog?.('Selected resident not found.');
+      return;
+    }
+
+    const localResponse = this.residentDialogueSystem.generateLocalDialogue({
+      resident,
+      playerText: text,
+      regionId: this.level?.id
+    });
+
+    let response = localResponse;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const fetchResponse = await fetch('/api/resident-dialogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          residentId: resident.residentId,
+          residentName: resident.name,
+          playerText: text,
+          memoryText: resident.memories?.slice(-1)?.[0]?.text || ''
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (fetchResponse.ok) {
+        const data = await fetchResponse.json();
+        if (data?.dialogue) {
+          response = this.residentDialogueSystem.sanitizeCandidate(data, { resident, playerText: text });
+        }
+      }
+    } catch (_error) {
+      // Use local fallback
+    }
+
+    this.worldSimulation?.recordResidentDialogue?.({
+      residentId: resident.residentId,
+      residentName: resident.name,
+      regionId: this.level?.id,
+      playerText: text,
+      residentText: response.text,
+      intent: response.intent,
+      turn: this.turn || 0
+    });
+
+    this.addLog?.(`${resident.name}: ${response.text}`);
+    if (this.ui.residentDialogueLog) {
+      const entry = document.createElement('li');
+      entry.textContent = `${resident.name}: ${response.text}`;
+      this.ui.residentDialogueLog.appendChild(entry);
+    }
+    this.ui.residentDialogueInput.value = '';
   }
 
   animate(now) {

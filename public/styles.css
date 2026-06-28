@@ -736,6 +736,53 @@ button.loading {
   color: #d8cda9;
 }
 
+.resident-dialogue-panel {
+  border: 1px solid rgba(230, 214, 170, 0.28);
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(145deg, rgba(28, 33, 42, 0.92), rgba(15, 18, 24, 0.96));
+}
+
+.resident-dialogue-list {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.resident-dialogue-list .resident-card {
+  border: 1px solid rgba(230, 214, 170, 0.18);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #e6d6aa;
+}
+
+.resident-dialogue-compose {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.resident-dialogue-compose input {
+  border: 1px solid rgba(230, 214, 170, 0.24);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #f5ecd2;
+  padding: 8px 10px;
+}
+
+.resident-dialogue-log {
+  margin-top: 10px;
+  padding-left: 18px;
+  color: #d8cda9;
+}
+
+.resident-dialogue-log li {
+  margin-bottom: 6px;
+}
+
 @media (max-width: 760px) {
   .save-slot-controls {
     grid-template-columns: 1fr 1fr;

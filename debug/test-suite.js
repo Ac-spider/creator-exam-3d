@@ -2965,6 +2965,45 @@ runner.test('Save Slot UI - game.js should wire SaveSlotManager through explicit
   }
 });
 
+runner.test('Resident Dialogue UI - DOM should expose persistent conversation controls', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+
+  for (const id of ['resident-dialogue-panel', 'resident-dialogue-list', 'resident-dialogue-input', 'resident-dialogue-send', 'resident-dialogue-log']) {
+    runner.assert(html.includes(id), `index.html should include ${id}`);
+  }
+  runner.assert(css.includes('.resident-dialogue-panel'), 'styles.css should style resident dialogue panel');
+});
+
+runner.test('WorldSimulation - resident dialogue should become durable memory event', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+
+  world.recordResidentDialogue({
+    residentId: 'resident-xiaozhu',
+    residentName: 'Xiaozhu',
+    regionId: 'flood-village',
+    playerText: 'Do you remember me?',
+    residentText: 'Xiaozhu remembers the flood-village rescue.',
+    intent: { type: 'speak', confidence: 0.8 },
+    turn: 4
+  });
+
+  const resident = world.residentRegistry.getResident('resident-xiaozhu');
+  runner.assert(resident.memories.some(memory => memory.type === 'resident_dialogue'), 'dialogue should be recorded as resident memory');
+  runner.assert(world.eventBus.recent(5).some(event => event.type === 'resident_dialogue'), 'dialogue should be recorded as world event');
+});
+
+runner.test('Resident Dialogue UI - game.js should call resident dialogue API with local fallback', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  for (const token of ['ResidentDialogueSystem', 'bindResidentDialogueUI', 'renderResidentDialogueList', 'sendResidentDialogue', '/api/resident-dialogue', 'recordResidentDialogue']) {
+    runner.assert(source.includes(token), `game.js should include ${token}`);
+  }
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);
