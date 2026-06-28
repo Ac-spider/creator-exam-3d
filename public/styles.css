@@ -696,6 +696,52 @@ button.loading {
   }
 }
 
+.save-slot-panel {
+  border: 1px solid rgba(230, 214, 170, 0.28);
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(145deg, rgba(28, 33, 42, 0.92), rgba(15, 18, 24, 0.96));
+}
+
+.save-slot-controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) repeat(5, auto);
+  gap: 8px;
+  align-items: center;
+}
+
+.save-slot-controls input,
+.save-slot-panel textarea {
+  border: 1px solid rgba(230, 214, 170, 0.24);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #f5ecd2;
+  padding: 8px 10px;
+}
+
+.save-slot-panel textarea {
+  width: 100%;
+  min-height: 72px;
+  margin-top: 10px;
+  resize: vertical;
+}
+
+.save-slot-list {
+  display: grid;
+  gap: 8px;
+  padding-left: 18px;
+}
+
+.save-slot-list li {
+  color: #d8cda9;
+}
+
+@media (max-width: 760px) {
+  .save-slot-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
   :root {

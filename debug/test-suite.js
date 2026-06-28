@@ -2900,6 +2900,71 @@ runner.test('ResidentDialogueSystem - should sanitize invalid AI dialogue candid
   runner.assert(sanitized.intent.confidence >= 0 && sanitized.intent.confidence <= 1, 'confidence should be clamped');
 });
 
+runner.test('SaveSlotManager - should save, list, load, and delete named world slots', async () => {
+  const { SaveSlotManager } = await import('../public/js/saveSlotManager.js');
+  const { createMemoryStorage } = await import('../public/js/memoryStore.js');
+  const { WorldSession } = await import('../public/js/worldSession.js');
+
+  const storage = createMemoryStorage();
+  const manager = new SaveSlotManager({ storage });
+  const session = new WorldSession();
+  session.recordTacticalEvent({
+    type: 'unit_rescued',
+    regionId: 'flood-village',
+    actorId: 'player',
+    turn: 2,
+    payload: { residentId: 'resident-xiaozhu', unitName: 'Xiaozhu' },
+    importance: 0.9,
+    tags: ['resident']
+  });
+
+  const saved = manager.saveSlot('main', session, { label: 'Main Run' });
+  runner.assertEqual(saved.slotId, 'main', 'slot id should be preserved');
+  runner.assertEqual(manager.listSlots().length, 1, 'one slot should be listed');
+  runner.assertEqual(manager.listSlots()[0].label, 'Main Run', 'slot label should be listed');
+
+  const restored = new WorldSession();
+  runner.assertTrue(manager.loadSlot('main', restored), 'slot should load');
+  runner.assert(restored.worldSimulation.getFutureHooks().some(hook => hook.residentId === 'resident-xiaozhu'), 'restored session should keep resident hook');
+  runner.assertEqual(restored.currentRegionId, 'flood-village', 'restored session should keep current region');
+
+  runner.assertTrue(manager.deleteSlot('main'), 'slot should delete');
+  runner.assertEqual(manager.listSlots().length, 0, 'deleted slot should not be listed');
+});
+
+runner.test('SaveSlotManager - should reject corrupt imported snapshots without changing storage', async () => {
+  const { SaveSlotManager } = await import('../public/js/saveSlotManager.js');
+  const { createMemoryStorage } = await import('../public/js/memoryStore.js');
+
+  const storage = createMemoryStorage();
+  const manager = new SaveSlotManager({ storage });
+
+  runner.assertFalse(manager.importSlot('broken', '{"version":999}'), 'unsupported snapshot should be rejected');
+  runner.assertEqual(manager.listSlots().length, 0, 'corrupt import should not create a slot');
+  runner.assertEqual(manager.lastError.code, 'import_failed', 'import failure code should be recorded');
+});
+
+runner.test('Save Slot UI - DOM should expose save, load, delete, export, and import controls', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const css = fs.readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+
+  for (const id of ['save-slot-panel', 'save-slot-list', 'save-slot-name', 'save-slot-save', 'save-slot-load', 'save-slot-delete', 'save-slot-export', 'save-slot-import']) {
+    runner.assert(html.includes(id), `index.html should include ${id}`);
+  }
+  runner.assert(css.includes('.save-slot-panel'), 'styles.css should style save slot panel');
+});
+
+runner.test('Save Slot UI - game.js should wire SaveSlotManager through explicit methods', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  runner.assert(source.includes('SaveSlotManager'), 'game.js should import SaveSlotManager');
+  for (const method of ['bindSaveSlotUI', 'renderSaveSlots', 'saveCurrentSlot', 'loadSelectedSlot', 'deleteSelectedSlot', 'exportSelectedSlot', 'importSelectedSlot']) {
+    runner.assert(source.includes(method), `game.js should include ${method}`);
+  }
+});
+
 // 运行测试
 runner.run().then(success => {
   process.exit(success ? 0 : 1);

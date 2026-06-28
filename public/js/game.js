@@ -11,6 +11,7 @@ import { GameEngine, TERRAIN_LABELS } from './gameEngine.js';
 import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
 import { buildContinuityViewModel } from './continuityPresenter.js';
 import { WorldSession } from './worldSession.js';
+import { SaveSlotManager } from './saveSlotManager.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -113,6 +114,7 @@ class CreatorExam3D extends GameEngine {
     // Initialize new systems
     this.memorySystem = getMemorySystem();
     this.worldSession = new WorldSession();
+    this.saveSlotManager = new SaveSlotManager();
     this.particleSystem = null;
     this.screenEffects = null;
     this.npcManager = null;
@@ -122,6 +124,7 @@ class CreatorExam3D extends GameEngine {
     this.ui = this.collectUi();
     this.initScene();
     this.bindEvents();
+    this.bindSaveSlotUI();
     this.loadLevel(0);
     this.animate();
   }
@@ -187,7 +190,16 @@ class CreatorExam3D extends GameEngine {
       modalTitle: document.getElementById('modal-title'),
       modalText: document.getElementById('modal-text'),
       modalPrimary: document.getElementById('modal-primary'),
-      modalSecondary: document.getElementById('modal-secondary')
+      modalSecondary: document.getElementById('modal-secondary'),
+      saveSlotPanel: document.getElementById('save-slot-panel'),
+      saveSlotList: document.getElementById('save-slot-list'),
+      saveSlotName: document.getElementById('save-slot-name'),
+      saveSlotSave: document.getElementById('save-slot-save'),
+      saveSlotLoad: document.getElementById('save-slot-load'),
+      saveSlotDelete: document.getElementById('save-slot-delete'),
+      saveSlotExport: document.getElementById('save-slot-export'),
+      saveSlotImport: document.getElementById('save-slot-import'),
+      saveSlotImportData: document.getElementById('save-slot-import-data')
     };
   }
 
@@ -1784,6 +1796,79 @@ class CreatorExam3D extends GameEngine {
     if (this.explorationDirector) {
       await this.explorationDirector.resolveChoice(choiceId);
     }
+  }
+
+  bindSaveSlotUI() {
+    this.ui.saveSlotSave?.addEventListener('click', () => this.saveCurrentSlot());
+    this.ui.saveSlotLoad?.addEventListener('click', () => this.loadSelectedSlot());
+    this.ui.saveSlotDelete?.addEventListener('click', () => this.deleteSelectedSlot());
+    this.ui.saveSlotExport?.addEventListener('click', () => this.exportSelectedSlot());
+    this.ui.saveSlotImport?.addEventListener('click', () => this.importSelectedSlot());
+    this.renderSaveSlots();
+  }
+
+  currentSlotId() {
+    return this.ui.saveSlotName?.value?.trim() || 'main';
+  }
+
+  saveCurrentSlot() {
+    const snapshot = this.saveSlotManager.saveSlot(this.currentSlotId(), this.worldSession, {
+      label: this.currentSlotId(),
+      currentRegionId: this.worldSession.currentRegionId || this.level?.id || null
+    });
+    this.addLog?.(`World saved to slot ${snapshot.slotId}.`);
+    this.renderSaveSlots();
+  }
+
+  loadSelectedSlot() {
+    const loaded = this.saveSlotManager.loadSlot(this.currentSlotId(), this.worldSession);
+    if (!loaded) {
+      this.addLog?.(`No save slot found for ${this.currentSlotId()}.`);
+      return;
+    }
+    this.worldSimulation = this.worldSession.worldSimulation;
+    this.memoryStore?.saveWorld(this.worldSession);
+    this.reloadCurrentSessionRegion?.();
+    this.renderContinuity?.();
+    this.renderExplorationChoices?.();
+    this.renderWorldMap?.();
+    this.addLog?.(`World loaded from slot ${this.currentSlotId()}.`);
+  }
+
+  deleteSelectedSlot() {
+    this.saveSlotManager.deleteSlot(this.currentSlotId());
+    this.renderSaveSlots();
+    this.addLog?.(`World save slot ${this.currentSlotId()} deleted.`);
+  }
+
+  exportSelectedSlot() {
+    const raw = this.saveSlotManager.exportSlot(this.currentSlotId());
+    if (!raw) {
+      this.addLog?.(`No save slot found for ${this.currentSlotId()}.`);
+      return;
+    }
+    this.ui.saveSlotImportData.value = raw;
+  }
+
+  importSelectedSlot() {
+    const raw = this.ui.saveSlotImportData?.value || '';
+    const imported = this.saveSlotManager.importSlot(this.currentSlotId(), raw);
+    this.renderSaveSlots();
+    this.addLog?.(imported ? `World save imported to ${this.currentSlotId()}.` : 'World save import failed.');
+  }
+
+  renderSaveSlots() {
+    if (!this.ui.saveSlotList) return;
+    const slots = this.saveSlotManager.listSlots();
+    this.ui.saveSlotList.innerHTML = slots.map(slot => {
+      const savedAt = new Date(slot.savedAt).toLocaleString();
+      return `<li data-slot-id="${slot.slotId}"><button type="button" data-slot-select="${slot.slotId}">${slot.label}</button><span>${savedAt}</span></li>`;
+    }).join('');
+    this.ui.saveSlotList.querySelectorAll('[data-slot-select]').forEach(button => {
+      button.addEventListener('click', () => {
+        this.ui.saveSlotName.value = button.dataset.slotSelect;
+      });
+    });
   }
 
   animate(now) {
