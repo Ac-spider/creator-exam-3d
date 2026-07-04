@@ -1,19 +1,22 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { compileCreation, abilityLabel } from './aiClient.js';
-import { cloneLevel, INSPIRATIONS, LEVELS, SYMBOL_TO_TILE, TILE } from './levels.js';
+import { INSPIRATIONS, LEVELS, TILE } from './levels.js';
 import { getMemorySystem } from './aiMemory.js';
 import { ParticleSystem, ScreenEffects } from './particles.js';
 import { NPCManager } from './npcManager.js';
-import { AbilityHandlers, applyAbility } from './abilityHandlers.js';
-import { Storyteller, defaultStoryteller } from './storyteller.js';
+import { applyAbility } from './abilityHandlers.js';
+import { defaultStoryteller } from './storyteller.js';
 import { GameEngine, TERRAIN_LABELS } from './gameEngine.js';
-import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
+import { executeChainReaction } from './chainReactionCodex.js';
+import { CognitiveEffects } from './cognitiveEffects.js';
+import { worldLegendSystem } from './worldLegend.js';
 import { buildContinuityViewModel } from './continuityPresenter.js';
 import { ResidentDialogueSystem } from './residentDialogueSystem.js';
 import { DebugSnapshot } from './debugSnapshot.js';
 import { SaveSlotManager } from './saveSlotManager.js';
 import { MemoryStore } from './memoryStore.js';
+import { WorldSession } from './worldSession.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -97,6 +100,12 @@ class CreatorExam3D extends GameEngine {
       },
       onWorldEvent: (event) => {
         this.recordGameEvent(event);
+        if (this.npcManager) {
+          const dialogue = this.npcManager.getLatestDialogue();
+          if (dialogue) {
+            this.renderNPCReaction(dialogue);
+          }
+        }
         if (this.memoryStore && this.worldSession?.worldSimulation) {
           this.memoryStore.saveWorld(this.worldSession.worldSimulation);
         }
@@ -130,6 +139,7 @@ class CreatorExam3D extends GameEngine {
     this.screenEffects = null;
     this.npcManager = null;
     this.storyteller = defaultStoryteller;
+    this.cognitiveEffects = new CognitiveEffects();
     this.lastFrameTime = 0;
 
     this.ui = this.collectUi();
@@ -220,7 +230,10 @@ class CreatorExam3D extends GameEngine {
       residentDialogueLog: document.getElementById('resident-dialogue-log'),
       continuityResidents: document.getElementById('continuity-residents'),
       continuityHooks: document.getElementById('continuity-hooks'),
-      continuityPressures: document.getElementById('continuity-pressures')
+      continuityPressures: document.getElementById('continuity-pressures'),
+      legendMyths: document.getElementById('legend-myths'),
+      legendArtifacts: document.getElementById('legend-artifacts'),
+      legendFigures: document.getElementById('legend-figures')
     };
   }
 
@@ -528,7 +541,7 @@ class CreatorExam3D extends GameEngine {
     }
     this.addLog(`第 ${this.turn} 回合开始结算。`, true);
     this.applyActiveCreationEffects();
-    this.checkChainReactions();
+    this.applyChainReactions();
     this.moveUnits();
     this.spreadHazards();
     this.triggerRandomEvent();
@@ -537,12 +550,17 @@ class CreatorExam3D extends GameEngine {
     this.checkEndCondition(true);
     if (this.gameState === 'playing') {
       this.turn += 1;
+      // Evolve world myths every 5 turns
+      if (this.turn % 5 === 0) {
+        worldLegendSystem.evolveMyths();
+      }
       // Storyteller 叙事触发 (传入aiMemory实现深度联动)
       const storyResult = this.storyteller.tellStory(this, this.memorySystem);
       if (storyResult) {
         this.addLog(`【叙事】${storyResult.narrative}`, true);
         this.applyStorytellerEvent(storyResult.event);
       }
+      this.storyteller.recordBehavior(this, 'turn_end');
       if (this.turn > this.level.maxTurns) {
         this.checkEndCondition(true, true);
       }
@@ -552,6 +570,21 @@ class CreatorExam3D extends GameEngine {
   }
 
   applyStorytellerEvent(event) {
+    if (!event) return;
+
+    // Adaptive events are already applied by Storyteller.applyAdaptiveEvent
+    // when severity is set. Re-apply here only if severity exists and effect
+    // is one of the adaptive types not handled below.
+    const adaptiveEffects = ['minorSetback', 'miracleHelp', 'memorialBoost', 'creativityBoost', 'confidenceBoost'];
+    if (event.severity && adaptiveEffects.includes(event.effect)) {
+      // Log adaptive effect if Storyteller didn't already log it
+      const alreadyLogged = this.logs.some(l => l.turn === this.turn && l.text.includes(`【叙事事件】${event.name}`));
+      if (!alreadyLogged) {
+        this.storyteller.applyAdaptiveEvent(this, event, this.memorySystem);
+      }
+      return;
+    }
+
     switch (event.effect) {
       case 'guidance': {
         const civilians = this.units.filter(u => this.isCivilian(u) && u.status === 'active');
@@ -618,84 +651,6 @@ class CreatorExam3D extends GameEngine {
     }
   }
 
-  checkChainReactions() {
-    const resonancePairs = [
-      { a: 'illuminate', b: 'absorb_water', result: 'steam', text: '照明与吸水共鸣，产生蒸汽驱散更多迷雾' },
-      { a: 'calm', b: 'memory_beacon', result: 'peace', text: '安抚与记忆共鸣，使者心中的疑虑消散' },
-      { a: 'force_field', b: 'transform_land', result: 'sanctuary', text: '结界与地形改造共鸣，形成神圣庇护所' },
-      { a: 'freeze_water', b: 'illuminate', result: 'prism', text: '冰与光共鸣，折射出指引道路的光棱' },
-      { a: 'guide', b: 'reveal_path', result: 'clarity', text: '引导与显路共鸣，所有单位获得清晰视野' },
-      { a: 'sun_blessing', b: 'cleanse', result: 'renewal', text: '日华与净化共鸣，大地焕发生机' }
-    ];
-
-    for (const pair of resonancePairs) {
-      const creationA = this.creations.find(c => c.remaining > 0 && c.card.ability === pair.a);
-      const creationB = this.creations.find(c => c.remaining > 0 && c.card.ability === pair.b);
-      if (creationA && creationB && this.distance(creationA.x, creationA.y, creationB.x, creationB.y) <= 3) {
-        this.applyResonanceEffect(pair.result, creationA, creationB);
-        this.addLog(`共鸣！${pair.text}。`, true);
-        // Spawn resonance particles
-        const posA = this.tileToWorld(creationA.x, creationA.y);
-        const posB = this.tileToWorld(creationB.x, creationB.y);
-        this.particleSystem.spawnResonanceEffect(
-          (posA.x + posB.x) / 2, 0.5, (posA.z + posB.z) / 2,
-          this.particleSystem.getAbilityColor(creationA.card.ability)
-        );
-      }
-    }
-  }
-
-  applyResonanceEffect(result, creationA, creationB) {
-    const midX = Math.round((creationA.x + creationB.x) / 2);
-    const midY = Math.round((creationA.y + creationB.y) / 2);
-
-    switch (result) {
-      case 'steam':
-        for (const cell of this.tilesWithin(midX, midY, 2)) {
-          if (this.getTerrain(cell.x, cell.y) === TILE.FOG) {
-            this.setTerrain(cell.x, cell.y, TILE.LAND);
-          }
-        }
-        break;
-      case 'peace':
-        if (this.isWarLevel()) {
-          this.warMeter = Math.max(0, this.warMeter - 1);
-        }
-        for (const unit of this.units.filter(u => this.isMessenger(u))) {
-          unit.guidedTurns = Math.max(unit.guidedTurns, 2);
-        }
-        break;
-      case 'sanctuary':
-        for (const cell of this.tilesWithin(midX, midY, 2)) {
-          if (this.getTerrain(cell.x, cell.y) === TILE.LAND) {
-            this.setTerrain(cell.x, cell.y, TILE.SACRED);
-          }
-        }
-        break;
-      case 'prism':
-        for (const unit of this.units.filter(u => u.status === 'active')) {
-          if (this.distance(unit.x, unit.y, midX, midY) <= 3) {
-            unit.guidedTurns = Math.max(unit.guidedTurns, 2);
-            unit.immuneChaos = true;
-          }
-        }
-        break;
-      case 'clarity':
-        for (const unit of this.units.filter(u => u.status === 'active')) {
-          unit.guidedTurns = Math.max(unit.guidedTurns, 3);
-        }
-        break;
-      case 'renewal':
-        for (const cell of this.tilesWithin(midX, midY, 2)) {
-          const terrain = this.getTerrain(cell.x, cell.y);
-          if ([TILE.DARK, TILE.FOG, TILE.POISON, TILE.SWAMP].includes(terrain)) {
-            this.setTerrain(cell.x, cell.y, TILE.LAND);
-          }
-        }
-        break;
-    }
-  }
-
   applyActiveCreationEffects() {
     for (const creation of this.creations) {
       if (creation.remaining <= 0) continue;
@@ -718,6 +673,11 @@ class CreatorExam3D extends GameEngine {
     if (this.gameState !== 'playing') return;
     this.gameState = 'won';
     this.addLog(`通过：${message}`, true);
+
+    // Record legendary event for victory
+    const impact = this.lost === 0 ? 'major' : 'minor';
+    this.recordLegendaryEvent('miracle', '造物者', this.level.title, impact);
+
     const isFinal = this.levelIndex === LEVELS.length - 1;
 
     // Record level completion in memory
@@ -748,6 +708,9 @@ class CreatorExam3D extends GameEngine {
     if (this.gameState !== 'playing') return;
     this.gameState = 'lost';
     this.addLog(`失败：${message}`, true);
+
+    // Record legendary event for defeat
+    this.recordLegendaryEvent('cataclysm', '造物者', this.level.title, 'major');
 
     // Record level completion in memory
     this.memorySystem.recordLevelCompletion(this.level.id, 'lost', {
@@ -1047,8 +1010,10 @@ class CreatorExam3D extends GameEngine {
       if (executeChainReaction(this, reaction.id)) {
         reaction.usageCount++;
         // Spawn resonance particles for known reactions
-        const creationA = this.creations.find(c => c.remaining > 0 && c.card.ability === reaction.abilityA);
-        const creationB = this.creations.find(c => c.remaining > 0 && c.card.ability === reaction.abilityB);
+        const abilityA = reaction.abilities[0];
+        const abilityB = reaction.abilities[1];
+        const creationA = this.creations.find(c => c.remaining > 0 && c.card.ability === abilityA);
+        const creationB = this.creations.find(c => c.remaining > 0 && c.card.ability === abilityB);
         if (creationA && creationB) {
           const posA = this.tileToWorld(creationA.x, creationA.y);
           const posB = this.tileToWorld(creationB.x, creationB.y);
@@ -1098,6 +1063,12 @@ class CreatorExam3D extends GameEngine {
     // Screen flash for high-cost creations
     if (creation.card.cost >= 3) {
       this.screenEffects.flash('#' + this.particleSystem.getAbilityColor(creation.card.ability).toString(16).padStart(6, '0'), 400);
+    }
+  }
+
+  recordGameEvent(event) {
+    if (this.worldSession?.recordTacticalEvent) {
+      this.worldSession.recordTacticalEvent(event);
     }
   }
 
@@ -1487,6 +1458,53 @@ class CreatorExam3D extends GameEngine {
     this.updateSpecialMeters();
     this.updateUnitList();
     this.updateLogs();
+    this.renderLegendPanel();
+  }
+
+  renderLegendPanel() {
+    if (!this.ui.legendMyths) return;
+
+    const myths = worldLegendSystem.getTopMyths(3);
+    this.ui.legendMyths.innerHTML = myths.length
+      ? myths.map(m => `<div class="continuity-item">${escapeHtml(m.text)}</div>`).join('')
+      : '<div class="continuity-item">尚无重大传说</div>';
+
+    const artifacts = Array.from(worldLegendSystem.artifacts.values())
+      .sort((a, b) => b.power - a.power)
+      .slice(0, 3);
+    this.ui.legendArtifacts.innerHTML = artifacts.length
+      ? artifacts.map(a => `<div class="continuity-item"><strong>${escapeHtml(a.name)}</strong> — ${escapeHtml(a.description)}</div>`).join('')
+      : '<div class="continuity-item">尚无神器</div>';
+
+    const figures = Array.from(worldLegendSystem.historicalFigures.values())
+      .sort((a, b) => b.worshipLevel - a.worshipLevel)
+      .slice(0, 3);
+    this.ui.legendFigures.innerHTML = figures.length
+      ? figures.map(f => `<div class="continuity-item"><strong>${escapeHtml(f.name)}</strong> — ${escapeHtml(f.reason)}</div>`).join('')
+      : '<div class="continuity-item">尚无封神者</div>';
+  }
+
+  renderNPCReaction(dialogue) {
+    if (!this.ui.residentDialogueLog) return;
+
+    const moodClass = dialogue.mood || 'neutral';
+    const item = document.createElement('li');
+    item.className = `resident-dialogue-entry npc-reaction mood-${moodClass}`;
+    item.innerHTML = `
+      <div class="resident-dialogue-meta">
+        <strong>${escapeHtml(dialogue.npcName)}</strong>
+        <span class="resident-mood">${escapeHtml(dialogue.mood)}</span>
+        <span class="resident-attitude">${escapeHtml(dialogue.attitude)}</span>
+      </div>
+      <div class="resident-dialogue-text">${escapeHtml(dialogue.text)}</div>
+    `;
+
+    this.ui.residentDialogueLog.prepend(item);
+
+    // Keep only the latest 20 entries
+    while (this.ui.residentDialogueLog.children.length > 20) {
+      this.ui.residentDialogueLog.lastElementChild.remove();
+    }
   }
 
   updateSpecialMeters() {
@@ -1530,11 +1548,19 @@ class CreatorExam3D extends GameEngine {
   }
 
   updateLogs() {
+    const entropyLimit = (this.level && this.level.entropyLimit) || 7;
+    this.cognitiveEffects.updateDistortion(this.entropy, entropyLimit);
+    const distortionLevel = this.cognitiveEffects.distortionLevel;
+
     this.ui.logList.innerHTML = this.logs.map((entry) => {
       let cls = 'log-item';
       if (entry.important) cls += ' important';
       if (entry.text.includes('共鸣')) cls += ' resonance';
-      return `<div class="${cls}">${entry.important ? '<strong>✦</strong> ' : ''}${escapeHtml(entry.text)}</div>`;
+      let text = entry.text;
+      if (distortionLevel > 0.5) {
+        text = this.cognitiveEffects.distortText(text, distortionLevel * 0.5);
+      }
+      return `<div class="${cls}">${entry.important ? '<strong>✦</strong> ' : ''}${escapeHtml(text)}</div>`;
     }).join('');
   }
 

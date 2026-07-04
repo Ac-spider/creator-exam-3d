@@ -211,12 +211,41 @@ class GameEngine {
       tags: options.tags || []
     };
     this.hooks.onWorldEvent(event);
+
+    // Route to NPC manager if available
+    if (this.npcManager) {
+      const npcEventType = this.mapWorldEventToNPCEvent(type);
+      if (npcEventType) {
+        this.npcManager.reactToGameEvent(npcEventType, payload);
+      }
+    }
+
     return event;
+  }
+
+  mapWorldEventToNPCEvent(worldEventType) {
+    const mapping = {
+      'creation_placed': 'onCreation',
+      'unit_rescued': 'onRescue',
+      'unit_lost': 'onLoss',
+      'hazard_spread': 'onHazard',
+      'region_resolved': 'onWin',
+      'region_lost': 'onLose'
+    };
+    return mapping[worldEventType] || null;
   }
 
   recordCreationPlacement(creation, x, y) {
     const card = creation.card;
     this.updateWorldState({ type: 'creation_placed', detail: card.name, creationName: card.name });
+
+    // Record legendary event for high-impact or rare creations
+    const isRare = card.tags?.some(tag => ['legendary', 'epic', 'sacred', 'forbidden'].includes(tag));
+    const isHighCost = (card.cost || 0) >= 3 || (card.stabilityCost || 0) >= 2;
+    if (isRare || isHighCost) {
+      this.recordLegendaryEvent('creation', '造物者', card.name, isHighCost ? 'major' : 'minor');
+    }
+
     return this.emitWorldEvent('creation_placed', {
       creationId: creation.id,
       creationName: card.name,
@@ -1172,6 +1201,11 @@ class GameEngine {
     if (this.gameState !== 'playing') return;
     this.gameState = 'won';
     this.log(`通过：${message}`, true);
+
+    // Record legendary event for victory
+    const impact = this.lost === 0 ? 'major' : 'minor';
+    this.recordLegendaryEvent('miracle', '造物者', this.level.title, impact);
+
     this.hooks.onWin(message);
 
     // Record in persistent world
@@ -1193,6 +1227,10 @@ class GameEngine {
     if (this.gameState !== 'playing') return;
     this.gameState = 'lost';
     this.log(`失败：${message}`, true);
+
+    // Record legendary event for defeat
+    this.recordLegendaryEvent('cataclysm', '造物者', this.level.title, 'major');
+
     this.hooks.onLose(message);
 
     // Record in persistent world

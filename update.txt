@@ -1,0 +1,112 @@
+# 更新日志 (Update Log)
+
+## 项目: 造物者考核3D (Creator Exam 3D)
+## 用途: 记录每次代码更新的主要内容
+
+---
+
+### 2026-07-05 - Phase 1: 核心循环修复 (进行中)
+
+**目标**: 修复浏览器游戏路径，让 Storyteller 和连锁反应图鉴真正生效，并建立统一事件总线。
+
+**涉及文件**:
+- `public/js/game.js`
+- `public/js/gameEngine.js`
+- `public/js/storyteller.js`
+- `public/js/chainReactionCodex.js`
+
+**主要变更**:
+- 移除 `game.js` 中硬编码的 6 对连锁反应检测 (`checkChainReactions`)，改为调用 `GameEngine.applyChainReactions()` 使用完整图鉴的 13 种反应。
+- 删除 `game.js` 中死代码 `applyChainReactions()` 覆盖（引用不存在的 `this.resonanceCodex`）。
+- 修复 `applyStorytellerEvent()`，支持 adaptive events 的 severity 效果。
+- 每回合结束时调用 `storyteller.recordBehavior(this, 'turn_end')`。
+- `storyteller.js` 增加防御性守卫，避免 `game.creationCharges`、`game.level.miraclePoints` 缺失时崩溃。
+
+**验证**:
+- `node debug/test-suite.js` 171/171 通过
+- 浏览器中放置 `cleanse` + `illuminate` 触发完整 codex 反应
+
+**状态**: 已完成
+
+---
+
+### 2026-07-05 - Phase 2: 世界传说与认知效果 (进行中)
+
+**目标**: 让 rescue/creation/win 等玩家行为生成世界传说、神器、NPC 封神；高熵时扭曲日志文本。
+
+**涉及文件**:
+- `public/js/gameEngine.js`
+- `public/js/worldLegend.js`
+- `public/js/cognitiveEffects.js`
+- `public/js/game.js`
+
+**主要变更**:
+- 在 creation placement、unit rescue、level win/loss 处调用 `worldLegendSystem.recordLegendaryEvent`。
+- `gameEngine.endTurn` 中调用 `worldLegendSystem.evolveMyths`。
+- `game.js` 右侧面板显示最新传说/神器/封神信息。
+- 接入 `cognitiveEffects`，根据 `entropy/entropyLimit` 扭曲日志文本。
+
+**验证**:
+- `node debug/test-suite.js` 171/171 通过
+- 浏览器中高熵时日志文本出现扭曲
+- rescue 单位后世界传说系统记录事件
+
+**状态**: 已完成
+
+---
+
+### 2026-07-05 - Phase 3: NPC 社交反应 (进行中)
+
+**目标**: 让 rescue/win/loss 触发 NPC 情绪变化与对话，情绪在社交图谱中传染。
+
+**涉及文件**:
+- `public/js/gameEngine.js`
+- `public/js/npcManager.js`
+- `public/js/socialGraph.js`
+- `public/js/game.js`
+- `public/index.html`
+
+**主要变更**:
+- `gameEngine.emitWorldEvent` 路由到 `npcManager.reactToGameEvent`。
+- NPC 情绪反应通过 `socialGraph.spreadMood` 传染。
+- `game.js` 渲染最新 NPC 对话到 resident-dialogue 面板。
+- 必要时调整 `index.html` 面板结构。
+
+**验证**:
+- `node debug/test-suite.js` 171/171 通过
+- rescue/win/loss 后 NPC 出现情绪变化与对话
+
+**状态**: 已完成
+
+---
+
+### 2026-07-05 - Phase 4: 仪式熔炉与言灵誓约 (进行中)
+
+**目标**: 在右侧面板增加入口，允许玩家选择已放置卡牌进行仪式，以及缔结/背弃誓约。
+
+**涉及文件**:
+- `public/js/gameEngine.js`
+- `public/js/game.js`
+- `public/js/ritualForge.js`
+- `public/js/oathbinding.js`
+- `public/index.html`
+
+**主要变更**:
+- `gameEngine` 构造中初始化 `ritualForge` 和 `oathManager`。
+- 添加 `performRitual(creationIds)` / `bindOath(oathId)` / `breakOath(oathId)` 方法。
+- `game.js` 右侧面板增加 Forge Ritual 和 Oaths 按钮。
+- 选择 2-3 张已放置卡牌可触发仪式并显示结果。
+
+**验证**:
+- `node debug/test-suite.js` 171/171 通过
+- 浏览器中可进行仪式和缔结誓约
+
+**状态**: 进行中
+
+---
+
+### 后续计划
+
+- Phase 5: 认知深渊 + 验证腐化 + 造物者工坊 + 敌方意图预览
+- Phase 6: 跨关卡持久化 + 单位传承
+

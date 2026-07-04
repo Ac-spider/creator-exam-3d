@@ -120,13 +120,14 @@ export class Storyteller {
 
   // Record player behavior for adaptive storytelling
   recordBehavior(game, eventType) {
+    if (!game) return;
     this.playerBehaviorHistory.push({
-      turn: game.turn,
+      turn: game.turn || 0,
       success: game.gameState === 'won',
-      turnsUsed: game.turn,
-      maxTurns: game.level.maxTurns,
-      creationsUsed: game.creations.length,
-      entropy: game.entropy,
+      turnsUsed: game.turn || 0,
+      maxTurns: (game.level && game.level.maxTurns) || 10,
+      creationsUsed: Array.isArray(game.creations) ? game.creations.length : 0,
+      entropy: game.entropy || 0,
       eventType
     });
 
@@ -421,14 +422,16 @@ export class Storyteller {
 
   // Apply adaptive event effects
   applyAdaptiveEvent(game, event, aiMemory) {
-    const history = this.analyzePlayerHistory(aiMemory);
+    if (!game || !event) return false;
 
     switch (event.effect) {
       case 'minorSetback': {
         // Small challenge that doesn't break perfection but tests adaptability
         if (game.entropy > 0) {
           game.entropy += 1;
-          game.log(`【叙事事件】${event.name}：世界裂隙轻微波动 (+1)`);
+          if (typeof game.log === 'function') {
+            game.log(`【叙事事件】${event.name}：世界裂隙轻微波动 (+1)`);
+          }
         }
         break;
       }
@@ -438,26 +441,42 @@ export class Storyteller {
         if (civilians.length > 0) {
           const target = civilians[Math.floor(Math.random() * civilians.length)];
           target.guidedTurns = Math.max(target.guidedTurns, 2);
-          game.log(`【叙事事件】${event.name}：${target.name} 突然看到了希望的光芒`);
+          if (typeof game.log === 'function') {
+            game.log(`【叙事事件】${event.name}：${target.name} 突然看到了希望的光芒`);
+          }
         }
         break;
       }
       case 'memorialBoost': {
         // Narrative boost for empathetic players
-        game.miraclePoints = Math.min(game.miraclePoints + 1, game.level.miraclePoints || 10);
-        game.log(`【叙事事件】${event.name}：记忆化为力量，奇迹点 +1`);
+        const maxMiracle = (game.level && game.level.miraclePoints) || 10;
+        if (typeof game.miraclePoints === 'number') {
+          game.miraclePoints = Math.min(game.miraclePoints + 1, maxMiracle);
+        }
+        if (typeof game.log === 'function') {
+          game.log(`【叙事事件】${event.name}：记忆化为力量，奇迹点 +1`);
+        }
         break;
       }
       case 'creativityBoost': {
         // Encourage creative players
-        game.creationCharges = Math.min(game.creationCharges + 1, game.level.creationCharges + 2);
-        game.log(`【叙事事件】${event.name}：新的造物灵感涌现，造物次数 +1`);
+        const maxCharges = ((game.level && game.level.creationCharges) || 0) + 2;
+        if (typeof game.creationCharges === 'number') {
+          game.creationCharges = Math.min(game.creationCharges + 1, maxCharges);
+        }
+        if (typeof game.log === 'function') {
+          game.log(`【叙事事件】${event.name}：新的造物灵感涌现，造物次数 +1`);
+        }
         break;
       }
       case 'confidenceBoost': {
         // Boost for improving players
-        game.level.maxTurns += 1;
-        game.log(`【叙事事件】${event.name}：世界为你的成长让出更多时间 (+1回合)`);
+        if (game.level && typeof game.level.maxTurns === 'number') {
+          game.level.maxTurns += 1;
+        }
+        if (typeof game.log === 'function') {
+          game.log(`【叙事事件】${event.name}：世界为你的成长让出更多时间 (+1回合)`);
+        }
         break;
       }
       default:

@@ -279,6 +279,9 @@ export class NPCManager {
   // ========== 动态情绪系统 ==========
 
   reactToGameEvent(eventType, eventData = {}) {
+    this.lastEventType = eventType;
+    this.lastEventData = eventData;
+
     const transitions = {
       onRescue: () => this.handleRescueEvent(eventData),
       onLoss: () => this.handleLossEvent(eventData),
@@ -836,5 +839,49 @@ export class NPCManager {
     }
 
     return '...';
+  }
+
+  // Generate a short dialogue reflecting the latest world event
+  getLatestDialogue() {
+    if (!this.npcs || this.npcs.length === 0) return null;
+
+    // Pick the most emotionally affected NPC
+    const sorted = [...this.npcs].sort((a, b) => {
+      const intensityA = (a.dynamicTraits?.hopeLevel || 50) + (a.dynamicTraits?.fearLevel || 50);
+      const intensityB = (b.dynamicTraits?.hopeLevel || 50) + (b.dynamicTraits?.fearLevel || 50);
+      return intensityB - intensityA;
+    });
+
+    const npc = sorted[0];
+    let eventHint = this.lastEventType || 'onTurn';
+    if (eventHint.startsWith('on')) {
+      eventHint = eventHint.slice(2);
+    }
+
+    // Force a mood-matching response by temporarily adjusting mood
+    const originalMood = npc.mood;
+    const eventToMood = {
+      Rescue: '欣慰',
+      Loss: '悲伤',
+      Creation: '惊讶',
+      Hazard: '恐惧',
+      Win: '欢呼',
+      Lose: '绝望'
+    };
+    if (eventToMood[eventHint]) {
+      npc.mood = eventToMood[eventHint];
+    }
+
+    const text = this.generateFallbackDialogue(npc.id, eventHint);
+    npc.mood = originalMood;
+
+    return {
+      npcId: npc.id,
+      npcName: npc.name,
+      mood: npc.mood,
+      attitude: npc.attitude,
+      text,
+      eventType: this.lastEventType
+    };
   }
 }
