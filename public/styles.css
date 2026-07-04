@@ -880,6 +880,33 @@ button.loading {
 }
 .workshop-item input { margin: 0; }
 
+.storyteller-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.storyteller-bar label {
+  font-size: 12px;
+  color: #dfca92;
+}
+.storyteller-bar select {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.3);
+  color: #f4ead1;
+  font-size: 12px;
+}
+.storyteller-desc {
+  font-size: 11px;
+  color: #c8bda6;
+  line-height: 1.4;
+}
+
 @media (max-width: 760px) {
   .save-slot-controls {
     grid-template-columns: 1fr 1fr;

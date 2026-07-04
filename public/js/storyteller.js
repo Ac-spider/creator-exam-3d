@@ -46,6 +46,10 @@ export class Storyteller {
     this.playerBehaviorHistory = [];
   }
 
+  setPersonality(personality) {
+    this.personality = STORYTELLER_PERSONALITIES[personality] || STORYTELLER_PERSONALITIES.cassandra;
+  }
+
   // Analyze current game state
   analyzeState(game) {
     const totalUnits = game.units.length;

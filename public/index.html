@@ -48,6 +48,18 @@
       </section>
 
       <section id="right-panel" class="glass panel">
+        <div class="section-title">AI 叙事引擎</div>
+        <div class="storyteller-bar">
+          <label for="storyteller-select">叙事人格：</label>
+          <select id="storyteller-select">
+            <option value="cassandra">卡珊德拉（经典戏剧）</option>
+            <option value="phoebe">菲比（温和希望）</option>
+            <option value="randy">兰迪（混沌随机）</option>
+            <option value="narrator">说书人（平衡自适应）</option>
+          </select>
+          <div id="storyteller-desc" class="storyteller-desc"></div>
+        </div>
+
         <div class="section-title">造物输入</div>
         <textarea id="creation-input" maxlength="120" placeholder="例如：创造一群会把洪水搬到天空的透明鲸鱼"></textarea>
         <div class="button-row">

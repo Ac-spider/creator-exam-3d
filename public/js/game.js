@@ -201,6 +201,8 @@ class CreatorExam3D extends GameEngine {
       compileBtn: document.getElementById('compile-btn'),
       randomBtn: document.getElementById('random-btn'),
       aiMode: document.getElementById('ai-mode'),
+      storytellerSelect: document.getElementById('storyteller-select'),
+      storytellerDesc: document.getElementById('storyteller-desc'),
       cardPanel: document.getElementById('card-panel'),
       cardType: document.getElementById('card-type'),
       cardName: document.getElementById('card-name'),
@@ -392,6 +394,7 @@ class CreatorExam3D extends GameEngine {
 
     this.ui.compileBtn.addEventListener('click', () => this.handleCompile());
     this.ui.randomBtn.addEventListener('click', () => this.insertInspiration());
+    this.ui.storytellerSelect?.addEventListener('change', (e) => this.handleStorytellerChange(e.target.value));
     this.ui.placeBtn.addEventListener('click', () => this.startPlacement());
     this.ui.endTurnBtn.addEventListener('click', () => this.endTurn());
     this.ui.restartBtn.addEventListener('click', () => this.loadLevel(this.levelIndex));
@@ -1551,6 +1554,7 @@ class CreatorExam3D extends GameEngine {
     this.renderCorruptionPanel();
     this.renderWorkshopPanel();
     this.renderPersistentPanel();
+    this.renderStorytellerPanel();
   }
 
   renderLegendPanel() {
@@ -1847,6 +1851,20 @@ class CreatorExam3D extends GameEngine {
       this.ui.legacyResidentList.innerHTML = residents.length
         ? residents.map(r => `<div class="continuity-item"><strong>${escapeHtml(r.name)}</strong> · ${escapeHtml(r.tier || '故人')} · ${escapeHtml(r.lore || '')}</div>`).join('')
         : '<div class="continuity-item">当前关卡没有持久居民。</div>';
+    }
+  }
+
+  renderStorytellerPanel() {
+    if (!this.ui.storytellerSelect || !this.ui.storytellerDesc) return;
+    const desc = defaultStoryteller.personality?.description || '';
+    this.ui.storytellerDesc.textContent = desc;
+  }
+
+  handleStorytellerChange(personality) {
+    if (defaultStoryteller.setPersonality) {
+      defaultStoryteller.setPersonality(personality);
+      this.addLog(`【叙事引擎】已切换为${defaultStoryteller.personality.name}人格。`, true);
+      this.renderStorytellerPanel();
     }
   }
 
