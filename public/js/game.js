@@ -1167,8 +1167,8 @@ class CreatorExam3D extends GameEngine {
     // Update units - position only for existing, rebuild for new/changed status
     const activeUnitIds = new Set();
     for (const unit of this.units) {
-      activeUnitIds.add(unit.id);
       if (unit.status === 'active') {
+        activeUnitIds.add(unit.id);
         const existing = this.unitMeshPool.get(unit.id);
         if (existing && existing.userData.unitStatus === unit.status) {
           // Only update position
@@ -1397,6 +1397,13 @@ class CreatorExam3D extends GameEngine {
     const labelSprite = this.createLabel(unit.name);
     labelSprite.position.y = unit.type === 'beast' ? 0.88 : 0.7;
     group.add(labelSprite);
+    group.userData = {
+      unit: true,
+      unitId: unit.id,
+      unitName: unit.name,
+      unitType: unit.type,
+      unitStatus: unit.status
+    };
     return group;
   }
 
