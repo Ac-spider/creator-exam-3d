@@ -120,6 +120,7 @@ class CreatorExam3D extends GameEngine {
     this.worldGroup = new THREE.Group();
     this.activeCard = null;
     this.placementMode = false;
+    this.selectedRitualCreations = new Set();
     this.materials = new Map();
     this.geometryCache = new Map();
     this.labelCache = new Map();
@@ -156,6 +157,7 @@ class CreatorExam3D extends GameEngine {
     super.loadLevel(index);
     this.activeCard = null;
     this.placementMode = false;
+    this.selectedRitualCreations.clear();
     this.ui.modal.classList.add('hidden');
     this.ui.nextBtn.classList.add('hidden');
     this.ui.cardPanel.classList.add('hidden');
@@ -233,7 +235,12 @@ class CreatorExam3D extends GameEngine {
       continuityPressures: document.getElementById('continuity-pressures'),
       legendMyths: document.getElementById('legend-myths'),
       legendArtifacts: document.getElementById('legend-artifacts'),
-      legendFigures: document.getElementById('legend-figures')
+      legendFigures: document.getElementById('legend-figures'),
+      ritualCreationList: document.getElementById('ritual-creation-list'),
+      performRitualBtn: document.getElementById('perform-ritual-btn'),
+      ritualResult: document.getElementById('ritual-result'),
+      oathNpcList: document.getElementById('oath-npc-list'),
+      activeOathList: document.getElementById('active-oath-list')
     };
   }
 
@@ -366,6 +373,30 @@ class CreatorExam3D extends GameEngine {
     this.ui.endTurnBtn.addEventListener('click', () => this.endTurn());
     this.ui.restartBtn.addEventListener('click', () => this.loadLevel(this.levelIndex));
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
+    this.ui.performRitualBtn?.addEventListener('click', () => this.handlePerformRitual());
+
+    // Ritual creation checkbox delegation
+    this.ui.ritualCreationList?.addEventListener('change', (e) => {
+      if (e.target.classList.contains('ritual-creation-checkbox')) {
+        const id = e.target.dataset.creationId;
+        if (e.target.checked) this.selectedRitualCreations.add(id);
+        else this.selectedRitualCreations.delete(id);
+      }
+    });
+
+    // Oath NPC / active oath delegation
+    this.ui.oathNpcList?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-bind-oath]');
+      if (!btn) return;
+      const npcId = btn.dataset.npcId;
+      const type = btn.dataset.oathType;
+      this.handleBindOath(npcId, type);
+    });
+    this.ui.activeOathList?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-break-oath]');
+      if (!btn) return;
+      this.handleBreakOath(btn.dataset.oathId);
+    });
     this.ui.modalPrimary.addEventListener('click', () => {
       if (this.gameState === 'won') this.nextLevel();
       else this.loadLevel(this.levelIndex);
@@ -843,6 +874,10 @@ class CreatorExam3D extends GameEngine {
 
   // Override moveBeast for simpler browser version (no trap check)
   moveBeast(unit) {
+    if (unit.tamed) {
+      this.addLog(`${unit.name} 已被驯服，安静地停留在原地。`);
+      return;
+    }
     if (unit.stunned) {
       unit.stunned = false;
       unit.anger = Math.min(this.level.beastAngerLimit || 5, (unit.anger || 0) + 0);
@@ -1459,6 +1494,8 @@ class CreatorExam3D extends GameEngine {
     this.updateUnitList();
     this.updateLogs();
     this.renderLegendPanel();
+    this.renderRitualPanel();
+    this.renderOathPanel();
   }
 
   renderLegendPanel() {
@@ -1482,6 +1519,129 @@ class CreatorExam3D extends GameEngine {
     this.ui.legendFigures.innerHTML = figures.length
       ? figures.map(f => `<div class="continuity-item"><strong>${escapeHtml(f.name)}</strong> — ${escapeHtml(f.reason)}</div>`).join('')
       : '<div class="continuity-item">尚无封神者</div>';
+  }
+
+  renderRitualPanel() {
+    if (!this.ui.ritualCreationList) return;
+
+    const placed = this.creations.filter(c => c.placed && c.remaining > 0);
+    if (placed.length === 0) {
+      this.ui.ritualCreationList.innerHTML = '<div class="continuity-item">还没有已放置的造物</div>';
+      this.ui.performRitualBtn.disabled = true;
+      return;
+    }
+
+    this.ui.ritualCreationList.innerHTML = placed.map(c => {
+      const checked = this.selectedRitualCreations.has(c.id) ? 'checked' : '';
+      return `
+        <label class="ritual-creation-item">
+          <input type="checkbox" class="ritual-creation-checkbox" data-creation-id="${escapeHtml(c.id)}" ${checked}>
+          <span><strong>${escapeHtml(c.card.name)}</strong> · ${escapeHtml(c.card.ability)}</span>
+        </label>
+      `;
+    }).join('');
+
+    this.ui.performRitualBtn.disabled = this.gameState !== 'playing' || this.selectedRitualCreations.size < 2;
+  }
+
+  renderOathPanel() {
+    if (!this.ui.oathNpcList) return;
+
+    const npcs = this.npcManager?.getNPCSummary() || [];
+    if (npcs.length === 0) {
+      this.ui.oathNpcList.innerHTML = '<div class="continuity-item">当前区域没有可缔结誓约的居民</div>';
+      this.ui.activeOathList.innerHTML = '';
+      return;
+    }
+
+    const socialGraph = this.npcManager?.socialGraph || null;
+    this.ui.oathNpcList.innerHTML = npcs.map(npc => {
+      const available = this.oathManager.getAvailableOathTypes(npc.id, socialGraph);
+      const buttons = available.map(o => `
+        <button class="secondary oath-btn" data-bind-oath data-npc-id="${escapeHtml(npc.id)}" data-oath-type="${escapeHtml(o.type)}" ${o.canForm ? '' : 'disabled'}>
+          ${escapeHtml(o.name)}
+        </button>
+      `).join('');
+      return `
+        <div class="continuity-item">
+          <strong>${escapeHtml(npc.name)}</strong> · ${escapeHtml(npc.mood)} · ${escapeHtml(npc.attitude)}
+          <div class="oath-btn-row">${buttons || '暂无可用誓约'}</div>
+        </div>
+      `;
+    }).join('');
+
+    const activeOaths = this.oathManager.getAllActiveOaths();
+    this.ui.activeOathList.innerHTML = activeOaths.length
+      ? activeOaths.map(o => {
+          const typeData = this.oathManager.oaths.get(o.id) ? null : null; // avoid extra lookup
+          const typeName = this.getOathTypeName(o.type);
+          return `
+            <div class="continuity-item">
+              <strong>${escapeHtml(typeName)}</strong> — ${escapeHtml(o.npcName)}
+              <span class="oath-risk">信任 ${o.trustLevel} · 背叛 ${(o.calculateBetrayalChance(socialGraph) * 100).toFixed(0)}%</span>
+              <button class="secondary small" data-break-oath data-oath-id="${escapeHtml(o.id)}">背弃</button>
+            </div>
+          `;
+        }).join('')
+      : '<div class="continuity-item">当前没有活跃誓约</div>';
+  }
+
+  getOathTypeName(type) {
+    const names = {
+      protection: '守护誓约',
+      knowledge: '知识誓约',
+      vengeance: '复仇誓约',
+      sacrifice: '牺牲誓约',
+      kinship: '血盟誓约'
+    };
+    return names[type] || type;
+  }
+
+  handlePerformRitual() {
+    if (this.gameState !== 'playing') {
+      this.showToast('本关已结束。');
+      return;
+    }
+    const ids = Array.from(this.selectedRitualCreations);
+    if (ids.length < 2) {
+      this.showToast('请选择至少 2 张造物卡。');
+      return;
+    }
+
+    const result = this.performRitual(ids);
+    if (result.success) {
+      this.selectedRitualCreations.clear();
+      this.ui.ritualResult.textContent = result.narrative;
+      this.ui.ritualResult.className = 'ritual-result success';
+    } else {
+      const warning = result.warnings?.join('；') || result.error || '仪式失败';
+      this.ui.ritualResult.textContent = warning;
+      this.ui.ritualResult.className = 'ritual-result warning';
+      this.showToast(warning);
+    }
+
+    this.renderWorld();
+    this.updateUi();
+  }
+
+  handleBindOath(npcId, type) {
+    const result = this.bindOath(npcId, type);
+    if (result.success) {
+      this.showToast(`已与 ${result.oath.npcName} 缔结${this.getOathTypeName(type)}。`);
+    } else {
+      this.showToast(result.error || '缔结誓约失败');
+    }
+    this.updateUi();
+  }
+
+  handleBreakOath(oathId) {
+    const result = this.breakOath(oathId);
+    if (result.success) {
+      this.showToast(`已背弃与 ${result.oath.npcName} 的誓约。`);
+    } else {
+      this.showToast(result.error || '背弃誓约失败');
+    }
+    this.updateUi();
   }
 
   renderNPCReaction(dialogue) {

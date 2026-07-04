@@ -4,6 +4,8 @@ import { RESONANCE_CODEX, executeChainReaction } from './chainReactionCodex.js';
 import { legacySystem } from './legacySystem.js';
 import { worldLegendSystem } from './worldLegend.js';
 import { persistentWorld } from './persistentWorld.js';
+import { RitualForge } from './ritualForge.js';
+import { OathManager, OATH_TYPES } from './oathbinding.js';
 
 const BOARD_SIZE = 7;
 const MAX_LOGS = 100;
@@ -67,6 +69,8 @@ class GameEngine {
       onCreationExpire: options.onCreationExpire || (() => {}),
       onWorldEvent: options.onWorldEvent || (() => {})
     };
+    this.ritualForge = new RitualForge();
+    this.oathManager = new OathManager();
     this.reset();
   }
 
@@ -519,6 +523,7 @@ class GameEngine {
     this.spreadHazards();
     this.applyTileHazardsToUnits();
     this.decrementCreationDurations();
+    this.checkOathBetrayals();
 
     // Evolve world myths every 5 turns
     if (this.turn % 5 === 0) {
@@ -936,6 +941,10 @@ class GameEngine {
   }
 
   moveBeast(unit) {
+    if (unit.tamed) {
+      this.log(`${unit.name} 已被驯服，安静地停留在原地`);
+      return;
+    }
     if (unit.stunned) {
       unit.stunned = false;
       this.log(`${unit.name} 本回合被牵制，没有前进`);
@@ -1128,6 +1137,11 @@ class GameEngine {
       if (unit.status !== 'active') continue;
       const terrain = this.getTerrain(unit.x, unit.y);
       if (terrain === TILE.HIGH && this.isCivilian(unit)) continue;
+      if (unit.shieldTurns > 0) {
+        unit.shieldTurns -= 1;
+        this.log(`${unit.name} 的隐形庇护抵消了${TERRAIN_LABELS[terrain]}的伤害`);
+        continue;
+      }
       if (this.isCivilian(unit) && [TILE.WATER, TILE.DARK, TILE.POISON].includes(terrain)) {
         unit.status = 'lost';
         unit.lost = true;
@@ -1669,6 +1683,265 @@ class GameEngine {
       this.recordLegendaryEvent('rescue', '造物者', unit.name, 'major');
     }
     this.hooks.onRescue(unit);
+  }
+
+  // ========== Ritual Forge Integration ==========
+
+  performRitual(creationIds) {
+    if (this.gameState !== 'playing') return { success: false, warnings: ['本关已结束'] };
+    const creations = this.creations.filter(c => creationIds.includes(c.id) && c.placed && c.remaining > 0);
+    if (creations.length < 2) {
+      return { success: false, warnings: ['请选择至少2张已放置的造物卡'] };
+    }
+    if (creations.length > 3) {
+      return { success: false, warnings: ['仪式最多使用3张造物卡'] };
+    }
+
+    const center = creations[0];
+    const targetTerrain = TERRAIN_LABELS[this.getTerrain(center.x, center.y)] || 'land';
+    const gameState = {
+      miraclePoints: this.miraclePoints,
+      entropy: this.entropy,
+      entropyLimit: this.level.entropyLimit,
+      turn: this.turn,
+      targetTerrain
+    };
+
+    const result = this.ritualForge.performRitual(creations, gameState, {});
+    if (!result.success) {
+      return result;
+    }
+
+    // Deduct costs
+    this.miraclePoints -= result.miracleCost;
+    this.entropy += result.entropyChange;
+
+    // Consume sacrificed creations
+    for (const id of result.consumed) {
+      const c = this.creations.find(cc => cc.id === id);
+      if (c) c.remaining = 0;
+    }
+
+    // Attach selected creations for effect targeting
+    result.creations = creations;
+    this.applyRitualEffect(result);
+
+    this.log(`【仪式】${result.narrative}`, true);
+    this.emitWorldEvent('ritual_performed', {
+      recipeId: result.ritual?.id || 'emergent',
+      creationNames: creations.map(c => c.card.name)
+    }, { importance: 0.8, tags: ['ritual'] });
+
+    return result;
+  }
+
+  applyRitualEffect(result) {
+    const recipe = result.ritual;
+    const center = result.creations?.[0];
+
+    if (recipe) {
+      switch (recipe.id) {
+        case 'water_purification': {
+          let changed = 0;
+          for (let y = 0; y < BOARD_SIZE; y++) {
+            for (let x = 0; x < BOARD_SIZE; x++) {
+              const t = this.getTerrain(x, y);
+              if ([TILE.WATER, TILE.FOG, TILE.DARK].includes(t)) {
+                this.setTerrain(x, y, TILE.LAND);
+                changed++;
+              }
+            }
+          }
+          this.log(`净水圣仪净化了 ${changed} 格水域与迷雾`);
+          break;
+        }
+        case 'earth_shaping': {
+          const cells = [];
+          for (let y = 0; y < BOARD_SIZE; y++) {
+            for (let x = 0; x < BOARD_SIZE; x++) cells.push({ x, y });
+          }
+          let changed = 0;
+          for (const cell of cells.sort(() => Math.random() - 0.5).slice(0, 8)) {
+            const t = this.getTerrain(cell.x, cell.y);
+            if ([TILE.LAND, TILE.SWAMP, TILE.FOG, TILE.DARK].includes(t)) {
+              this.setTerrain(cell.x, cell.y, Math.random() < 0.5 ? TILE.HIGH : TILE.FOREST);
+              changed++;
+            }
+          }
+          this.log(`塑地秘仪重塑了 ${changed} 格地形`);
+          break;
+        }
+        case 'beast_taming': {
+          for (const unit of this.units.filter(u => u.type === 'beast' && u.status === 'active')) {
+            unit.tamed = true;
+            unit.anger = 0;
+            unit.stunned = true;
+          }
+          this.log('驯兽古仪让巨兽安静下来');
+          break;
+        }
+        case 'light_forge': {
+          let changed = 0;
+          for (let y = 0; y < BOARD_SIZE; y++) {
+            for (let x = 0; x < BOARD_SIZE; x++) {
+              const t = this.getTerrain(x, y);
+              if ([TILE.DARK, TILE.FOG].includes(t)) {
+                this.setTerrain(x, y, TILE.LAND);
+                changed++;
+              }
+            }
+          }
+          this.log(`光铸神仪驱散了 ${changed} 格黑暗`);
+          break;
+        }
+        case 'shadow_ritual': {
+          let shielded = 0;
+          for (const creation of this.creations.filter(c => c.placed && c.remaining > 0)) {
+            for (const unit of this.units.filter(u => u.status === 'active' && this.distance(u.x, u.y, creation.x, creation.y) <= 3)) {
+              unit.shieldTurns = 2;
+              shielded++;
+            }
+          }
+          this.log(`暗影潜仪为 ${shielded} 个单位披上隐形庇护`);
+          break;
+        }
+        case 'time_weave': {
+          let extended = 0;
+          for (const creation of this.creations) {
+            if (creation.placed && creation.remaining > 0) {
+              creation.remaining += 2;
+              extended++;
+            }
+          }
+          this.log(`织时幻仪延长了 ${extended} 个造物的持续时间`);
+          break;
+        }
+        case 'nature_awakening': {
+          let changed = 0;
+          for (let y = 0; y < BOARD_SIZE; y++) {
+            for (let x = 0; x < BOARD_SIZE; x++) {
+              if (this.getTerrain(x, y) === TILE.LAND) {
+                this.setTerrain(x, y, TILE.FOREST);
+                changed++;
+              }
+            }
+          }
+          for (const unit of this.units.filter(u => u.status === 'active')) {
+            unit.guidedTurns = Math.max(unit.guidedTurns, 1);
+          }
+          this.log(`自然觉醒让 ${changed} 格土地化为森林`);
+          break;
+        }
+        case 'rift_sealing': {
+          this.entropy = Math.max(0, this.entropy - 3);
+          let sealed = 0;
+          for (const c of this.creations) {
+            if (c.placed && c.card.ability === 'memory_beacon') {
+              c.remaining = 0;
+              sealed++;
+            }
+          }
+          this.log(`封隙禁仪封印了裂隙，${sealed} 个记忆信标熄灭`);
+          break;
+        }
+      }
+      return;
+    }
+
+    // Apply emergent effect
+    const effect = result.effects?.[0];
+    if (effect && center) {
+      if (effect.terrainChanges) {
+        for (const change of effect.terrainChanges) {
+          let changed = 0;
+          const range = change.range || 1;
+          for (const cell of this.tilesWithin(center.x, center.y, range + 1)) {
+            const t = this.getTerrain(cell.x, cell.y);
+            if (change.type === 'fertile' && [TILE.LAND, TILE.SWAMP, TILE.FOG].includes(t)) {
+              this.setTerrain(cell.x, cell.y, TILE.FOREST);
+              changed++;
+            } else if (change.type === 'random' && [TILE.LAND, TILE.FOG, TILE.DARK].includes(t)) {
+              const terrains = [TILE.LAND, TILE.WATER, TILE.DARK, TILE.FOG];
+              this.setTerrain(cell.x, cell.y, terrains[Math.floor(Math.random() * terrains.length)]);
+              changed++;
+            }
+          }
+          if (changed) this.log(`涌现仪式改变了 ${changed} 格地形`);
+        }
+      }
+      if (effect.unitBuffs) {
+        for (const buff of effect.unitBuffs) {
+          for (const unit of this.units.filter(u => u.status === 'active')) {
+            if (buff.type === 'balanced') {
+              unit.immuneChaos = Math.max(unit.immuneChaos || 0, buff.duration || 2);
+            } else if (buff.type === 'slowed') {
+              unit.stunned = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ========== Oathbinding Integration ==========
+
+  bindOath(npcId, type) {
+    if (!this.npcManager) {
+      return { success: false, error: '当前区域没有NPC' };
+    }
+    const npc = this.npcManager.getNPC(npcId);
+    if (!npc) {
+      return { success: false, error: '找不到该NPC' };
+    }
+    const socialGraph = this.npcManager.socialGraph || null;
+    const result = this.oathManager.createOath(type, npcId, npc.name, socialGraph);
+    if (result.success) {
+      const oathName = OATH_TYPES[type]?.name || type;
+      this.log(`【誓约】你与 ${npc.name} 缔结了${oathName}。`, true);
+      this.emitWorldEvent('oath_formed', {
+        npcId,
+        npcName: npc.name,
+        type
+      }, { importance: 0.7, tags: ['oath'] });
+    } else {
+      this.log(`缔结誓约失败：${result.error}`);
+    }
+    return result;
+  }
+
+  breakOath(oathId) {
+    const result = this.oathManager.playerBreakOath(oathId);
+    if (result.success) {
+      const oathName = OATH_TYPES[result.oath.type]?.name || '';
+      this.log(`【誓约】你主动背弃了与 ${result.oath.npcName} 的${oathName}。`, true);
+      for (const consequence of result.consequences) {
+        this.log(`  ${consequence.description}`);
+      }
+      this.emitWorldEvent('oath_broken', {
+        oathId,
+        npcId: result.oath.npcId,
+        type: result.oath.type
+      }, { importance: 0.8, tags: ['oath'] });
+    }
+    return result;
+  }
+
+  checkOathBetrayals() {
+    if (!this.oathManager) return;
+    const socialGraph = this.npcManager?.socialGraph || null;
+    const betrayals = this.oathManager.checkBetrayals(socialGraph);
+    for (const betrayal of betrayals) {
+      const oathName = OATH_TYPES[betrayal.oath.type]?.name || '';
+      this.log(`【背叛】${betrayal.oath.npcName} 背弃了${oathName}！`, true);
+      for (const consequence of betrayal.consequences) {
+        this.log(`  ${consequence.description}`);
+      }
+      this.emitWorldEvent('oath_betrayed', {
+        oathId: betrayal.oath.id,
+        npcId: betrayal.oath.npcId,
+        type: betrayal.oath.type
+      }, { importance: 0.9, tags: ['oath', 'betrayal'] });
+    }
   }
 }
 
