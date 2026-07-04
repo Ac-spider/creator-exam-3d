@@ -121,6 +121,8 @@ class CreatorExam3D extends GameEngine {
     this.activeCard = null;
     this.placementMode = false;
     this.selectedRitualCreations = new Set();
+    this.selectedWorkshopItems = new Set();
+    this.currentAbyssRiddle = null;
     this.materials = new Map();
     this.geometryCache = new Map();
     this.labelCache = new Map();
@@ -158,6 +160,8 @@ class CreatorExam3D extends GameEngine {
     this.activeCard = null;
     this.placementMode = false;
     this.selectedRitualCreations.clear();
+    this.selectedWorkshopItems.clear();
+    this.currentAbyssRiddle = null;
     this.ui.modal.classList.add('hidden');
     this.ui.nextBtn.classList.add('hidden');
     this.ui.cardPanel.classList.add('hidden');
@@ -240,7 +244,20 @@ class CreatorExam3D extends GameEngine {
       performRitualBtn: document.getElementById('perform-ritual-btn'),
       ritualResult: document.getElementById('ritual-result'),
       oathNpcList: document.getElementById('oath-npc-list'),
-      activeOathList: document.getElementById('active-oath-list')
+      activeOathList: document.getElementById('active-oath-list'),
+      enemyIntentList: document.getElementById('enemyIntentList'),
+      enemyIntentNarrative: document.getElementById('enemyIntentNarrative'),
+      abyssRiddleText: document.getElementById('abyssRiddleText'),
+      abyssRiddleInput: document.getElementById('abyssRiddleInput'),
+      abyssDecodeBtn: document.getElementById('abyssDecodeBtn'),
+      abyssResult: document.getElementById('abyssResult'),
+      corruptionList: document.getElementById('corruptionList'),
+      corruptionCreateBtn: document.getElementById('corruptionCreateBtn'),
+      workshopInventoryList: document.getElementById('workshopInventoryList'),
+      workshopMaterialsList: document.getElementById('workshopMaterialsList'),
+      workshopDismantleBtn: document.getElementById('workshopDismantleBtn'),
+      workshopModifyBtn: document.getElementById('workshopModifyBtn'),
+      workshopFuseBtn: document.getElementById('workshopFuseBtn')
     };
   }
 
@@ -397,6 +414,23 @@ class CreatorExam3D extends GameEngine {
       if (!btn) return;
       this.handleBreakOath(btn.dataset.oathId);
     });
+
+    // Phase 5 panels
+    this.ui.abyssDecodeBtn?.addEventListener('click', () => this.handleDecodeAbyss());
+    this.ui.corruptionCreateBtn?.addEventListener('click', () => this.handleCreateCorruption());
+    this.ui.workshopDismantleBtn?.addEventListener('click', () => this.handleWorkshopDismantle());
+    this.ui.workshopModifyBtn?.addEventListener('click', () => this.handleWorkshopModify());
+    this.ui.workshopFuseBtn?.addEventListener('click', () => this.handleWorkshopFuse());
+
+    // Workshop selection delegation
+    this.ui.workshopInventoryList?.addEventListener('change', (e) => {
+      if (e.target.classList.contains('workshop-select')) {
+        const id = e.target.dataset.invId;
+        if (e.target.checked) this.selectedWorkshopItems.add(id);
+        else this.selectedWorkshopItems.delete(id);
+      }
+    });
+
     this.ui.modalPrimary.addEventListener('click', () => {
       if (this.gameState === 'won') this.nextLevel();
       else this.loadLevel(this.levelIndex);
@@ -1064,6 +1098,16 @@ class CreatorExam3D extends GameEngine {
   handleWin(message) {
     const isFinal = this.levelIndex === LEVELS.length - 1;
     this.ui.nextBtn.classList.toggle('hidden', isFinal);
+
+    // Store surviving creations into workshop for cross-level crafting
+    const surviving = this.creations.filter(c => c.placed && c.remaining > 0);
+    if (surviving.length > 0) {
+      for (const c of surviving) {
+        this.workshopAddCreation(c.card);
+      }
+      this.addLog(`【工坊】${surviving.length} 个造物已存入跨关工坊。`, true);
+    }
+
     this.showModal('考核通过', message + (isFinal ? ' 你完成了完整原型的全部关卡。' : ' 可以进入下一关。'), '继续', '重试');
   }
 
@@ -1496,6 +1540,10 @@ class CreatorExam3D extends GameEngine {
     this.renderLegendPanel();
     this.renderRitualPanel();
     this.renderOathPanel();
+    this.renderEnemyIntentPanel();
+    this.renderAbyssPanel();
+    this.renderCorruptionPanel();
+    this.renderWorkshopPanel();
   }
 
   renderLegendPanel() {
@@ -1595,6 +1643,235 @@ class CreatorExam3D extends GameEngine {
       kinship: '血盟誓约'
     };
     return names[type] || type;
+  }
+
+  // ========== Phase 5 UI Rendering ==========
+
+  renderEnemyIntentPanel() {
+    if (!this.ui.enemyIntentList) return;
+
+    const result = this.generateEnemyIntentPreview();
+    if (!result || !result.previews || result.previews.length === 0) {
+      this.ui.enemyIntentList.innerHTML = '<div class="continuity-item">当前没有可预见的行动</div>';
+      this.ui.enemyIntentNarrative.innerHTML = '';
+      return;
+    }
+
+    this.ui.enemyIntentList.innerHTML = result.previews.map(p => {
+      const threatClass = p.threat || 'low';
+      return `
+        <div class="continuity-item intent-${threatClass}">
+          <strong>${escapeHtml(p.icon || '•')} ${escapeHtml(p.unitName)}</strong>
+          <span class="intent-type">${escapeHtml(p.name || p.intentType)}</span>
+          <div class="intent-desc">${escapeHtml(p.description || '')}</div>
+          <div class="intent-action">${escapeHtml(p.predictedAction || '')}</div>
+        </div>
+      `;
+    }).join('');
+
+    this.ui.enemyIntentNarrative.innerHTML = `<div class="continuity-item">${escapeHtml(result.narrative || '')}</div>`;
+  }
+
+  renderAbyssPanel() {
+    if (!this.ui.abyssRiddleText) return;
+
+    const abyss = this.cognitiveAbyss;
+    if (!abyss.active && abyss.depth < 0.8) {
+      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">世界裂隙尚浅，认知深渊沉睡中。</div>';
+      this.ui.abyssRiddleInput.classList.add('hidden');
+      this.ui.abyssDecodeBtn.classList.add('hidden');
+      this.ui.abyssResult.innerHTML = '';
+      return;
+    }
+
+    this.ui.abyssRiddleInput.classList.remove('hidden');
+    this.ui.abyssDecodeBtn.classList.remove('hidden');
+
+    if (!this.currentAbyssRiddle) {
+      this.currentAbyssRiddle = this.generateAbyssRiddle('instruction');
+    }
+
+    if (!this.currentAbyssRiddle) {
+      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">深渊静默，未生成谜题。</div>';
+      return;
+    }
+
+    this.ui.abyssRiddleText.innerHTML = `
+      <div class="continuity-item abyss-riddle">
+        <div class="riddle-label">裂隙浓度 ${(abyss.depth * 100).toFixed(0)}%</div>
+        <div class="riddle-text">${escapeHtml(this.currentAbyssRiddle.displayed || this.currentAbyssRiddle.distorted)}</div>
+        <div class="riddle-hint">提示：${escapeHtml(this.currentAbyssRiddle.hint || '倾听深渊的低语')}</div>
+      </div>
+    `;
+  }
+
+  renderCorruptionPanel() {
+    if (!this.ui.corruptionList) return;
+
+    const corruption = this.verificationCorruption;
+    const level = corruption.corruptionLevel || 0;
+    const engineState = corruption.engineOverloaded ? '已崩溃' : '稳定';
+
+    const paradoxTypes = [
+      { key: 'light_dark', name: '噬光之灯' },
+      { key: 'life_death', name: '生死之种' },
+      { key: 'creation_destruction', name: '创灭之锤' },
+      { key: 'time_stillness', name: '静时之沙' },
+      { key: 'shield_spear', name: '矛盾之盾' },
+      { key: 'memory_forget', name: '忘忆之镜' },
+      { key: 'water_fire', name: '蒸腾之焰' },
+      { key: 'guide_mislead', name: '迷途之灯' }
+    ];
+
+    this.ui.corruptionList.innerHTML = `
+      <div class="continuity-item">
+        <strong>当前腐化值：${level}</strong> · 引擎状态：${engineState}
+      </div>
+      <div class="continuity-item paradox-grid">
+        ${paradoxTypes.map(p => `
+          <label class="paradox-option">
+            <input type="radio" name="paradox-type" value="${escapeHtml(p.key)}" ${level >= 10 ? 'disabled' : ''}>
+            <span>${escapeHtml(p.name)}</span>
+          </label>
+        `).join('')}
+      </div>
+    `;
+
+    this.ui.corruptionCreateBtn.disabled = this.gameState !== 'playing' || level >= 10;
+  }
+
+  renderWorkshopPanel() {
+    if (!this.ui.workshopInventoryList) return;
+
+    const inventory = this.workshopGetInventory();
+    const materials = this.workshopGetMaterials();
+
+    if (inventory.length === 0) {
+      this.ui.workshopInventoryList.innerHTML = '<div class="continuity-item">工坊库存为空。胜利后可将本关造物存入工坊。</div>';
+    } else {
+      this.ui.workshopInventoryList.innerHTML = inventory.map(item => `
+        <label class="continuity-item workshop-item">
+          <input type="checkbox" class="workshop-select" data-inv-id="${escapeHtml(item.id)}">
+          <span><strong>${escapeHtml(item.card.name)}</strong> · ${escapeHtml(item.card.ability)}</span>
+        </label>
+      `).join('');
+    }
+
+    const materialEntries = Array.isArray(materials) ? materials : Object.entries(materials || {});
+    if (materialEntries.length === 0) {
+      this.ui.workshopMaterialsList.innerHTML = '<div class="continuity-item">没有可用材料</div>';
+    } else {
+      this.ui.workshopMaterialsList.innerHTML = materialEntries.map(m => {
+        const [name, count] = Array.isArray(m) ? m : [m.name || m.type, m.count];
+        return `<div class="continuity-item"><strong>${escapeHtml(name)}</strong> × ${escapeHtml(String(count))}</div>`;
+      }).join('');
+    }
+
+    const canOperate = this.gameState === 'playing' || inventory.length > 0;
+    this.ui.workshopDismantleBtn.disabled = !canOperate || this.selectedWorkshopItems.size < 1;
+    this.ui.workshopModifyBtn.disabled = !canOperate || this.selectedWorkshopItems.size !== 1;
+    this.ui.workshopFuseBtn.disabled = !canOperate || this.selectedWorkshopItems.size !== 2;
+  }
+
+  handleDecodeAbyss() {
+    const input = this.ui.abyssRiddleInput?.value?.trim();
+    if (!input) {
+      this.showToast('请输入解码答案。');
+      return;
+    }
+
+    const result = this.attemptDecodeAbyss(input);
+    if (this.ui.abyssResult) {
+      this.ui.abyssResult.innerHTML = `<div class="continuity-item ${result.success ? 'success' : 'warning'}">${escapeHtml(result.message)}</div>`;
+    }
+
+    if (result.success) {
+      this.currentAbyssRiddle = null;
+      this.ui.abyssRiddleInput.value = '';
+      if (result.reward) {
+        if (result.reward.type === 'knowledge') {
+          this.showToast(`获得知识：${result.reward.category}`);
+        } else if (result.reward.type === 'ritual') {
+          this.showToast(`发现仪式配方：${result.reward.recipeId}`);
+        }
+      }
+    }
+
+    this.updateUi();
+  }
+
+  handleCreateCorruption() {
+    const selected = this.ui.corruptionList?.querySelector('input[name="paradox-type"]:checked');
+    if (!selected) {
+      this.showToast('请先选择一种悖论类型。');
+      return;
+    }
+
+    const result = this.createParadoxCard(selected.value);
+    if (result.success && result.card) {
+      this.activeCard = result.card;
+      this.showCard(result.card);
+      this.addLog(`【腐化】生成悖论造物「${result.card.name}」，腐化值 +${result.corruption}。`, true);
+      if (result.narrative) this.addLog(result.narrative);
+    } else {
+      const warning = result.warnings?.join('；') || result.narrative || '腐化造物生成失败';
+      this.showToast(warning);
+      this.addLog(`【腐化】${warning}`, true);
+    }
+
+    this.updateUi();
+  }
+
+  handleWorkshopDismantle() {
+    const ids = Array.from(this.selectedWorkshopItems);
+    if (ids.length < 1) {
+      this.showToast('请选择至少一个要拆解的造物。');
+      return;
+    }
+
+    let dismantled = 0;
+    for (const id of ids) {
+      const result = this.workshopDismantle(id);
+      if (result.success) dismantled++;
+    }
+
+    this.selectedWorkshopItems.clear();
+    this.showToast(`拆解完成，获得 ${dismantled} 份材料。`);
+    this.updateUi();
+  }
+
+  handleWorkshopModify() {
+    const ids = Array.from(this.selectedWorkshopItems);
+    if (ids.length !== 1) {
+      this.showToast('请选择一个要改造的造物。');
+      return;
+    }
+
+    const result = this.workshopModify(ids[0], 'range_boost');
+    if (result.success) {
+      this.showToast(`改造成功：${result.card.name}`);
+    } else {
+      this.showToast(result.error || '改造失败');
+    }
+    this.selectedWorkshopItems.clear();
+    this.updateUi();
+  }
+
+  handleWorkshopFuse() {
+    const ids = Array.from(this.selectedWorkshopItems);
+    if (ids.length !== 2) {
+      this.showToast('请选择两个要融合的造物。');
+      return;
+    }
+
+    const result = this.workshopFuse(ids[0], ids[1]);
+    if (result.success) {
+      this.showToast(`融合成功：${result.creation.baseCard.name}`);
+    } else {
+      this.showToast(result.error || '融合失败');
+    }
+    this.selectedWorkshopItems.clear();
+    this.updateUi();
   }
 
   handlePerformRitual() {

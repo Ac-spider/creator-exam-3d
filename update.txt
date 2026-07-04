@@ -100,6 +100,35 @@
 **验证**:
 - `node debug/test-suite.js` 171/171 通过
 - 浏览器中可进行仪式和缔结誓约
+- 已知配方「净水圣仪」可在 Node 脚本中正确匹配并生效
+- 可与老渔夫缔结「知识誓约」、与小烛缔结「守护誓约」
+
+**状态**: 已完成
+
+---
+
+### 2026-07-05 - Phase 5: 认知深渊、验证腐化、造物者工坊、敌方意图预览 (进行中)
+
+**目标**: 把已实现但未接入的高级策略系统全部接到游戏循环与 UI 中。
+
+**涉及文件**:
+- `public/js/gameEngine.js`
+- `public/js/game.js`
+- `public/js/cognitiveAbyss.js`
+- `public/js/validationCorruption.js`
+- `public/js/creatorWorkshop.js`
+- `public/js/enemyIntent.js`
+- `public/index.html`
+
+**主要变更**:
+- 高熵时在回合中触发认知深渊谜题。
+- 验证腐化机制影响卡牌生成与稳定性。
+- 造物者工坊允许改造已放置造物或地形。
+- 敌方意图预览显示在 UI 中。
+
+**验证**:
+- `node debug/test-suite.js` 171/171 通过
+- 浏览器中可看到敌方意图、工坊改造、腐化效果
 
 **状态**: 进行中
 

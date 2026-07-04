@@ -6,6 +6,10 @@ import { worldLegendSystem } from './worldLegend.js';
 import { persistentWorld } from './persistentWorld.js';
 import { RitualForge } from './ritualForge.js';
 import { OathManager, OATH_TYPES } from './oathbinding.js';
+import { CognitiveAbyss } from './cognitiveAbyss.js';
+import { VerificationCorruption } from './verificationCorruption.js';
+import { CreatorWorkshop } from './creatorWorkshop.js';
+import { EnemyIntentSystem } from './enemyIntent.js';
 
 const BOARD_SIZE = 7;
 const MAX_LOGS = 100;
@@ -71,6 +75,10 @@ class GameEngine {
     };
     this.ritualForge = new RitualForge();
     this.oathManager = new OathManager();
+    this.cognitiveAbyss = new CognitiveAbyss();
+    this.verificationCorruption = new VerificationCorruption();
+    this.creatorWorkshop = new CreatorWorkshop();
+    this.enemyIntentSystem = new EnemyIntentSystem();
     this.reset();
   }
 
@@ -439,6 +447,48 @@ class GameEngine {
     };
   }
 
+  // ========== Phase 5 System Facades ==========
+
+  generateEnemyIntentPreview() {
+    return this.enemyIntentSystem.generatePreviews(this.worldState, this);
+  }
+
+  attemptDecodeAbyss(input) {
+    return this.cognitiveAbyss.attemptDecode(input);
+  }
+
+  generateAbyssRiddle(type = 'instruction') {
+    return this.cognitiveAbyss.generateRiddle(type);
+  }
+
+  createParadoxCard(paradoxType) {
+    return this.verificationCorruption.createParadoxCard(paradoxType, this.worldState, this.getPlayerProfile?.());
+  }
+
+  workshopAddCreation(card) {
+    return this.creatorWorkshop.addCreation(card);
+  }
+
+  workshopDismantle(invId) {
+    return this.creatorWorkshop.dismantle(invId);
+  }
+
+  workshopModify(workshopId, modType) {
+    return this.creatorWorkshop.modify(workshopId, modType);
+  }
+
+  workshopFuse(id1, id2) {
+    return this.creatorWorkshop.fuse(id1, id2);
+  }
+
+  workshopGetInventory() {
+    return this.creatorWorkshop.inventory;
+  }
+
+  workshopGetMaterials() {
+    return this.creatorWorkshop.getMaterialsSummary();
+  }
+
   // ========== Game Operations ==========
 
   create(text) {
@@ -522,6 +572,8 @@ class GameEngine {
     this.moveUnits();
     this.spreadHazards();
     this.applyTileHazardsToUnits();
+    this.enemyIntentSystem.generatePreviews(this.worldState, this);
+    this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
     this.decrementCreationDurations();
     this.checkOathBetrayals();
 

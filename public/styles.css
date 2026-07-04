@@ -818,6 +818,68 @@ button.loading {
   line-height: 1.45;
 }
 
+/* Phase 5 panel styles */
+.intent-low { border-left: 3px solid #7ed957; }
+.intent-medium { border-left: 3px solid #ffc46b; }
+.intent-high { border-left: 3px solid #ff6b6b; }
+.intent-none { border-left: 3px solid #aeb7c8; }
+.intent-type {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 11px;
+  color: #dfca92;
+}
+.intent-desc,
+.intent-action {
+  margin-top: 4px;
+  color: #c8bda6;
+  font-size: 11px;
+}
+
+.abyss-riddle .riddle-label {
+  color: #ff91a8;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.abyss-riddle .riddle-text {
+  font-size: 14px;
+  color: #f4ead1;
+  letter-spacing: 0.15em;
+  margin-bottom: 6px;
+}
+.abyss-riddle .riddle-hint {
+  color: #a8c8ff;
+  font-size: 11px;
+}
+
+.paradox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.paradox-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  font-size: 11px;
+}
+.paradox-option input { margin: 0; }
+
+.workshop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.workshop-item input { margin: 0; }
+
 @media (max-width: 760px) {
   .save-slot-controls {
     grid-template-columns: 1fr 1fr;
