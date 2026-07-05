@@ -8,6 +8,10 @@
   const hudScore = document.getElementById('hud-score');
   const comm = document.getElementById('airspace-comm');
   const menu = document.getElementById('airspace-menu');
+  const menuKicker = menu.querySelector('.menu-kicker');
+  const menuTitle = menu.querySelector('h1');
+  const brief = document.getElementById('airspace-brief');
+  const loadout = document.getElementById('airspace-loadout');
   const resultPanel = document.getElementById('airspace-result');
   const resultTitle = document.getElementById('result-title');
   const resultBody = document.getElementById('result-body');
@@ -16,6 +20,7 @@
   const clearanceTitle = document.getElementById('clearance-title');
   const clearanceBody = document.getElementById('clearance-body');
   const skillBtn = document.getElementById('airspace-skill');
+  const startBtn = document.getElementById('airspace-start');
   const W = canvas.width;
   const H = canvas.height;
   const DEG = Math.PI / 180;
@@ -406,6 +411,7 @@
     difficulty: bridge.difficulty(),
     weapon: bridge.weaponLoadout(),
     resonance: bridge.routeResonance(),
+    briefingIndex: 0,
     player: null,
     enemies: [],
     playerBullets: [],
@@ -462,6 +468,27 @@
       resultPanel.classList.add('hidden');
       this.hideClearanceCard();
       this.nextSegment();
+    },
+
+    renderBriefingStep() {
+      const slides = typeof bridge.briefingSlides === 'function' ? bridge.briefingSlides() : [];
+      const slide = slides[this.briefingIndex] || slides[0] || null;
+      const final = this.briefingIndex >= Math.max(0, slides.length - 1);
+      if (slide) {
+        if (menuKicker) menuKicker.textContent = slide.kicker;
+        if (menuTitle) menuTitle.textContent = slide.title;
+        if (brief) brief.textContent = slide.text;
+      }
+      loadout?.classList.toggle('hidden', !final);
+      if (startBtn) startBtn.textContent = final ? '进入空域' : '继续';
+    },
+
+    advanceBriefing() {
+      const slides = typeof bridge.briefingSlides === 'function' ? bridge.briefingSlides() : [];
+      if (this.briefingIndex >= slides.length - 1) return false;
+      this.briefingIndex += 1;
+      this.renderBriefingStep();
+      return true;
     },
 
     nextSegment() {
@@ -1094,7 +1121,9 @@
     if (event.key === 'ArrowDown' || event.key === 's') game.player.targetY += step;
     if (event.key === ' ' || event.key === 'Shift') game.useSkill();
   });
-  document.getElementById('airspace-start').addEventListener('click', () => game.start());
+  startBtn.addEventListener('click', () => {
+    if (!game.advanceBriefing()) game.start();
+  });
   document.getElementById('airspace-return').addEventListener('click', () => bridge.returnToMain());
   document.getElementById('result-return').addEventListener('click', () => bridge.returnToMain());
   skillBtn.addEventListener('click', () => game.useSkill());
@@ -1110,6 +1139,7 @@
 
   window.airCombatGame = game;
   window.CREATOR_EXAM_AIR_COMBAT_READY = true;
+  game.renderBriefingStep();
   game.updateHud();
   game.say(bridge.lineFor('intro'), 3, { eventType: 'airspace_intro' });
   requestAnimationFrame(loop);

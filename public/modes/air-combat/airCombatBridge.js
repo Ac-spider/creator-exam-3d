@@ -413,6 +413,16 @@
     return `第六关和长夜之后，${names}被压缩为空域载体。${rescued}名居民的回声在通讯里等待第七天清算。`;
   }
 
+  function briefingSlides() {
+    const weapon = weaponLoadout();
+    const resonance = routeResonance();
+    return [
+      { kicker: '第六关之后', title: '第七天抵达', text: fallbackBrief() },
+      { kicker: '造物压缩', title: weapon.name, text: `「${weapon.sourceCreation}」被压缩为空域武器。${weapon.description}` },
+      { kicker: '清算航线', title: resonance.name, text: `6 段 Boss 航线已锁定：${route().map(boss => `${boss.affix.name}·${boss.title}`).join(' / ')}。` }
+    ];
+  }
+
   function difficulty() {
     const entropy = Number(context.entropy || 0);
     const defense = context.towerDefenseResult || {};
@@ -573,6 +583,7 @@
     weaponLoadout,
     routeResonance,
     contextualAffixKeys,
+    briefingSlides,
     lineFor,
     requestAirCombatText,
     syncChrome,

@@ -149,6 +149,7 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('requestAirCombatText'), 'air bridge must expose AI narrative requests');
   assert.ok(bridgeSource.includes('/api/narrative'), 'air bridge must use the shared narrative endpoint');
   assert.ok(bridgeSource.includes('airspace_brief'), 'air bridge must generate a context-driven airspace briefing');
+  assert.ok(bridgeSource.includes('briefingSlides'), 'air bridge must expose a multi-step airspace briefing before combat');
   assert.ok(bridgeSource.includes('worldState'), 'air bridge must send main-flow world state to AI narrative');
   assert.ok(bridgeSource.includes('BOSS_AFFIXES'), 'air bridge must adapt upstream boss affixes into finite route modifiers');
   assert.ok(bridgeSource.includes('contextualAffixKeys'), 'air bridge must derive boss affixes from main-game context');
@@ -190,6 +191,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
   assert.ok(airGameSource.includes('sideDamage') && airGameSource.includes('#ffd43b'), 'air combat slice must fire finite side cannon shots for cannon resonance');
   assert.ok(airGameSource.includes('showClearanceCard') && airGameSource.includes('updateClearanceCard'), 'air combat must show a short boss clearance card after each boss defeat');
+  assert.ok(airGameSource.includes('advanceBriefing') && airGameSource.includes('renderBriefingStep'), 'air combat must gate combat start behind briefing steps');
   assert.ok(airGameSource.includes("finish('victory')"), 'air combat route must have a finite victory state');
   assert.ok(airGameSource.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'browser verification should have a readiness signal');
   assert.ok(airIndexSource.includes('id="hud-affix"'), 'air combat markup must expose an affix HUD line');
