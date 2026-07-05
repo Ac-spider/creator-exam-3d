@@ -159,6 +159,8 @@ class CreatorExam3D extends GameEngine {
     this.dialogueMessages = [];
     this.lastNightWatchResult = null;
     this.processedNightWatchResults = new Set();
+    this.lastAirCombatResult = null;
+    this.processedAirCombatResults = new Set();
 
     this.ui = this.collectUi();
     this.initScene();
@@ -247,6 +249,10 @@ class CreatorExam3D extends GameEngine {
       nightWatchTitle: document.getElementById('night-watch-title'),
       nightWatchSummary: document.getElementById('night-watch-summary'),
       nightWatchBtn: document.getElementById('night-watch-btn'),
+      airCombatPanel: document.getElementById('air-combat-panel'),
+      airCombatTitle: document.getElementById('air-combat-title'),
+      airCombatSummary: document.getElementById('air-combat-summary'),
+      airCombatBtn: document.getElementById('air-combat-btn'),
       logList: document.getElementById('log-list'),
       toast: document.getElementById('toast'),
       modal: document.getElementById('modal'),
@@ -449,11 +455,12 @@ class CreatorExam3D extends GameEngine {
     this.ui.restartBtn.addEventListener('click', () => this.loadLevel(this.levelIndex));
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
     this.ui.nightWatchBtn?.addEventListener('click', () => this.openNightWatch());
+    this.ui.airCombatBtn?.addEventListener('click', () => this.openAirCombatMode());
     document.querySelectorAll('[data-test-level]').forEach(btn => {
       btn.addEventListener('click', () => this.jumpToTestLevel(Number(btn.dataset.testLevel)));
     });
     document.getElementById('test-night-watch-btn')?.addEventListener('click', () => this.openNightWatchTestMode());
-    document.getElementById('test-air-combat-btn')?.addEventListener('click', () => this.openAirCombatMode());
+    document.getElementById('test-air-combat-btn')?.addEventListener('click', () => this.openAirCombatMode({ testEntry: true }));
     this.ui.performRitualBtn?.addEventListener('click', () => this.handlePerformRitual());
 
     // Ritual creation checkbox delegation
@@ -571,15 +578,25 @@ class CreatorExam3D extends GameEngine {
     });
     this.ui.modalSecondary.addEventListener('click', () => this.loadLevel(this.levelIndex));
 
-    window.addEventListener('focus', () => this.consumeNightWatchResult());
-    window.addEventListener('pageshow', () => this.consumeNightWatchResult());
+    window.addEventListener('focus', () => {
+      this.consumeNightWatchResult();
+      this.consumeAirCombatResult();
+    });
+    window.addEventListener('pageshow', () => {
+      this.consumeNightWatchResult();
+      this.consumeAirCombatResult();
+    });
     window.addEventListener('storage', (event) => {
       if (event.key === 'creatorExamNightWatchResult') this.consumeNightWatchResult();
+      if (event.key === 'creatorExamAirCombatResult') this.consumeAirCombatResult();
     });
     window.addEventListener('message', (event) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'creator_exam_night_watch_result') {
         this.applyNightWatchResult(event.data.result);
+      }
+      if (event.data?.type === 'creator_exam_air_combat_result') {
+        this.applyAirCombatResult(event.data.result);
       }
     });
 
@@ -974,18 +991,63 @@ class CreatorExam3D extends GameEngine {
     this.showToast(`已跳到第 ${index + 1} 关。`);
   }
 
-  async openAirCombatMode() {
+  buildAirCombatContext() {
+    const activeResidents = this.units
+      .filter(unit => this.isCivilian(unit) && unit.status !== 'lost')
+      .map(unit => unit.name);
+    const lostResidents = this.units
+      .filter(unit => this.isCivilian(unit) && unit.status === 'lost')
+      .map(unit => unit.name);
+    const recentCreations = this.creations
+      .map(creation => ({
+        name: creation.card?.name || '未命名造物',
+        ability: creation.card?.ability || 'unknown',
+        type: creation.card?.type || '奇迹',
+        remaining: creation.remaining || 0
+      }))
+      .slice(-8);
+
+    return {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      mode: 'rift_airspace',
+      day: 7,
+      regionId: this.level?.id || 'final-exam',
+      regionTitle: this.level?.title || '第七天裂隙空域',
+      endingPressure: this.entropy / (this.level?.entropyLimit || 7),
+      entropy: this.entropy || 0,
+      rescuedResidents: activeResidents,
+      lostResidents,
+      recentCreations,
+      towerDefenseResult: this.lastNightWatchResult,
+      discoveredLore: this.worldState?.discoveredLore || [],
+      playerStyle: this.memorySystem?.getProfileSummary?.() || this.worldState?.playStyle || '未知'
+    };
+  }
+
+  async openAirCombatMode(options = {}) {
+    const context = this.buildAirCombatContext();
+    try {
+      localStorage.setItem('creatorExamAirCombatContext', JSON.stringify(context));
+    } catch (_error) {
+      this.showToast('无法写入空域上下文。');
+      return;
+    }
+
     const url = new URL('./modes/air-combat/index.html', window.location.href);
+    url.searchParams.set('from', 'creator-exam');
+    if (options.testEntry) url.searchParams.set('testEntry', '1');
     try {
       const response = await fetch(url.toString(), { method: 'HEAD' });
       if (response.ok) {
         const tab = window.open(url.toString(), 'creator_exam_air_combat');
+        this.addLog(`【第七天裂隙空域】已压缩 ${context.recentCreations.length || 1} 件造物为空域载体。`, true);
+        this.showToast(tab ? '第七天裂隙空域已打开。' : '浏览器拦截了新窗口，正在当前页打开。');
         if (!tab) window.location.href = url.toString();
         return;
       }
     } catch (_error) {}
 
-    this.showToast('空战模式还没迁入；构思文档在 docs/superpowers/specs/2026-07-05-air-combat-integration-concept.md');
+    this.showToast('空战模式文件未找到。');
   }
 
   isFinalExam() {
@@ -1123,6 +1185,79 @@ class CreatorExam3D extends GameEngine {
       ? `<strong>${result.victory ? '防线守住' : '防线破损'} · ${result.survivedWaves || 0} 波</strong><span>居民保护 ${result.residentsProtected || 0}，裂隙变化 ${Number(result.entropyDelta || 0) >= 0 ? '+' : ''}${result.entropyDelta || 0}</span>`
       : `<strong>熵值 ${this.entropy || 0} · 居民 ${this.rescued || 0}/${this.units.filter(unit => this.isCivilian(unit)).length}</strong><span>${creations.length ? `最近造物：${creations.join('、')}` : '最近造物会映射成守夜塔。'}</span>`;
     this.ui.nightWatchBtn.textContent = result ? '再次守夜' : (this.gameState === 'won' ? '开启最终防线' : '预演守夜');
+  }
+
+  consumeAirCombatResult() {
+    let result = null;
+    try {
+      const raw = localStorage.getItem('creatorExamAirCombatResult');
+      if (raw) result = JSON.parse(raw);
+    } catch (_error) {
+      result = null;
+    }
+    if (!result) return;
+    this.applyAirCombatResult(result);
+    try { localStorage.removeItem('creatorExamAirCombatResult'); } catch (_error) {}
+  }
+
+  applyAirCombatResult(result) {
+    if (!result?.id) return;
+    if (this.processedAirCombatResults.has(result.id)) {
+      const previousMoment = this.lastAirCombatResult?.notableMoment || '';
+      this.lastAirCombatResult = { ...this.lastAirCombatResult, ...result };
+      const events = this.worldSession?.worldSimulation?.eventBus?.events || [];
+      const event = events.find(entry => entry.type === 'airspace_resolved' && entry.payload?.id === result.id);
+      if (event) event.payload = { ...event.payload, ...result };
+      if (result.notableMoment && result.notableMoment !== previousMoment) {
+        this.addLog(`【空域关键时刻】${result.notableMoment}`);
+      }
+      this.memoryStore?.saveWorld?.(this.worldSession.worldSimulation);
+      this.renderContinuity();
+      this.updateUi();
+      return;
+    }
+
+    this.processedAirCombatResults.add(result.id);
+    this.lastAirCombatResult = result;
+    const victory = result.outcome === 'victory';
+    const delta = victory ? -1 : 1;
+    if (this.level?.entropyLimit) {
+      this.entropy = Math.max(0, Math.min(this.level.entropyLimit, this.entropy + delta));
+    }
+
+    this.recordGameEvent({
+      type: 'airspace_resolved',
+      levelId: result.regionId || this.level?.id || 'final-exam',
+      regionId: result.regionId || this.level?.id || 'final-exam',
+      turn: this.turn,
+      payload: result,
+      importance: 1,
+      tags: ['airspace', 'air_combat', victory ? 'victory' : 'loss', result.endingModifier || 'ending_modifier']
+    });
+
+    this.addLog(`【第七天裂隙空域】${victory ? '清算完成' : '清算失败'}，分数 ${result.score || 0}，裂隙变化 ${delta >= 0 ? '+' : ''}${delta}。`, true);
+    if (result.notableMoment) this.addLog(`【空域裁决】${result.notableMoment}`);
+    this.memoryStore?.saveWorld?.(this.worldSession.worldSimulation);
+    this.renderContinuity();
+    this.updateUi();
+  }
+
+  renderAirCombatPanel() {
+    if (!this.ui.airCombatPanel) return;
+    const available = this.isFinalExam();
+    this.ui.airCombatPanel.classList.toggle('hidden', !available);
+    if (!available) return;
+
+    const creations = this.creations.map(c => c.card?.name).filter(Boolean).slice(-3);
+    const result = this.lastAirCombatResult;
+    const watchText = this.lastNightWatchResult
+      ? `守夜${this.lastNightWatchResult.victory ? '已守住' : '留下裂隙伤口'}，空域难度会随之调整。`
+      : '可先预演；正式节奏建议在长夜守城后进入。';
+    this.ui.airCombatTitle.textContent = result ? '第七天裂隙空域已结算' : '第七天裂隙空域';
+    this.ui.airCombatSummary.innerHTML = result
+      ? `<strong>${result.outcome === 'victory' ? '空域清算' : '载体坠落'} · ${result.clearedLayers || 0}/6 段</strong><span>分数 ${result.score || 0}，结局修饰 ${result.endingModifier || '未记录'}</span>`
+      : `<strong>熵值 ${this.entropy || 0} · ${watchText}</strong><span>${creations.length ? `造物武器来源：${creations.join('、')}` : '最近造物会压缩成空域武器。'}</span>`;
+    this.ui.airCombatBtn.textContent = result ? '再次进入空域' : (this.lastNightWatchResult ? '进入第七天空域' : '预演空域');
   }
 
   loadNextRegion(regionData) {
@@ -2177,6 +2312,7 @@ class CreatorExam3D extends GameEngine {
     this.renderAdvancedMechanicsPanel();
     this.renderStorytellerPanel();
     this.renderNightWatchPanel();
+    this.renderAirCombatPanel();
     this.renderIntentArrows();
   }
 
@@ -2225,7 +2361,6 @@ class CreatorExam3D extends GameEngine {
         canAdvance: this.levelIndex >= 0 && this.levelIndex < LEVELS.length - 1
       },
       social: this.getSocialDemoState(),
-      logs: this.logs
       logs: this.logs
     };
   }

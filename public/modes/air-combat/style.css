@@ -1,0 +1,220 @@
+:root {
+  color-scheme: dark;
+  --bg: #0c1114;
+  --panel: rgba(16, 21, 24, 0.88);
+  --line: rgba(232, 238, 232, 0.16);
+  --text: #eef3ec;
+  --muted: #a9b5b0;
+  --gold: #d8c58a;
+  --teal: #72d6bd;
+  --red: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: radial-gradient(circle at 50% 0%, #172126 0%, var(--bg) 54%, #07090a 100%);
+  color: var(--text);
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+}
+
+.airspace-shell {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+}
+
+.airspace-stage {
+  position: relative;
+  width: min(100vw - 24px, 540px);
+  aspect-ratio: 540 / 860;
+  max-height: calc(100vh - 24px);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #090d10;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
+}
+
+#airspace-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.airspace-hud {
+  position: absolute;
+  inset: 10px 10px auto 10px;
+  display: grid;
+  grid-template-columns: 1.3fr 1.2fr 0.7fr;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.airspace-hud > div,
+.airspace-comm,
+.airspace-skill,
+.airspace-menu,
+.airspace-result {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(9, 13, 16, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.airspace-hud > div {
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.hud-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.airspace-hud strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.airspace-comm {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 84px;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: #dbe9df;
+  font-size: 13px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.airspace-skill {
+  position: absolute;
+  right: 12px;
+  bottom: 16px;
+  min-width: 116px;
+  padding: 12px 14px;
+  color: #0c1114;
+  border: 0;
+  background: var(--gold);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.airspace-skill:disabled {
+  color: rgba(238, 243, 236, 0.68);
+  background: rgba(122, 130, 128, 0.42);
+  cursor: default;
+}
+
+.airspace-menu,
+.airspace-result {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(88%, 390px);
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  transform: translate(-50%, -50%);
+}
+
+.airspace-menu h1,
+.airspace-result h2 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0;
+}
+
+.airspace-menu p,
+.airspace-result p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.menu-kicker {
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.airspace-loadout {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.airspace-loadout strong {
+  color: var(--text);
+}
+
+.primary,
+.secondary {
+  min-height: 42px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.primary {
+  color: #0c1114;
+  background: var(--teal);
+}
+
+.secondary {
+  color: var(--text);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 560px) {
+  .airspace-shell {
+    padding: 0;
+  }
+
+  .airspace-stage {
+    width: 100vw;
+    max-height: none;
+    height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .airspace-hud {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .airspace-hud > div:last-child {
+    grid-column: 1 / -1;
+  }
+}

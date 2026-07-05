@@ -36,6 +36,21 @@
 
 **继承**：extends GameEngine
 
+### 2.1 第七天空域模式 (public/modes/air-combat/)
+**职责**：终局空战清算层、造物武器化、结果回写
+**关键功能**：
+- 通过 `creatorExamAirCombatContext` 接收主游戏状态（熵值、居民、最近造物、守夜结果）
+- 将造物能力映射为 Canvas 空战武器与造物脉冲
+- 通过 `/api/narrative` 生成空域简报、Boss台词、武器副作用、近身通讯和胜负清算，DeepSeek Flash 等模型可由后端环境变量切换
+- 把实时射击、敌机、弹幕、Boss、碰撞、道具和分数限制在独立模式页
+- 将 6 段 Boss 航线结算为 `creatorExamAirCombatResult`
+- 主游戏收到结果后写入 `airspace_resolved` 世界事件，并生成最终结局钩子
+
+**边界**：
+- 不迁入外部空战仓库的联机、排行榜、挑战码、普通关卡菜单
+- 不把实时战斗逻辑放入 `GameEngine` 回合制核心
+- 不在每帧或每次射击时调用AI；AI只进入低频叙事节点，实时数值、碰撞、胜负保持本地可验证
+
 ### 3. DebugGame (debug/debugGame.js)
 **职责**：CLI调试工具、自动化测试
 **关键功能**：

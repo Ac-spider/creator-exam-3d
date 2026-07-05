@@ -129,6 +129,67 @@ function assertRuleAlphabetMatchesGeneratedRegions() {
   }
 }
 
+function assertAirCombatIntegration() {
+  const gameSource = readSource('public/js/game.js');
+  const bridgeSource = readSource('public/modes/air-combat/airCombatBridge.js');
+  const airGameSource = readSource('public/modes/air-combat/airCombatGame.js');
+  const airIndexSource = readSource('public/modes/air-combat/index.html');
+
+  assert.ok(gameSource.includes('buildAirCombatContext()'), 'main game must build air combat context');
+  assert.ok(gameSource.includes('creatorExamAirCombatContext'), 'main game must publish air combat context');
+  assert.ok(gameSource.includes('creatorExamAirCombatResult'), 'main game must consume air combat result');
+  assert.ok(gameSource.includes("type: 'airspace_resolved'"), 'air combat result must become airspace_resolved world event');
+  assert.ok(gameSource.includes('renderAirCombatPanel()'), 'final exam UI must expose the airspace panel');
+
+  assert.ok(bridgeSource.includes('BOSS_ROUTE'), 'air bridge must define finite boss route');
+  assert.ok(bridgeSource.includes('洪水残响'), 'air route must reframe early memories as bosses');
+  assert.ok(bridgeSource.includes('终考秩序'), 'air route must include final-exam boss wrapper');
+  assert.ok(bridgeSource.includes('WEAPON_MAP'), 'air bridge must map creations into weapons');
+  assert.ok(bridgeSource.includes('publishResult'), 'air bridge must return a result to main game');
+  assert.ok(bridgeSource.includes('requestAirCombatText'), 'air bridge must expose AI narrative requests');
+  assert.ok(bridgeSource.includes('/api/narrative'), 'air bridge must use the shared narrative endpoint');
+  assert.ok(bridgeSource.includes('airspace_brief'), 'air bridge must generate a context-driven airspace briefing');
+  assert.ok(bridgeSource.includes('worldState'), 'air bridge must send main-flow world state to AI narrative');
+
+  assert.ok(airGameSource.includes('class Boss'), 'air combat slice must include boss logic');
+  assert.ok(airGameSource.includes('class Enemy'), 'air combat slice must include enemy logic');
+  assert.ok(airGameSource.includes('useSkill()'), 'air combat slice must include creation weapon pulse');
+  assert.ok(airGameSource.includes("finish('victory')"), 'air combat route must have a finite victory state');
+  assert.ok(airGameSource.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'browser verification should have a readiness signal');
+  for (const eventType of [
+    'airspace_intro',
+    'airspace_segment',
+    'airspace_boss',
+    'airspace_boss_phase',
+    'airspace_weapon',
+    'airspace_near',
+    'airspace_boss_defeated',
+    'airspace_victory',
+    'airspace_defeat'
+  ]) {
+    assert.ok(airGameSource.includes(eventType), `air combat must request AI narrative for ${eventType}`);
+  }
+  const airUpdateStart = airGameSource.lastIndexOf('    update(dt) {');
+  assert.notEqual(airUpdateStart, -1, 'air combat must have a frame update loop');
+  const airUpdateEnd = airGameSource.indexOf('    draw() {', airUpdateStart);
+  assert.notEqual(airUpdateEnd, -1, 'air combat update loop must be followed by draw loop');
+  const airUpdateBlock = airGameSource.slice(airUpdateStart, airUpdateEnd);
+  assert.ok(!airUpdateBlock.includes('requestAirCombatText'), 'air combat must not request AI narrative inside the frame update loop');
+
+  const combinedModeSource = `${bridgeSource}\n${airGameSource}\n${airIndexSource}`;
+  assert.doesNotMatch(combinedModeSource, /Multiplayer|WebRTC|Leaderboard|ChallengeHistory|EndlessBoard|selectMap|普通关卡|排行榜/, 'air combat mode must not carry over old multiplayer, leaderboard, or normal-level shell');
+
+  const world = new WorldSimulation();
+  world.recordGameEvent({
+    type: 'airspace_resolved',
+    regionId: 'final-exam',
+    payload: { id: 'air-test', outcome: 'victory', clearedLayers: 6 },
+    importance: 1,
+    tags: ['airspace']
+  });
+  assert.ok(world.getFutureHooks('final-exam').some(hook => hook.type === 'airspace_ending'), 'airspace_resolved must create an ending hook');
+}
+
 async function assertNoKeyServerFallbacks() {
   await withNoKeyServer(async baseUrl => {
     const creation = await postJson(baseUrl, '/api/compile-creation', { text: 'create a small guiding lantern' });
@@ -160,6 +221,7 @@ async function assertNoKeyServerFallbacks() {
 assertBrowserImportsAndEscapes();
 assertWorldTextAndResidents();
 assertRuleAlphabetMatchesGeneratedRegions();
+assertAirCombatIntegration();
 await assertNoKeyServerFallbacks();
 
 console.log('Current-code reality tests passed');

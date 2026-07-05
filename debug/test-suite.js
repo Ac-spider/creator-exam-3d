@@ -4343,6 +4343,53 @@ runner.test('Night Watch integration - should keep AI bridge and result update w
   runner.assert(game.includes('event.payload = { ...event.payload, ...result }'), 'game.js should merge AI settlement updates into the world event payload');
 });
 
+runner.test('Air Combat integration - should keep finite airspace bridge and result wiring', async () => {
+  const { readFileSync } = await import('node:fs');
+  const bridge = readFileSync(new URL('../public/modes/air-combat/airCombatBridge.js', import.meta.url), 'utf8');
+  const airGame = readFileSync(new URL('../public/modes/air-combat/airCombatGame.js', import.meta.url), 'utf8');
+  const airHtml = readFileSync(new URL('../public/modes/air-combat/index.html', import.meta.url), 'utf8');
+  const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+  const world = readFileSync(new URL('../public/js/worldSimulation.js', import.meta.url), 'utf8');
+
+  for (const token of ['creatorExamAirCombatContext', 'creatorExamAirCombatResult', 'BOSS_ROUTE', 'WEAPON_MAP', 'publishResult', 'requestAirCombatText', '/api/narrative', 'airspace_brief', 'worldState']) {
+    runner.assert(bridge.includes(token), `airCombatBridge.js should include ${token}`);
+  }
+  for (const bossName of ['洪水残响', '迷雾航标', '战争回声', '终考秩序']) {
+    runner.assert(bridge.includes(bossName), `airspace route should include ${bossName}`);
+  }
+  runner.assert(airGame.includes('class Boss'), 'air combat should include Boss logic');
+  runner.assert(airGame.includes('class Enemy'), 'air combat should include enemy logic');
+  runner.assert(airGame.includes('useSkill()'), 'air combat should include creation weapon pulse');
+  runner.assert(airGame.includes("finish('victory')"), 'air combat should have a finite victory route');
+  runner.assert(airGame.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'air combat should expose browser readiness');
+  for (const eventType of [
+    'airspace_intro',
+    'airspace_segment',
+    'airspace_boss',
+    'airspace_boss_phase',
+    'airspace_weapon',
+    'airspace_near',
+    'airspace_boss_defeated',
+    'airspace_victory',
+    'airspace_defeat'
+  ]) {
+    runner.assert(airGame.includes(eventType), `air combat should request AI narrative for ${eventType}`);
+  }
+  const updateStart = airGame.lastIndexOf('    update(dt) {');
+  const drawStart = airGame.indexOf('    draw() {', updateStart);
+  const updateBlock = airGame.slice(updateStart, drawStart);
+  runner.assert(!updateBlock.includes('requestAirCombatText'), 'air combat should not call AI narrative from the frame update loop');
+  runner.assert(airHtml.includes('airCombatBridge.js'), 'air mode should load bridge before game logic');
+  runner.assert(game.includes('buildAirCombatContext()'), 'main game should build air combat context');
+  runner.assert(game.includes("type: 'airspace_resolved'"), 'main game should write airspace_resolved events');
+  runner.assert(world.includes('airspace_ending'), 'world simulation should derive an airspace ending hook');
+
+  const combined = `${bridge}\n${airGame}\n${airHtml}`;
+  for (const forbidden of ['Multiplayer', 'WebRTC', 'Leaderboard', 'ChallengeHistory', 'EndlessBoard', '普通关卡', '排行榜']) {
+    runner.assert(!combined.includes(forbidden), `air combat mode should not carry over ${forbidden}`);
+  }
+});
+
 runner.test('Test jump UI - should expose all levels and mode buttons only', async () => {
   const { readFileSync } = await import('node:fs');
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
