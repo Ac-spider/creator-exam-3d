@@ -40,6 +40,12 @@ function loadAirBridgeForContext(context) {
   return sandbox.window.AirCombatBridge;
 }
 
+function configuredAirAffixKeys() {
+  const bridgeSource = readSource('public/modes/air-combat/airCombatBridge.js');
+  const affixBlock = sourceBlock(bridgeSource, '  const BOSS_AFFIXES = {', '  const WEAPON_MAP = {');
+  return [...affixBlock.matchAll(/\n    \w+: \{\n      key: '([^']+)'/g)].map(match => match[1]);
+}
+
 function postJson(baseUrl, path, body) {
   return fetch(`${baseUrl}${path}`, {
     method: 'POST',
@@ -375,6 +381,26 @@ function assertAirCombatRouteBalance() {
     recentCreations: [{ name: '记忆航标', ability: 'memory_beacon' }]
   });
   assert.ok(memoryRoute.routeResonance().pointDefenseRange > 0, 'memory beacon weapons should unlock finite point-defense even without rescued residents');
+
+  const failedDefenseRoute = loadAirBridgeForContext({
+    entropy: 4,
+    endingPressure: 0.6,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '断裂路标', ability: 'terrain' }],
+    towerDefenseResult: { victory: false }
+  });
+  const coveredAffixes = new Set([
+    ...highPressure.route(),
+    ...repairOpening.route(),
+    ...lostRoute.route(),
+    ...mineRoute.route(),
+    ...memoryRoute.route(),
+    ...failedDefenseRoute.route()
+  ].map(boss => boss.affix.key));
+  for (const key of configuredAirAffixKeys()) {
+    assert.ok(coveredAffixes.has(key), `configured finite air affix ${key} must be reachable from a main-flow context`);
+  }
 }
 
 async function assertNoKeyServerFallbacks() {
