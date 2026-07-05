@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { runInNewContext } from 'node:vm';
 import { WorldSimulation } from '../public/js/worldSimulation.js';
 import { ResidentRegistry } from '../public/js/residentRegistry.js';
 
@@ -18,6 +19,24 @@ function sourceBlock(source, startToken, endToken) {
   const end = source.indexOf(endToken, start + startToken.length);
   assert.notEqual(end, -1, `missing end token: ${endToken}`);
   return source.slice(start, end);
+}
+
+function loadAirBridgeForContext(context) {
+  const bridgeSource = readSource('public/modes/air-combat/airCombatBridge.js');
+  const sandbox = {
+    URLSearchParams,
+    decodeURIComponent,
+    encodeURIComponent,
+    window: {
+      location: { search: `?context=${encodeURIComponent(JSON.stringify(context))}` }
+    },
+    document: {
+      title: '',
+      getElementById: () => null
+    }
+  };
+  runInNewContext(bridgeSource, sandbox);
+  return sandbox.window.AirCombatBridge;
 }
 
 function postJson(baseUrl, path, body) {
@@ -259,6 +278,40 @@ function assertAirCombatIntegration() {
   assert.ok(world.getFutureHooks('final-exam').some(hook => hook.type === 'airspace_ending'), 'airspace_resolved must create an ending hook');
 }
 
+function assertAirCombatRouteBalance() {
+  const highPressure = loadAirBridgeForContext({
+    entropy: 8,
+    endingPressure: 0.9,
+    rescuedResidents: [{ name: '阿岚' }, { name: '小满' }, { name: '砾' }],
+    lostResidents: [],
+    recentCreations: [{ name: '城墙核心', ability: 'block' }],
+    towerDefenseResult: { victory: true },
+    discoveredLore: [{ title: '秩序会在高空折返' }]
+  });
+  const highRoute = highPressure.route();
+  assert.equal(highRoute.length, 6, 'air combat must stay a finite 6-layer route');
+  assert.equal(
+    highRoute.map(boss => boss.affix.name).join(' / '),
+    '离子风暴 / 棱镜 / 装甲 / 狙击封锁 / 护卫 / 维修',
+    'high-pressure block route must show the actual six affixes in order'
+  );
+  assert.equal(highPressure.routeResonance().armorCaliberDamage, 2, 'prior-flow armor caliber must remain bounded and derived from context');
+  for (const boss of highRoute) {
+    assert.ok(['prism', 'ionStorm', 'escort', 'repair', undefined].includes(boss.affix.attack), `unknown finite affix attack ${boss.affix.attack}`);
+    assert.ok(boss.hp >= 300 && boss.hp <= 1100, `boss ${boss.title} hp is outside finite route bounds`);
+  }
+
+  const repairOpening = loadAirBridgeForContext({
+    entropy: 1,
+    endingPressure: 0.76,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '透明鲸鱼', ability: 'absorb_water' }],
+    towerDefenseResult: { victory: true }
+  });
+  assert.equal(repairOpening.route()[0].affix.key, 'repair', 'successful night-watch pressure should be able to open with repair affix');
+}
+
 async function assertNoKeyServerFallbacks() {
   await withNoKeyServer(async baseUrl => {
     const creation = await postJson(baseUrl, '/api/compile-creation', { text: 'create a small guiding lantern' });
@@ -291,6 +344,7 @@ assertBrowserImportsAndEscapes();
 assertWorldTextAndResidents();
 assertRuleAlphabetMatchesGeneratedRegions();
 assertAirCombatIntegration();
+assertAirCombatRouteBalance();
 await assertNoKeyServerFallbacks();
 
 console.log('Current-code reality tests passed');
