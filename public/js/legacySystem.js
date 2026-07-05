@@ -194,7 +194,7 @@ export class LegacySystem {
   }
 
   // 获取可用于下一关卡的传承NPC
-  getNPCsForNextLevel(nextLevelId) {
+  getNPCsForNextLevel(nextLevelId, options = {}) {
     const npcs = [];
 
     for (const legacy of this.legacyUnits.values()) {
@@ -202,7 +202,7 @@ export class LegacySystem {
       if (!tier) continue;
 
       // 检查概率
-      if (Math.random() < tier.probability) {
+      if (options.force || Math.random() < tier.probability) {
         // 检查是否已经在该关卡出现过
         if (!legacy.levels.includes(nextLevelId)) {
           npcs.push(this.createLegacyNPC(legacy, nextLevelId));
@@ -301,7 +301,7 @@ export class LegacySystem {
   }
 
   // 获取可用于下一关卡的传承单位
-  getUnitsForNextLevel(nextLevelId) {
+  getUnitsForNextLevel(nextLevelId, options = {}) {
     const candidates = [];
 
     for (const legacy of this.legacyUnits.values()) {
@@ -309,7 +309,7 @@ export class LegacySystem {
       if (!tier) continue;
 
       // 检查概率
-      if (Math.random() < tier.probability) {
+      if (options.force || Math.random() < tier.probability) {
         // 检查是否已经在该关卡出现过
         if (!legacy.levels.includes(nextLevelId)) {
           candidates.push(this.createLegacyUnit(legacy, nextLevelId));

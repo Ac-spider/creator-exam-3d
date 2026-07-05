@@ -771,6 +771,85 @@ runner.test('传承系统 - 应记录救援历史', () => {
   }
 });
 
+runner.test('传承系统 - 后续关卡应把传承者作为真实单位加入', () => {
+  const snapshot = JSON.parse(JSON.stringify(legacySystem.serialize()));
+  try {
+    legacySystem.deserialize({ legacyUnits: [], globalTraits: [], rescueHistory: [], levelCompletions: 0 });
+
+    const game = new DebugGame();
+    game.levelIndex = 0;
+    game.reset();
+
+    const villager = game.units.find(u => u.type === 'villager' && u.status === 'active');
+    runner.assert(villager, '需要一名可记录的村民');
+
+    const legacy = legacySystem.recordRescue(villager, game.level.id, {
+      turn: 1,
+      maxTurns: game.level.maxTurns,
+      lost: 0
+    });
+    legacy.tier = 'legend';
+
+    game.loadLevel(1);
+
+    const returned = game.units.find(u => u.isLegacyReturn && u.legacyId === legacy.id);
+    runner.assert(returned, '传承者应作为真实棋盘单位进入下一关');
+    runner.assert(game.returnedLegacyUnits.some(u => u.id === returned.id), '回归单位应记录在 returnedLegacyUnits');
+    runner.assert(returned.goal, '回归单位应继承当前关卡目标');
+    runner.assert(returned.residentId === `legacy-resident-${legacy.id}`, '回归单位应保留稳定居民身份');
+    runner.assert(game.isGoalReached(returned) || game.nextStepToward(returned, returned.goal), '回归单位应能参与寻路移动');
+  } finally {
+    legacySystem.deserialize(snapshot);
+  }
+});
+
+runner.test('传承系统 - 演示模式应能强制召回低概率传承单位', () => {
+  const snapshot = JSON.parse(JSON.stringify(legacySystem.serialize()));
+  try {
+    legacySystem.deserialize({ legacyUnits: [], globalTraits: [], rescueHistory: [], levelCompletions: 0 });
+
+    const game = new DebugGame();
+    game.levelIndex = 0;
+    game.reset();
+
+    const villager = game.units.find(u => u.type === 'villager' && u.status === 'active');
+    runner.assert(villager, '需要一名可记录的村民');
+
+    const legacy = legacySystem.recordRescue(villager, game.level.id, {
+      turn: 1,
+      maxTurns: game.level.maxTurns,
+      lost: 1
+    });
+    legacy.tier = 'survivor';
+
+    const forced = legacySystem.getUnitsForNextLevel('night-mine', { force: true });
+    runner.assert(forced.some(unit => unit.legacyId === legacy.id), 'force模式应跳过概率并召回传承单位');
+  } finally {
+    legacySystem.deserialize(snapshot);
+  }
+});
+
+runner.test('NPC社交 - 传承回归单位应进入对话与社交图谱', async () => {
+  const { NPCManager } = await import('../public/js/npcManager.js');
+  const manager = new NPCManager(LEVELS[1]);
+  const unit = {
+    name: '阿粟',
+    type: 'villager',
+    residentId: 'legacy-resident-flood-village-0',
+    isLegacy: true,
+    isLegacyReturn: true,
+    legacyId: 'flood-village-0',
+    goal: { x: 0, y: 0 }
+  };
+
+  manager.addUnitNPCs([unit], { legacyReturn: true });
+
+  const npc = manager.getNPC(unit.residentId);
+  runner.assert(npc, '传承回归单位应能作为 NPC 被查询');
+  runner.assert(npc.isLegacyReturn === true, 'NPC 应标记为传承回归');
+  runner.assert(manager.socialGraph.nodes.has(npc.id), '传承回归 NPC 应进入社交图谱');
+});
+
 // 测试连锁反应图鉴 - 统计功能
 runner.test('连锁反应图鉴 - 统计应正确计算', () => {
   const game = new DebugGame();
@@ -2388,6 +2467,26 @@ runner.test('高级机制面板 - 裂隙回响应可从浏览器入口触发', a
   runner.assert(action.enabled === true, '裂隙回响浏览器入口应可触发');
 });
 
+runner.test('高级机制面板 - 传承回归应可从浏览器入口触发', async () => {
+  const { buildAdvancedMechanicsViewModel } = await import('../public/js/advancedMechanicsPresenter.js');
+  const model = buildAdvancedMechanicsViewModel({
+    rift: { entropyRatio: 0, activeEchoes: [] },
+    workshop: { inventory: [], materials: {}, workshopCreations: [] },
+    ritual: { suggestions: [], placedCreationCount: 0 },
+    oath: { selectedNpc: null, available: [], activeOaths: [] },
+    abyss: { state: { level: 'dormant', description: '沉睡' }, currentRiddle: null },
+    story: { summary: {}, availableBeats: 0 },
+    resident: { actions: [] },
+    legacy: { total: 1, returned: [], canAdvance: true },
+    social: {}
+  });
+
+  const action = model.actions.find(item => item.id === 'return-legacy');
+  runner.assert(action, '应包含传承回归动作');
+  runner.assert(action.enabled === true, '传承回归浏览器入口应可触发');
+  runner.assert(action.hint.includes('下一关') || action.hint.includes('回归'), '入口提示应说明跨关回归');
+});
+
 // 测试造物者工坊系统
 runner.test('造物者工坊 - 拆解造物获得材料', async () => {
   const { CreatorWorkshop, MATERIAL_TYPES } = await import('../public/js/creatorWorkshop.js');
@@ -2880,7 +2979,7 @@ runner.test('WorldSimulation集成 - GameEngine事件应生成futureHooks', asyn
 
   const villager = game.units.find(unit => unit.name === '小烛');
   if (villager) {
-    villager.residentId = 'resident-xiaozhu';
+    runner.assertEqual(villager.residentId, 'resident-xiaozhu', '基础关卡单位应天然带稳定residentId');
     game.rescueUnit(villager);
   }
 

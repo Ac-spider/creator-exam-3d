@@ -14,6 +14,9 @@ import { applyAbility } from './abilityHandlers.js';
 
 const BOARD_SIZE = 7;
 const MAX_LOGS = 100;
+const KNOWN_UNIT_RESIDENT_IDS = Object.freeze({
+  '小烛': 'resident-xiaozhu'
+});
 
 const TERRAIN_LABELS = {
   [TILE.LAND]: '平地',
@@ -101,7 +104,8 @@ class GameEngine {
       stunned: false,
       guidedTurns: 0,
       met: false,
-      ...unit
+      ...unit,
+      residentId: unit.residentId || this.resolveUnitResidentId(unit, unitIndex)
     }))
     this.applyLegacyUnitEffects();
     this.creations = []
@@ -120,6 +124,7 @@ class GameEngine {
     this.resonanceCodex.reset()
     this.npcManager = null
     this.legacyUnits = []
+    this.returnedLegacyUnits = []
   }
 
   loadLevel(index) {
@@ -137,6 +142,10 @@ class GameEngine {
       }
     }
     this.legacyUnits = legacyNPCs;
+
+    // 加载会作为真实棋盘单位回归的传承角色，而不只是 NPC 面板展示。
+    const legacyReturnUnits = legacySystem.getUnitsForNextLevel(this.level.id);
+    this.integrateLegacyReturnUnits(legacyReturnUnits);
 
     this.hooks.onStateChange();
   }
@@ -156,6 +165,100 @@ class GameEngine {
     this.levelIndex = -1
     this.reset()
     return this.level
+  }
+
+  integrateLegacyReturnUnits(legacyReturnUnits = []) {
+    this.returnedLegacyUnits = []
+    for (const legacyUnit of legacyReturnUnits) {
+      const unit = this.prepareLegacyReturnUnit(legacyUnit)
+      if (!unit) continue
+      this.units.push(unit)
+      this.returnedLegacyUnits.push(unit)
+      this.log(`【传承回归】${unit.name} 作为${unit.tier || 'survivor'}单位加入本关，目标 ${this.tileName(unit.goal.x, unit.goal.y)}。`, true)
+    }
+    return this.returnedLegacyUnits
+  }
+
+  prepareLegacyReturnUnit(legacyUnit) {
+    if (!legacyUnit) return null
+    const goal = this.resolveLegacyReturnGoal(legacyUnit)
+    if (!goal) return null
+    const position = this.findLegacyReturnSpawn(legacyUnit, goal)
+    if (!position) return null
+    return {
+      ...legacyUnit,
+      id: this.uniqueLegacyReturnId(legacyUnit),
+      residentId: legacyUnit.residentId || `legacy-resident-${legacyUnit.legacyId || legacyUnit.id}`,
+      x: position.x,
+      y: position.y,
+      goal,
+      status: 'active',
+      rescued: false,
+      lost: false,
+      stunned: false,
+      guidedTurns: Math.max(legacyUnit.guidedTurns || 0, legacyUnit.guideOthers ? 1 : 0),
+      met: false,
+      isLegacy: true,
+      isLegacyReturn: true
+    }
+  }
+
+  uniqueLegacyReturnId(legacyUnit) {
+    const baseId = legacyUnit.legacyId || legacyUnit.id || legacyUnit.name || 'unit'
+    let index = 1
+    let id = `legacy-return-${baseId}`
+    while (this.units.some(unit => unit.id === id)) {
+      index += 1
+      id = `legacy-return-${baseId}-${index}`
+    }
+    return id
+  }
+
+  resolveLegacyReturnGoal(legacyUnit) {
+    const sameType = this.level.units.find(unit => unit.type === legacyUnit.type && unit.goal)
+    const guidedUnit = this.level.units.find(unit => (this.isCivilian(unit) || this.isMessenger(unit)) && unit.goal)
+    const anyGoal = this.level.units.find(unit => unit.goal)
+    const source = sameType || guidedUnit || anyGoal
+    if (source?.goal) return { ...source.goal }
+
+    for (let y = 0; y < BOARD_SIZE; y++) {
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        const terrain = this.getTerrain(x, y)
+        if (terrain === TILE.EXIT || terrain === TILE.SACRED || terrain === TILE.HIGH || terrain === TILE.CITY) {
+          return { x, y }
+        }
+      }
+    }
+    return null
+  }
+
+  resolveUnitResidentId(unit, unitIndex) {
+    if (!unit?.name) return null
+    if (KNOWN_UNIT_RESIDENT_IDS[unit.name]) return KNOWN_UNIT_RESIDENT_IDS[unit.name]
+    return `resident-${this.level?.id || 'region'}-${unitIndex}`
+  }
+
+  findLegacyReturnSpawn(legacyUnit, goal) {
+    const probe = { ...legacyUnit, goal }
+    const preferredTerrains = new Set([TILE.VILLAGE, TILE.LAND, TILE.BORDER, TILE.BRIDGE])
+    const candidates = []
+    for (let y = 0; y < BOARD_SIZE; y++) {
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        if (this.unitAt(x, y)) continue
+        if (!this.isPassable(x, y, probe)) continue
+        const terrain = this.getTerrain(x, y)
+        const pathProbe = { ...probe, x, y }
+        const canMove = x === goal.x && y === goal.y ? true : !!this.nextStepToward(pathProbe, goal)
+        if (!canMove) continue
+        candidates.push({
+          x,
+          y,
+          score: (preferredTerrains.has(terrain) ? 100 : 0) + this.distance(x, y, goal.x, goal.y)
+        })
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score)
+    return candidates[0] || null
   }
 
   initWorldState() {

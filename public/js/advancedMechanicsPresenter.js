@@ -51,6 +51,7 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
   const story = state.story || {}
   const resident = state.resident || {}
   const social = state.social || {}
+  const legacy = state.legacy || {}
 
   const inventory = workshop.inventory || []
   const workshopCreations = workshop.workshopCreations || []
@@ -200,6 +201,14 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
       label: '记录传承',
       enabled: true,
       hint: '把一名单位写入跨关传承'
+    },
+    {
+      id: 'return-legacy',
+      label: '召回传承',
+      enabled: (legacy.total || 0) > 0 || legacy.canAdvance !== false,
+      hint: (legacy.returned || []).length
+        ? `已回归 ${(legacy.returned || []).map(unit => unit.name).join('、')}`
+        : '写入传承并进入下一关验证真实单位重现'
     },
     {
       id: 'trigger-social',

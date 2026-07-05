@@ -196,6 +196,9 @@ class CreatorExam3D extends GameEngine {
     if (this.legacyUnits && this.legacyUnits.length > 0) {
       this.npcManager.addLegacyNPCs(this.legacyUnits);
     }
+    if (this.returnedLegacyUnits && this.returnedLegacyUnits.length > 0) {
+      this.npcManager.addUnitNPCs?.(this.returnedLegacyUnits, { legacyReturn: true });
+    }
 
     // Update memory system
     this.memorySystem.worldState.currentLevel = this.level.id;
@@ -2216,7 +2219,13 @@ class CreatorExam3D extends GameEngine {
       resident: {
         actions: this.worldSession?.worldSimulation?.residentAgentSystem?.recentActions || []
       },
+      legacy: {
+        total: legacySystem.legacyUnits.size,
+        returned: this.returnedLegacyUnits || [],
+        canAdvance: this.levelIndex >= 0 && this.levelIndex < LEVELS.length - 1
+      },
       social: this.getSocialDemoState(),
+      logs: this.logs
       logs: this.logs
     };
   }
@@ -2296,6 +2305,9 @@ class CreatorExam3D extends GameEngine {
       case 'record-legacy':
         this.triggerLegacyDemo();
         break;
+      case 'return-legacy':
+        this.triggerLegacyReturnDemo();
+        return;
       case 'trigger-social':
         this.triggerSocialDemo();
         break;
@@ -2553,6 +2565,45 @@ class CreatorExam3D extends GameEngine {
       lost: this.lost
     });
     this.addLog(`【传承演示】${legacy.name} 已写入传承，等级 ${legacy.tier}。`, true);
+  }
+
+  triggerLegacyReturnDemo() {
+    if (legacySystem.legacyUnits.size === 0) {
+      this.triggerLegacyDemo();
+    }
+
+    if (this.levelIndex >= 0 && this.levelIndex < LEVELS.length - 1) {
+      const nextIndex = this.levelIndex + 1;
+      this.loadLevel(nextIndex);
+      let returned = this.returnedLegacyUnits || [];
+      if (!returned.length) {
+        const forced = legacySystem.getUnitsForNextLevel(this.level.id, { force: true });
+        returned = this.integrateLegacyReturnUnits(forced);
+        this.npcManager?.addUnitNPCs?.(returned, { legacyReturn: true });
+        if (returned.length) {
+          this.addLog('【传承回归演示】自然概率未触发，演示已强制召回传承单位。', true);
+        }
+      }
+      if (returned.length) {
+        this.showToast(`传承回归：${returned.map(unit => unit.name).join('、')} 已加入下一关`);
+        this.addLog(`【传承回归演示】已进入${this.level.shortTitle}，${returned.length} 名被救援者作为真实单位重现。`, true);
+      } else {
+        this.showToast('已进入下一关，但没有符合条件的传承单位');
+        this.addLog('【传承回归演示】未找到可在下一关重现的传承单位。', true);
+      }
+      this.renderWorld();
+      this.updateUi();
+      return;
+    }
+
+    const forced = Array.from(legacySystem.legacyUnits.values())
+      .filter(legacy => !legacy.levels.includes(this.level.id))
+      .map(legacy => legacySystem.createLegacyUnit(legacy, this.level.id));
+    const returned = this.integrateLegacyReturnUnits(forced);
+    this.npcManager?.addUnitNPCs?.(returned, { legacyReturn: true });
+    this.showToast(returned.length ? `传承回归：${returned.map(unit => unit.name).join('、')}` : '没有可召回的传承单位');
+    this.renderWorld();
+    this.updateUi();
   }
 
   getSocialDemoState() {
@@ -3498,6 +3549,7 @@ class CreatorExam3D extends GameEngine {
     if (!this.ui.legacyUnitList) return;
 
     const legacyUnits = Array.from(legacySystem.legacyUnits.values());
+    const returnedUnits = this.returnedLegacyUnits || [];
     if (legacyUnits.length === 0) {
       this.ui.legacyUnitList.innerHTML = '<div class="continuity-item">尚未有单位被传承。</div>';
     } else {
@@ -3508,7 +3560,12 @@ class CreatorExam3D extends GameEngine {
           <strong>${escapeHtml(l.name)}</strong> · ${escapeHtml(tierNames[l.tier] || l.tier)}
           <div class="legacy-meta">救援 ${l.rescueCount} 次 · 特质：${escapeHtml(traits)}</div>
         </div>`;
-      }).join('');
+      }).join('') + (returnedUnits.length ? returnedUnits.map(unit => `
+        <div class="continuity-item">
+          <strong>回归单位：${escapeHtml(unit.name)}</strong>
+          <div class="legacy-meta">当前位置 (${unit.x + 1}, ${unit.y + 1}) · 目标 (${unit.goal.x + 1}, ${unit.goal.y + 1}) · 身份 ${escapeHtml(unit.residentId || unit.legacyId || unit.id)}</div>
+        </div>
+      `).join('') : '');
     }
 
     if (this.ui.legacyWorldStats) {
