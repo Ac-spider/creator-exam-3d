@@ -1189,6 +1189,33 @@ runner.test('SocialGraph - 应构建关系网并传播情绪', async () => {
   runner.assert(stats.totalEdges >= 2, '应有至少2条边');
 });
 
+runner.test('SocialGraph - 应计算社交距离并检测小团体', async () => {
+  const { SocialGraph } = await import('../public/js/socialGraph.js');
+  const graph = new SocialGraph();
+
+  graph.addNode('npc1', { name: '老渔夫', dynamicTraits: { trustLevel: 50, fearLevel: 30, hopeLevel: 40 } });
+  graph.addNode('npc2', { name: '小烛', dynamicTraits: { trustLevel: 70, fearLevel: 20, hopeLevel: 80 } });
+  graph.addNode('npc3', { name: '守忆人', dynamicTraits: { trustLevel: 45, fearLevel: 55, hopeLevel: 35 } });
+  graph.addNode('npc4', { name: '边境诗人', dynamicTraits: { trustLevel: 60, fearLevel: 40, hopeLevel: 55 } });
+
+  graph.addEdge('npc1', 'npc2', 'friend', 25);
+  graph.addEdge('npc2', 'npc3', 'mentor', 20);
+  graph.addEdge('npc1', 'npc3', 'family', 18);
+  graph.addEdge('npc3', 'npc4', 'witness', 12);
+
+  const distance = graph.getSocialDistance('npc1', 'npc4', { minStrength: 0 });
+  runner.assert(distance.distance === 2, 'npc1 到 npc4 应为2跳社交距离');
+  runner.assert(distance.path.join('>') === 'npc1>npc3>npc4', '应返回最短社交路径');
+
+  const cliques = graph.detectCliques({ minStrength: 10, minSize: 3 });
+  runner.assert(cliques.length === 1, '应检测到一个小团体');
+  runner.assert(cliques[0].members.includes('npc1') && cliques[0].members.includes('npc3'), '小团体应包含强关系成员');
+
+  const stats = graph.getNetworkStats();
+  runner.assert(stats.cliqueCount === 1, '网络统计应包含小团体数量');
+  runner.assert(stats.largestCliqueSize >= 3, '网络统计应包含最大团体规模');
+});
+
 // 测试 PersistentWorld 系统
 runner.test('PersistentWorld - 应记录关卡并更新遗产轨迹', async () => {
   const { PersistentWorld, LEGACY_TRACKS } = await import('../public/js/persistentWorld.js');

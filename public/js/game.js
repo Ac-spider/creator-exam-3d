@@ -2213,6 +2213,7 @@ class CreatorExam3D extends GameEngine {
       resident: {
         actions: this.worldSession?.worldSimulation?.residentAgentSystem?.recentActions || []
       },
+      social: this.getSocialDemoState(),
       logs: this.logs
     };
   }
@@ -2291,6 +2292,9 @@ class CreatorExam3D extends GameEngine {
         break;
       case 'record-legacy':
         this.triggerLegacyDemo();
+        break;
+      case 'trigger-social':
+        this.triggerSocialDemo();
         break;
       case 'generate-riddle':
         this.triggerAbyssDemo();
@@ -2453,6 +2457,61 @@ class CreatorExam3D extends GameEngine {
       lost: this.lost
     });
     this.addLog(`【传承演示】${legacy.name} 已写入传承，等级 ${legacy.tier}。`, true);
+  }
+
+  getSocialDemoState() {
+    const graph = this.npcManager?.socialGraph;
+    if (!graph) return { edgeCount: 0, cliqueCount: 0, sampleDistance: '无图谱' };
+    const stats = graph.getNetworkStats?.() || {};
+    const npcs = this.npcManager?.getNPCSummary?.() || [];
+    const first = npcs[0]?.id;
+    const last = npcs[npcs.length - 1]?.id;
+    const distance = first && last ? graph.getSocialDistance(first, last, { minStrength: -50 }) : null;
+    const cliques = graph.detectCliques?.({ minStrength: 8, minSize: 3 }) || [];
+    const summary = cliques.length
+      ? `社交团体：${cliques[0].names.join('、')}；${npcs[0]?.name || '角色'} 到 ${npcs[npcs.length - 1]?.name || '角色'} 距离 ${distance?.distance ?? '不可达'}。`
+      : '社交图谱尚未形成三人以上小团体。';
+    return {
+      edgeCount: stats.totalEdges || 0,
+      cliqueCount: cliques.length,
+      sampleDistance: Number.isFinite(distance?.distance) ? distance.distance : '不可达',
+      summary
+    };
+  }
+
+  triggerSocialDemo() {
+    const graph = this.npcManager?.socialGraph;
+    const npcs = this.npcManager?.getNPCSummary?.() || [];
+    if (!graph || npcs.length < 3) {
+      this.showToast('当前关卡 NPC 不足，无法形成社交图谱演示。');
+      return;
+    }
+
+    const ids = npcs.map(n => n.id);
+    const relationTypes = ['family', 'friend', 'mentor', 'debtor', 'witness', 'rival'];
+    for (let i = 0; i < ids.length - 1; i++) {
+      const type = relationTypes[i % relationTypes.length];
+      graph.addEdge(ids[i], ids[i + 1], type, type === 'rival' ? -18 : 22);
+    }
+    if (ids.length >= 4) {
+      graph.addEdge(ids[0], ids[2], 'friend', 18);
+      graph.addEdge(ids[1], ids[3], 'witness', 12);
+    }
+    graph.recordSocialEvent({
+      type: 'rescue',
+      actor: ids[0],
+      target: ids[1],
+      witnesses: ids.slice(2, 5),
+      impact: 'positive'
+    });
+    graph.spreadMood(ids[0], '希望', 80);
+
+    const cliques = graph.detectCliques({ minStrength: 8, minSize: 3 });
+    const distance = graph.getSocialDistance(ids[0], ids[ids.length - 1], { minStrength: -50 });
+    const distanceText = Number.isFinite(distance.distance) ? `${distance.distance} 跳` : '不可达';
+    const groupText = cliques[0]?.names.join('、') || '尚未形成';
+    this.addLog(`【社交演示】关系类型已播种，小团体：${groupText}；${npcs[0].name} 到 ${npcs[npcs.length - 1].name} 的社交距离：${distanceText}。`, true);
+    this.showToast(`社交图谱：${cliques.length} 个小团体，距离 ${distanceText}`);
   }
 
   updateMissionDossier() {

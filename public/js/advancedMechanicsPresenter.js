@@ -50,6 +50,7 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
   const abyss = state.abyss || {}
   const story = state.story || {}
   const resident = state.resident || {}
+  const social = state.social || {}
 
   const inventory = workshop.inventory || []
   const workshopCreations = workshop.workshopCreations || []
@@ -111,6 +112,12 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
         ? `最近行动 ${residentActions.length} · ${residentActions[residentActions.length - 1]?.type || '观察'}`
         : '等待世界事件',
       tone: residentActions.some(action => action.type !== 'idle') ? 'active' : 'idle'
+    },
+    {
+      id: 'social-graph',
+      title: '社交图谱',
+      status: `关系 ${social.edgeCount || 0} · 小团体 ${social.cliqueCount || 0} · 距离 ${social.sampleDistance ?? '未计算'}`,
+      tone: (social.cliqueCount || 0) > 0 ? 'active' : (social.edgeCount || 0) > 0 ? 'ready' : 'idle'
     }
   ]
 
@@ -195,6 +202,12 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
       hint: '把一名单位写入跨关传承'
     },
     {
+      id: 'trigger-social',
+      label: '演示社交',
+      enabled: true,
+      hint: '生成多种关系、小团体和社交距离'
+    },
+    {
       id: 'manifest-echo',
       label: '召出回响',
       enabled: false,
@@ -225,6 +238,7 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
     ritualSuggestions.length ? `推荐仪式：${ritualSuggestions[0].recipe?.name || '未知仪式'}，风险 ${ritualSuggestions[0].risk || 'low'}` : '场上有 2 个以上造物时可尝试仪式。',
     activeEchoes.length ? `回响：${activeEchoes.slice(0, 2).map(echoName).join('；')}` : '裂隙升高后可以召出旧造物回响。',
     residentActions.length ? `居民代理：${residentActions.slice(-2).map(action => action.payload?.text || action.type).join('；')}` : '居民代理会根据救援、失败和造物记忆调整行动。',
+    social.summary || '社交图谱会计算情绪传染、小团体和两名角色之间的社交距离。',
     abyss.currentRiddle ? `谜题：${abyss.currentRiddle.displayed}` : (abyssState.description || '深渊尚未干涉现实。')
   ].join('\n')
 
