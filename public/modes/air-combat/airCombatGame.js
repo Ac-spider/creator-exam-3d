@@ -516,6 +516,12 @@
       const speed = this.weapon.kind === 'cannon' ? -760 : -900;
       const spread = this.weapon.kind === 'beam' ? [-5, 0, 5] : this.weapon.kind === 'cannon' ? [0] : [-11, 11];
       for (const ox of spread) this.playerBullets.push({ x: p.x + ox, y: p.y - 18, vx: ox * 1.5, vy: speed, r: this.weapon.kind === 'cannon' ? 6 : 4, damage, color, dead: false });
+      for (let i = 1; i <= Math.min(this.resonance.sidePairs || 0, 2); i += 1) {
+        const offset = 20 * i;
+        const sideDamage = Math.max(1, Math.round(damage * 0.55));
+        this.playerBullets.push({ x: p.x - offset, y: p.y - 8, vx: -145 - i * 28, vy: speed, r: 3, damage: sideDamage, color: '#ffd43b', dead: false });
+        this.playerBullets.push({ x: p.x + offset, y: p.y - 8, vx: 145 + i * 28, vy: speed, r: 3, damage: sideDamage, color: '#ffd43b', dead: false });
+      }
       if (this.weapon.kind === 'beam') {
         const pairs = Math.min(this.resonance.splitPairs || 0, 3);
         for (let i = 1; i <= pairs; i += 1) {

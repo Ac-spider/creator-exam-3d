@@ -164,6 +164,7 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('jammerCloud') && bridgeSource.includes('扰频云层'), 'air bridge must adapt upstream jammer cloud as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('fieldRepair') && bridgeSource.includes('纳米修复'), 'air bridge must adapt upstream field repair as a prior-flow reward');
   assert.ok(bridgeSource.includes('splitPairs') && bridgeSource.includes('分束棱镜'), 'air bridge must adapt upstream split laser as beam resonance');
+  assert.ok(bridgeSource.includes('sidePairs') && bridgeSource.includes('侧翼炮塔'), 'air bridge must adapt upstream side cannons as cannon resonance');
 
   assert.ok(airGameSource.includes('class Boss'), 'air combat slice must include boss logic');
   assert.ok(airGameSource.includes('class Enemy'), 'air combat slice must include enemy logic');
@@ -187,6 +188,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('fireBossEscort'), 'air combat slice must apply upstream escort affix as finite add pressure');
   assert.ok(airGameSource.includes('updateFieldRepair') && airGameSource.includes('fieldRepairStatus'), 'air combat slice must apply upstream field repair locally');
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
+  assert.ok(airGameSource.includes('sideDamage') && airGameSource.includes('#ffd43b'), 'air combat slice must fire finite side cannon shots for cannon resonance');
   assert.ok(airGameSource.includes('showClearanceCard') && airGameSource.includes('updateClearanceCard'), 'air combat must show a short boss clearance card after each boss defeat');
   assert.ok(airGameSource.includes("finish('victory')"), 'air combat route must have a finite victory state');
   assert.ok(airGameSource.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'browser verification should have a readiness signal');

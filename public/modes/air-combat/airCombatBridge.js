@@ -255,11 +255,12 @@
     cannon: {
       key: 'cannon',
       name: '秩序共鸣',
-      effect: '重弹伤害提高，但射击节奏更重。',
+      effect: '重弹伤害提高，并展开一对侧翼炮塔斜向清场。',
       color: '#f87171',
       damageBonus: 2,
       fireIntervalMult: 1.08,
-      scoreMult: 1.06
+      scoreMult: 1.06,
+      sidePairs: 1
     }
   };
 
