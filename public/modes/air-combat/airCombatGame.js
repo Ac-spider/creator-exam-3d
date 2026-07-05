@@ -11,6 +11,10 @@
   const resultPanel = document.getElementById('airspace-result');
   const resultTitle = document.getElementById('result-title');
   const resultBody = document.getElementById('result-body');
+  const clearanceCard = document.getElementById('airspace-clearance-card');
+  const clearanceKicker = document.getElementById('clearance-kicker');
+  const clearanceTitle = document.getElementById('clearance-title');
+  const clearanceBody = document.getElementById('clearance-body');
   const skillBtn = document.getElementById('airspace-skill');
   const W = canvas.width;
   const H = canvas.height;
@@ -456,6 +460,7 @@
       this.score = 0;
       menu.classList.add('hidden');
       resultPanel.classList.add('hidden');
+      this.hideClearanceCard();
       this.nextSegment();
     },
 
@@ -465,6 +470,7 @@
         this.finish('victory');
         return;
       }
+      this.hideClearanceCard();
       this.segmentTime = 0;
       this.spawnTimer = 0.8;
       this.boss = null;
@@ -715,10 +721,14 @@
       this.score += Math.round((boss.hp + boss.stage * 700) * (boss.affix?.scoreMult || 1) * (this.resonance.scoreMult || 1));
       this.bossDefeated.push(title);
       this.clearedLayers += 1;
-      this.say(bridge.lineFor('boss-defeated', boss), 3.8, {
+      const clearanceText = bridge.lineFor('boss-defeated', boss);
+      this.showClearanceCard(title, clearanceText, this.clearedLayers);
+      this.say(clearanceText, 3.8, {
         eventType: 'airspace_boss_defeated',
         boss,
         context: { clearedLayers: this.clearedLayers }
+      }, aiText => {
+        this.updateClearanceCard(aiText);
       });
       this.burst(this.boss.x, this.boss.y, boss.color, 40);
       this.boss = null;
@@ -727,7 +737,24 @@
       this.lasers.length = 0;
       setTimeout(() => {
         if (this.state === 'playing') this.nextSegment();
-      }, 1100);
+      }, 2200);
+    },
+
+    showClearanceCard(title, text, clearedLayers) {
+      if (!clearanceCard) return;
+      if (clearanceKicker) clearanceKicker.textContent = `第${clearedLayers}段清算`;
+      if (clearanceTitle) clearanceTitle.textContent = title;
+      if (clearanceBody) clearanceBody.textContent = text;
+      clearanceCard.classList.remove('hidden');
+    },
+
+    updateClearanceCard(text) {
+      if (!clearanceCard || clearanceCard.classList.contains('hidden') || !text) return;
+      if (clearanceBody) clearanceBody.textContent = text;
+    },
+
+    hideClearanceCard() {
+      clearanceCard?.classList.add('hidden');
     },
 
     reviewTags(victory) {
@@ -779,7 +806,7 @@
       }
     },
 
-    say(text, seconds = 2.5, narrative = null) {
+    say(text, seconds = 2.5, narrative = null, onNarrative = null) {
       const requestId = ++this.commRequestId;
       comm.textContent = text;
       comm.dataset.until = String(this.time + seconds);
@@ -800,6 +827,7 @@
         if (!aiText || this.commRequestId !== requestId || comm.textContent !== text) return;
         comm.textContent = aiText;
         comm.dataset.until = String(this.time + seconds + 1.2);
+        if (typeof onNarrative === 'function') onNarrative(aiText);
       });
     },
 

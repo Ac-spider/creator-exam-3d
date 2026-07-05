@@ -187,9 +187,11 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('fireBossEscort'), 'air combat slice must apply upstream escort affix as finite add pressure');
   assert.ok(airGameSource.includes('updateFieldRepair') && airGameSource.includes('fieldRepairStatus'), 'air combat slice must apply upstream field repair locally');
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
+  assert.ok(airGameSource.includes('showClearanceCard') && airGameSource.includes('updateClearanceCard'), 'air combat must show a short boss clearance card after each boss defeat');
   assert.ok(airGameSource.includes("finish('victory')"), 'air combat route must have a finite victory state');
   assert.ok(airGameSource.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'browser verification should have a readiness signal');
   assert.ok(airIndexSource.includes('id="hud-affix"'), 'air combat markup must expose an affix HUD line');
+  assert.ok(airIndexSource.includes('id="airspace-clearance-card"'), 'air combat markup must expose a boss clearance card');
   for (const eventType of [
     'airspace_intro',
     'airspace_segment',
