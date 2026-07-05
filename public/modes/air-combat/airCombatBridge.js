@@ -201,6 +201,19 @@
       scoreMult: 1.08,
       line: '扰频云层正在聚集干扰机，先切开云层再贴近 Boss。'
     },
+    jammerElite: {
+      key: 'jammerElite',
+      name: '精英扰频',
+      color: '#15aabf',
+      elite: 'jammer',
+      enemyBias: ['medium', 'gunner', 'sniper'],
+      spawnBias: 0.44,
+      eliteHpMult: 1.03,
+      eliteScoreMult: 1.36,
+      eliteJamRadius: 180,
+      eliteWeaponSlow: 1.18,
+      line: '精英扰频会让普通敌机也带上干扰圈，贴近时造物武器会变慢。'
+    },
     sniperLockdown: {
       key: 'sniperLockdown',
       name: '狙击封锁',
@@ -239,6 +252,18 @@
       maxAdds: 4,
       scoreMult: 1.14,
       line: 'Boss 正在投放重炮僚机，先处理护卫再回到主体。'
+    },
+    ewar: {
+      key: 'ewar',
+      name: '电子战',
+      color: '#15aabf',
+      attack: 'escort',
+      every: 8.2,
+      enemy: 'jammer',
+      elite: 'jammer',
+      maxAdds: 3,
+      scoreMult: 1.18,
+      line: '电子战词缀会周期投放扰频精英机，先拉开干扰圈再输出 Boss。'
     },
     repair: {
       key: 'repair',
@@ -416,6 +441,15 @@
     return lore.length ? `传说「${lore[lore.length - 1]}」正在成为航线锚点。` : '';
   }
 
+  function playerStyleText() {
+    if (typeof context.playerStyle === 'string') return context.playerStyle;
+    try { return JSON.stringify(context.playerStyle || ''); } catch (_error) { return String(context.playerStyle || ''); }
+  }
+
+  function aggressiveStyle() {
+    return /aggressive|attack|risk|decisive|进攻|激进|强攻|冒险|果断/.test(playerStyleText().toLowerCase());
+  }
+
   function residentName(item) {
     if (typeof item === 'string') return item;
     return item?.name || item?.unitName || item?.residentName || item?.id || '';
@@ -483,6 +517,13 @@
       vitalReactorMaxDamageMult: 0.2,
       bossHunterDamageMult: 0,
       bossHunterMaxDamageMult: 0.4,
+      executionerThreshold: 0.4,
+      executionerDamageMult: 0,
+      executionerMaxDamageMult: 0.3,
+      shieldAmplifierDamageMult: 0,
+      shieldAmplifierMaxDamageMult: 0.18,
+      missileVolleyBonus: 0,
+      missileVolleyMaxBonus: 1,
       painConverterCooldownPerHp: 0,
       painConverterMaxCooldown: 0,
       pointDefenseRange: 0,
@@ -497,6 +538,10 @@
         resonance.lastStandShield = Math.max(Number(resonance.lastStandShield) || 0, 34);
         resonance.effect = `${resonance.effect} 守夜黑匣子可抵消一次致命坠落。`;
       }
+    }
+    if ((Number(resonance.startingShield) || 0) > 0 || weapon.kind === 'shield') {
+      resonance.shieldAmplifierDamageMult = resonance.shieldAmplifierMaxDamageMult;
+      resonance.effect = `${resonance.effect} 护盾放大器会在护盾存在时提供全武器增伤 ${Math.round(resonance.shieldAmplifierDamageMult * 100)}%。`;
     }
     const flowHpBonus = Math.max(0,
       residentsCount() * 4
@@ -524,6 +569,14 @@
     );
     if (resonance.bossHunterDamageMult > 0) {
       resonance.effect = `${resonance.effect} 猎首协议把传说锚点校准为 Boss 增伤 ${Math.round(resonance.bossHunterDamageMult * 100)}%。`;
+    }
+    if (aggressiveStyle()) {
+      resonance.executionerDamageMult = resonance.executionerMaxDamageMult;
+      resonance.effect = `${resonance.effect} 处决算法把此前的进攻风格校准为低血目标增伤 ${Math.round(resonance.executionerDamageMult * 100)}%。`;
+    }
+    if (weapon.kind === 'cannon') {
+      resonance.missileVolleyBonus = resonance.missileVolleyMaxBonus;
+      resonance.effect = `${resonance.effect} 导弹齐射把秩序重炮展开为额外一发压制弹。`;
     }
     const painPressure = lostCount() + Math.max(0, Math.floor((endingPressure() - 0.76) * 10));
     if (painPressure > 0) {
@@ -554,11 +607,13 @@
     if (lostCount() > 0 && entropy >= 4) keys.push('berserker');
     if (residentsCount() >= 4 || /block|force_field/.test(abilityText)) keys.push('escort');
     if (defense && defense.victory === false) keys.push('breach', 'jammer');
+    if (defense && defense.victory === false && /memory_beacon|dream_link|guide/.test(abilityText)) keys.push('ewar');
     if (defense?.victory && pressure >= 0.75) keys.push('repair');
     if (entropy >= 5 || pressure >= 0.68) keys.push('barrage');
     if (entropy >= 6 || pressure >= 0.7 || /absorb_water|block|force_field/.test(abilityText)) keys.push('minefield');
     if (defense?.victory && (pressure >= 0.66 || residentsCount() >= 2)) keys.push('regenerator');
     if (entropy >= 6 || residentsCount() >= 3 || lostCount() >= 2) keys.push('carrierWing');
+    if (/memory_beacon|dream_link|guide/.test(abilityText)) keys.push('jammerElite');
     if (entropy >= 6 || /memory_beacon|dream_link|guide/.test(abilityText)) keys.push('jammerCloud');
     if (/illuminate|memory_beacon|dream_link|guide/.test(abilityText)) keys.push('support');
     if (!keys.length) keys.push('armored');
@@ -740,6 +795,7 @@
       score: Math.max(0, Math.round(result.score || 0)),
       clearedLayers: result.clearedLayers || 0,
       bossDefeated: result.bossDefeated || [],
+      cleanClears: Math.max(0, Math.round(result.cleanClears || 0)),
       damageTaken: Math.max(0, Math.round(result.damageTaken || 0)),
       creationOverload: result.creationOverload || 0,
       painConverted: Math.max(0, Math.round((result.painConverted || 0) * 10) / 10),

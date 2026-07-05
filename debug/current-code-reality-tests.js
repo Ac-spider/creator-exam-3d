@@ -208,12 +208,15 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('resonance: routeResonance()'), 'air combat result must return route resonance to main game');
   assert.ok(bridgeSource.includes('communicator: communicator()'), 'air combat result must return communicator identity');
   assert.ok(bridgeSource.includes('affixes:'), 'air combat result must return finite boss affixes');
+  assert.ok(bridgeSource.includes('cleanClears:'), 'air combat result must return finite clean-clear count');
   assert.ok(bridgeSource.includes('jammedTime:'), 'air combat result must return jammer pressure to main game');
   assert.ok(bridgeSource.includes('lastStandShield'), 'air bridge must turn prior night-watch success into finite last-stand protection');
   assert.ok(bridgeSource.includes('ionStorm') && bridgeSource.includes('离子风暴'), 'air bridge must adapt upstream ion storm as a finite boss-route affix');
   assert.ok(bridgeSource.includes('escort') && bridgeSource.includes('护卫'), 'air bridge must adapt upstream boss escort as a finite boss-route affix');
+  assert.ok(bridgeSource.includes('ewar') && bridgeSource.includes('电子战'), 'air bridge must adapt upstream electronic warfare as a finite boss-route affix');
   assert.ok(bridgeSource.includes('jammer') && bridgeSource.includes('扰频'), 'air bridge must adapt upstream jammer as a finite boss-route affix');
   assert.ok(bridgeSource.includes('jammerCloud') && bridgeSource.includes('扰频云层'), 'air bridge must adapt upstream jammer cloud as finite enemy-pressure affix');
+  assert.ok(bridgeSource.includes('jammerElite') && bridgeSource.includes('精英扰频'), 'air bridge must adapt upstream jammer elite as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('sniperLockdown') && bridgeSource.includes('狙击封锁'), 'air bridge must adapt upstream sniper lockdown as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('minefield') && bridgeSource.includes('爆雷空域'), 'air bridge must adapt upstream minefield as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes("attack: 'repair'") && bridgeSource.includes('维修词缀'), 'air bridge must adapt upstream repair boss affix into finite route pressure');
@@ -227,7 +230,10 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('破甲弹芯') && bridgeSource.includes('armorPierceMult: 0.35'), 'air bridge must adapt upstream armor piercer as finite cannon resonance');
   assert.ok(bridgeSource.includes('装甲口径') && bridgeSource.includes('armorCaliberDamage'), 'air bridge must adapt upstream armor caliber as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('生命炉心') && bridgeSource.includes('vitalReactorDamageMult'), 'air bridge must adapt upstream vital reactor as finite prior-flow damage resonance');
+  assert.ok(bridgeSource.includes('护盾放大器') && bridgeSource.includes('shieldAmplifierDamageMult'), 'air bridge must adapt upstream shield amplifier as finite shield damage resonance');
   assert.ok(bridgeSource.includes('猎首协议') && bridgeSource.includes('bossHunterDamageMult'), 'air bridge must adapt upstream boss hunter as finite prior-flow boss damage resonance');
+  assert.ok(bridgeSource.includes('处决算法') && bridgeSource.includes('executionerDamageMult'), 'air bridge must adapt upstream executioner as finite prior-flow low-HP damage resonance');
+  assert.ok(bridgeSource.includes('导弹齐射') && bridgeSource.includes('missileVolleyBonus'), 'air bridge must adapt upstream missile route volley as finite cannon resonance');
   assert.ok(bridgeSource.includes('痛觉转换') && bridgeSource.includes('painConverterCooldownPerHp'), 'air bridge must adapt upstream pain converter as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('近防协议') && bridgeSource.includes('pointDefenseRange'), 'air bridge must adapt upstream point defense as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('splitPairs') && bridgeSource.includes('分束棱镜'), 'air bridge must adapt upstream split laser as beam resonance');
@@ -252,6 +258,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('fireBarrageRing') && airGameSource.includes("this.affix.attack === 'ring'"), 'air combat slice must adapt upstream barrage boss affix locally');
   assert.ok(airGameSource.includes('applyBerserkerElite') && airGameSource.includes('eliteFireMult') && airGameSource.includes('enemy.fireMult'), 'air combat slice must apply upstream berserker elite pressure locally');
   assert.ok(airGameSource.includes('applyRegeneratorElite') && airGameSource.includes('regenPct') && airGameSource.includes("enemy.elite = 'regenerator'"), 'air combat slice must apply upstream regenerating elite pressure locally');
+  assert.ok(airGameSource.includes('applyJammerElite') && airGameSource.includes("enemy.elite = 'jammer'") && airGameSource.includes("enemy.elite !== 'jammer'"), 'air combat slice must apply upstream jammer elite pressure locally');
   assert.ok(airGameSource.includes('hudAffix'), 'air combat HUD must show boss affix details');
   assert.ok(airGameSource.includes('reviewTags'), 'air combat result must adapt upstream run review tags to finite route review');
   assert.ok(airGameSource.includes('renderResultBody'), 'air combat result panel must support late AI verdict updates');
@@ -262,6 +269,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('updateLasers') && airGameSource.includes('drawLasers'), 'ion storm laser lanes must have warning/update/draw logic');
   assert.ok(airGameSource.includes('lastStandStatus'), 'air combat HUD must expose last-stand readiness after upstream HUD update');
   assert.ok(airGameSource.includes('fireBossEscort'), 'air combat slice must apply upstream escort affix as finite add pressure');
+  assert.ok(airGameSource.includes("if (affix.elite === 'jammer') this.applyJammerElite(escort, affix)"), 'air combat slice must let electronic warfare escorts become jammer elites');
   assert.ok(airGameSource.includes("this.affix.attack === 'repair'") && airGameSource.includes('repairBoss'), 'air combat slice must apply upstream repair boss affix locally');
   assert.ok(airGameSource.includes('updateFieldRepair') && airGameSource.includes('fieldRepairStatus'), 'air combat slice must apply upstream field repair locally');
   assert.ok(airGameSource.includes('this.resonance.damageTakenMult'), 'air combat slice must apply finite armor-plating damage reduction locally');
@@ -269,12 +277,16 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes("this.burst(b.x, b.y, '#ff922b', 6)"), 'air combat slice must show finite armor-piercer hit feedback');
   assert.ok(airGameSource.includes('armorCaliberDamage()') && airGameSource.includes('armorCaliberStatus') && airGameSource.includes('装甲口径+'), 'air combat slice must fold prior-flow armor caliber into main cannon damage and HUD');
   assert.ok(airGameSource.includes('playerDamage(amount') && airGameSource.includes('vitalReactorStatus') && airGameSource.includes('生命炉心+'), 'air combat slice must fold upstream vital reactor into all player damage and HUD');
+  assert.ok(airGameSource.includes('this.player?.shield') && airGameSource.includes('shieldAmplifierStatus') && airGameSource.includes('护盾放大器+'), 'air combat slice must apply shield amplifier only while shielded and HUD');
   assert.ok(airGameSource.includes('target?.isBoss') && airGameSource.includes('bossHunterStatus') && airGameSource.includes('猎首协议+'), 'air combat slice must apply boss hunter only to finite Boss targets and HUD');
+  assert.ok(airGameSource.includes('target.hp / target.maxHp <= threshold') && airGameSource.includes('executionerStatus') && airGameSource.includes('处决算法+'), 'air combat slice must apply executioner only to low-HP finite targets and HUD');
+  assert.ok(airGameSource.includes('missileVolley: true') && airGameSource.includes('missileVolleyStatus') && airGameSource.includes('导弹齐射+1'), 'air combat slice must apply upstream missile volley as finite cannon pressure and HUD');
   assert.ok(airGameSource.includes('triggerPainConverter') && airGameSource.includes('painConverterStatus') && airGameSource.includes('痛觉转译'), 'air combat slice must convert real HP loss into finite creation-pulse cooldown');
   assert.ok(airGameSource.includes('clearEnemyBulletsNear') && airGameSource.includes('triggerPointDefense') && airGameSource.includes('pointDefenseStatus'), 'air combat slice must clear enemy bullets near kills for finite point-defense resonance');
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
   assert.ok(airGameSource.includes('sideDamage') && airGameSource.includes('#ffd43b'), 'air combat slice must fire finite side cannon shots for cannon resonance');
   assert.ok(airGameSource.includes('showClearanceCard') && airGameSource.includes('updateClearanceCard'), 'air combat must show a short boss clearance card after each boss defeat');
+  assert.ok(airGameSource.includes('clearanceReward') && airGameSource.includes('完美清算奖励') && airGameSource.includes('cleanClears'), 'air combat must adapt upstream cleared-event reward into finite boss-clear rewards');
   assert.ok(airGameSource.includes('advanceBriefing') && airGameSource.includes('renderBriefingStep'), 'air combat must gate combat start behind briefing steps');
   assert.ok(airGameSource.includes("finish('victory')"), 'air combat route must have a finite victory state');
   assert.ok(airGameSource.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'browser verification should have a readiness signal');
@@ -334,8 +346,11 @@ function assertAirCombatRouteBalance() {
   assert.equal(highPressure.routeResonance().armorCaliberDamage, 2, 'prior-flow armor caliber must remain bounded and derived from context');
   assert.ok(highPressure.routeResonance().vitalReactorDamageMult > 0, 'prior-flow extra HP should unlock finite vital reactor damage resonance');
   assert.ok(highPressure.routeResonance().vitalReactorDamageMult <= 0.2, 'vital reactor damage multiplier must stay bounded');
+  assert.ok(highPressure.routeResonance().shieldAmplifierDamageMult > 0, 'starting shield should unlock finite shield amplifier resonance');
+  assert.ok(highPressure.routeResonance().shieldAmplifierDamageMult <= 0.18, 'shield amplifier damage multiplier must stay bounded');
   assert.ok(highPressure.routeResonance().bossHunterDamageMult > 0, 'discovered lore or high final pressure should unlock finite boss hunter resonance');
   assert.ok(highPressure.routeResonance().bossHunterDamageMult <= 0.4, 'boss hunter damage multiplier must stay bounded');
+  assert.equal(highPressure.routeResonance().missileVolleyBonus, 1, 'block/cannon creations should unlock finite missile volley');
   assert.ok(highPressure.routeResonance().painConverterCooldownPerHp > 0, 'high final pressure should unlock finite pain converter resonance');
   assert.ok(highPressure.routeResonance().painConverterMaxCooldown <= 4.2, 'pain converter cooldown refund must stay bounded');
   assert.ok(highPressure.routeResonance().pointDefenseRange > 0, 'rescued residents should unlock finite point-defense resonance');
@@ -384,8 +399,31 @@ function assertAirCombatRouteBalance() {
     lostResidents: [],
     recentCreations: [{ name: '记忆航标', ability: 'memory_beacon' }]
   });
+  assert.ok(memoryRoute.route().some(boss => boss.affix.key === 'jammerElite'), 'memory beacon routes should introduce finite jammer elite pressure');
   assert.ok(memoryRoute.routeResonance().pointDefenseRange > 0, 'memory beacon weapons should unlock finite point-defense even without rescued residents');
+  assert.equal(memoryRoute.routeResonance().shieldAmplifierDamageMult, 0, 'routes without starting shield must not get shield amplifier damage');
   assert.equal(memoryRoute.routeResonance().bossHunterDamageMult, 0, 'low-pressure routes without lore must not get boss hunter damage');
+  assert.equal(memoryRoute.routeResonance().executionerDamageMult, 0, 'low-pressure routes without aggressive style must not get executioner damage');
+
+  const aggressiveRoute = loadAirBridgeForContext({
+    entropy: 3,
+    endingPressure: 0.48,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '月亮树', ability: 'illuminate' }],
+    playerStyle: 'aggressive'
+  });
+  assert.equal(aggressiveRoute.routeResonance().executionerThreshold, 0.4, 'executioner threshold should mirror upstream finite low-HP cutoff');
+  assert.equal(aggressiveRoute.routeResonance().executionerDamageMult, 0.3, 'aggressive prior style should unlock bounded finite executioner damage');
+
+  const shieldRoute = loadAirBridgeForContext({
+    entropy: 1,
+    endingPressure: 0.3,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '鲸潮护盾', ability: 'absorb_water' }]
+  });
+  assert.equal(shieldRoute.routeResonance().shieldAmplifierDamageMult, 0.18, 'shield weapons should unlock upstream shield amplifier damage');
 
   const failedDefenseRoute = loadAirBridgeForContext({
     entropy: 4,
@@ -395,13 +433,23 @@ function assertAirCombatRouteBalance() {
     recentCreations: [{ name: '断裂路标', ability: 'terrain' }],
     towerDefenseResult: { victory: false }
   });
+  const ewarRoute = loadAirBridgeForContext({
+    entropy: 4,
+    endingPressure: 0.62,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '记忆航标', ability: 'memory_beacon' }],
+    towerDefenseResult: { victory: false }
+  });
+  assert.ok(ewarRoute.route().some(boss => boss.affix.key === 'ewar'), 'failed defense plus memory routes should introduce finite electronic warfare pressure');
   const coveredAffixes = new Set([
     ...highPressure.route(),
     ...repairOpening.route(),
     ...lostRoute.route(),
     ...mineRoute.route(),
     ...memoryRoute.route(),
-    ...failedDefenseRoute.route()
+    ...failedDefenseRoute.route(),
+    ...ewarRoute.route()
   ].map(boss => boss.affix.key));
   for (const key of configuredAirAffixKeys()) {
     assert.ok(coveredAffixes.has(key), `configured finite air affix ${key} must be reachable from a main-flow context`);

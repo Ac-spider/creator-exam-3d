@@ -279,9 +279,9 @@
         ctx.stroke();
         ctx.restore();
       }
-      if (this.type === 'jammer' || this.type === 'support' || this.elite === 'regenerator') {
-        const rr = this.type === 'jammer' ? 70 : 58;
-        ctx.strokeStyle = this.type === 'jammer' ? 'rgba(117,215,230,.36)' : this.elite === 'regenerator' ? 'rgba(105,219,124,.36)' : 'rgba(114,214,189,.32)';
+      if (this.type === 'jammer' || this.elite === 'jammer' || this.type === 'support' || this.elite === 'regenerator') {
+        const rr = this.type === 'jammer' || this.elite === 'jammer' ? 70 : 58;
+        ctx.strokeStyle = this.type === 'jammer' || this.elite === 'jammer' ? 'rgba(117,215,230,.36)' : this.elite === 'regenerator' ? 'rgba(105,219,124,.36)' : 'rgba(114,214,189,.32)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(0, 0, rr + Math.sin(game.time * 5) * 3, 0, Math.PI * 2);
@@ -522,6 +522,8 @@
     spawnTimer: 0,
     bossDefeated: [],
     clearedLayers: 0,
+    cleanClears: 0,
+    segmentStartDamage: 0,
     damageTaken: 0,
     creationOverload: 0,
     painConverted: 0,
@@ -557,6 +559,8 @@
       this.spawnTimer = 0.7;
       this.bossDefeated = [];
       this.clearedLayers = 0;
+      this.cleanClears = 0;
+      this.segmentStartDamage = 0;
       this.damageTaken = 0;
       this.creationOverload = 0;
       this.painConverted = 0;
@@ -628,6 +632,7 @@
       const enemy = new Enemy(pick(biased), stage);
       if (affix?.elite === 'berserker') this.applyBerserkerElite(enemy, affix);
       else if (affix?.elite === 'regenerator') this.applyRegeneratorElite(enemy, affix);
+      else if (affix?.elite === 'jammer') this.applyJammerElite(enemy, affix);
       this.enemies.push(enemy);
     },
 
@@ -657,9 +662,22 @@
       return enemy;
     },
 
+    applyJammerElite(enemy, affix) {
+      if (!enemy || !affix) return enemy;
+      enemy.elite = 'jammer';
+      enemy.color = affix.color || enemy.color;
+      enemy.score = Math.round(enemy.score * (affix.eliteScoreMult || 1.36));
+      enemy.hp = Math.max(1, Math.round(enemy.hp * (affix.eliteHpMult || 1.03)));
+      enemy.maxHp = enemy.hp;
+      enemy.jamRadius = Math.max(enemy.jamRadius || 0, affix.eliteJamRadius || 180);
+      enemy.weaponSlow = Math.max(enemy.weaponSlow || 1, affix.eliteWeaponSlow || 1.18);
+      return enemy;
+    },
+
     spawnBoss() {
       const def = this.route[this.segmentIndex];
       this.boss = new Boss(def);
+      this.segmentStartDamage = this.damageTaken;
       this.say(bridge.lineFor('boss', def), 3.8, {
         eventType: 'airspace_boss',
         boss: def,
@@ -675,6 +693,9 @@
       const speed = this.weapon.kind === 'cannon' ? -760 : -900;
       const spread = this.weapon.kind === 'beam' ? [-5, 0, 5] : this.weapon.kind === 'cannon' ? [0] : [-11, 11];
       for (const ox of spread) this.playerBullets.push({ x: p.x + ox, y: p.y - 18, vx: ox * 1.5, vy: speed, r: this.weapon.kind === 'cannon' ? 6 : 4, damage, color, main: true, dead: false });
+      for (let i = 0; i < Math.min(this.resonance.missileVolleyBonus || 0, 1); i += 1) {
+        this.playerBullets.push({ x: p.x, y: p.y - 30, vx: 0, vy: -650, r: 5, damage: Math.max(2, Math.round(damage * 0.8)), color: '#ff922b', missileVolley: true, dead: false });
+      }
       for (let i = 1; i <= Math.min(this.resonance.sidePairs || 0, 2); i += 1) {
         const offset = 20 * i;
         const sideDamage = Math.max(1, Math.round(damage * 0.55));
@@ -775,9 +796,12 @@
       escort.hp += 4;
       escort.maxHp = escort.hp;
       escort.score += 140;
+      if (affix.elite === 'jammer') this.applyJammerElite(escort, affix);
       this.enemies.push(escort);
       this.burst(escort.x, escort.y, affix.color || escort.color, 10);
-      this.say('护卫词缀投放重炮僚机，先清掉侧翼高威胁目标。', 1.8);
+      this.say(affix.elite === 'jammer'
+        ? '电子战词缀投放扰频精英机，先脱离干扰圈再反击。'
+        : '护卫词缀投放重炮僚机，先清掉侧翼高威胁目标。', 1.8);
     },
 
     repairBoss(boss, affix) {
@@ -901,7 +925,7 @@
         factor = Math.max(factor, this.boss.affix.weaponSlow || 1);
       }
       for (const enemy of this.enemies) {
-        if (enemy.dead || enemy.type !== 'jammer') continue;
+        if (enemy.dead || (enemy.type !== 'jammer' && enemy.elite !== 'jammer')) continue;
         if (dist2({ x, y }, enemy) <= enemy.jamRadius * enemy.jamRadius) factor = Math.max(factor, enemy.weaponSlow);
       }
       return factor;
@@ -929,7 +953,12 @@
     playerDamage(amount, target = null) {
       const vital = Number(this.resonance.vitalReactorDamageMult) || 0;
       const hunter = target?.isBoss ? Number(this.resonance.bossHunterDamageMult) || 0 : 0;
-      return amount * (1 + vital + hunter);
+      const threshold = Number(this.resonance.executionerThreshold) || 0;
+      const executioner = target?.maxHp && target.hp / target.maxHp <= threshold
+        ? Number(this.resonance.executionerDamageMult) || 0
+        : 0;
+      const shield = (this.player?.shield || 0) > 0 ? Number(this.resonance.shieldAmplifierDamageMult) || 0 : 0;
+      return amount * (1 + vital + hunter + executioner + shield);
     },
 
     resolveCollisions() {
@@ -983,10 +1012,11 @@
       const boss = this.boss.def;
       const title = boss.affix ? `${boss.affix.name}·${boss.title}` : boss.title;
       this.score += Math.round((boss.hp + boss.stage * 700) * (boss.affix?.scoreMult || 1) * (this.resonance.scoreMult || 1));
+      const reward = this.clearanceReward(this.damageTaken <= this.segmentStartDamage);
       this.bossDefeated.push(title);
       this.clearedLayers += 1;
       const clearanceText = bridge.lineFor('boss-defeated', boss);
-      this.showClearanceCard(title, clearanceText, this.clearedLayers);
+      this.showClearanceCard(title, `${clearanceText}${reward.text}`, this.clearedLayers);
       this.say(clearanceText, 3.8, {
         eventType: 'airspace_boss_defeated',
         boss,
@@ -1002,6 +1032,18 @@
       setTimeout(() => {
         if (this.state === 'playing') this.nextSegment();
       }, 2200);
+    },
+
+    clearanceReward(clean) {
+      const gain = Math.round((clean ? 960 : 640) * (this.resonance.scoreMult || 1));
+      this.score += gain;
+      if (clean && this.player) {
+        this.cleanClears += 1;
+        this.player.shield += 18;
+        this.burst(this.player.x, this.player.y, '#74c0fc', 12);
+        return { gain, shield: 18, text: ` 完美清算奖励 +${gain}，护盾+18。` };
+      }
+      return { gain, shield: 0, text: ` 清算奖励 +${gain}。` };
     },
 
     showClearanceCard(title, text, clearedLayers) {
@@ -1032,6 +1074,7 @@
       if (this.painConverted >= 2) tags.push('痛觉转译');
       if (this.pointDefenseCleared >= 4) tags.push('近防协议');
       if (this.lastStandTriggered) tags.push('黑匣子保险');
+      if (this.cleanClears >= 2) tags.push('完美清算');
       if (this.route.some(boss => boss.affix?.attack === 'prism')) tags.push('棱镜航线');
       if (this.route.some(boss => boss.affix?.attack === 'ionStorm')) tags.push('离子风暴');
       if (this.route.some(boss => boss.affix?.attack === 'escort')) tags.push('护卫僚机');
@@ -1053,6 +1096,7 @@
         score: this.score,
         clearedLayers: this.clearedLayers,
         bossDefeated: this.bossDefeated,
+        cleanClears: this.cleanClears,
         damageTaken: this.damageTaken,
         creationOverload: this.creationOverload,
         painConverted: Math.round(this.painConverted * 10) / 10,
@@ -1117,7 +1161,7 @@
         const cd = active?.affix?.attack ? ` · ${Math.max(0, active.affixTimer || 0).toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${cd}` : '';
       }
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.bossHunterStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
+      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.shieldAmplifierStatus()}${this.bossHunterStatus()}${this.executionerStatus()}${this.missileVolleyStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
@@ -1145,9 +1189,24 @@
       return mult > 0 ? ` · 生命炉心+${Math.round(mult * 100)}%` : '';
     },
 
+    shieldAmplifierStatus() {
+      const mult = Number(this.resonance.shieldAmplifierDamageMult) || 0;
+      if (mult <= 0) return '';
+      return this.player?.shield > 0 ? ` · 护盾放大器+${Math.round(mult * 100)}%` : ' · 护盾放大器待充能';
+    },
+
     bossHunterStatus() {
       const mult = Number(this.resonance.bossHunterDamageMult) || 0;
       return mult > 0 ? ` · 猎首协议+${Math.round(mult * 100)}%` : '';
+    },
+
+    executionerStatus() {
+      const mult = Number(this.resonance.executionerDamageMult) || 0;
+      return mult > 0 ? ` · 处决算法+${Math.round(mult * 100)}%` : '';
+    },
+
+    missileVolleyStatus() {
+      return (this.resonance.missileVolleyBonus || 0) > 0 ? ' · 导弹齐射+1' : '';
     },
 
     painConverterStatus() {
