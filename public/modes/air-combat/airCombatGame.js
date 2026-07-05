@@ -803,7 +803,7 @@
         const cd = active?.affix?.attack ? ` · ${Math.max(0, active.affixTimer || 0).toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${cd}` : '';
       }
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.lastStandStatus()}${this.fieldRepairStatus()}`;
+      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
@@ -819,6 +819,12 @@
       if (!this.player || this.player.hp >= this.player.maxHp) return ' · 纳米修复';
       const wait = Math.max(0, Math.ceil(this.difficulty.fieldRepair.delay - this.noHitT));
       return ` · 纳米修复${wait > 0 ? wait + 's' : '中'}`;
+    },
+
+    jamStatus() {
+      if (!this.player) return '';
+      const jam = this.jamFactor(this.player.x, this.player.y);
+      return jam > 1 ? ` · 干扰×${jam.toFixed(2)}` : '';
     },
 
     update(dt) {

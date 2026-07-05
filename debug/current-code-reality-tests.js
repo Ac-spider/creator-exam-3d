@@ -169,6 +169,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('firePrismLane'), 'air combat slice must apply prism boss affix locally');
   assert.ok(airGameSource.includes('bulletRateMult'), 'air combat slice must apply boss affix bullet-rate modifiers locally');
   assert.ok(airGameSource.includes('jamFactor'), 'air combat slice must apply jammer pressure locally');
+  assert.ok(airGameSource.includes('jamStatus'), 'air combat HUD must show jammer weapon-slow feedback');
   assert.ok(airGameSource.includes('repairNearbyEnemies'), 'air combat slice must apply support enemy depth locally');
   assert.ok(airGameSource.includes('jammer') && airGameSource.includes('support'), 'air combat enemy pool must include selected upstream enemy roles');
   assert.ok(airGameSource.includes('hudAffix'), 'air combat HUD must show boss affix details');
