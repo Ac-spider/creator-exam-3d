@@ -1069,6 +1069,7 @@
       const tags = [this.resonance.name];
       if (this.damageTaken >= 100) tags.push('承伤偏高');
       else if (this.clearedLayers >= 2) tags.push('走位稳定');
+      if ((Number(this.resonance.flowHpBonus) || 0) >= 20) tags.push(`机体构筑 +${this.resonance.flowHpBonus}HP`);
       if (this.jammedTime / Math.max(1, this.time) >= 0.18) tags.push('干扰压力高');
       if (this.clearedLayers >= this.route.length) tags.push('Boss处理完整');
       else if (this.clearedLayers >= 3) tags.push('中段清算有效');

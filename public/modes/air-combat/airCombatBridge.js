@@ -528,6 +528,7 @@
       painConverterMaxCooldown: 0,
       pointDefenseRange: 0,
       signalFilterJamResist: 0,
+      flowHpBonus: 0,
       sourceCreation: weapon.sourceCreation,
       ...base,
       towerDefenseRelief: !!defense.victory
@@ -550,6 +551,10 @@
       + (defense.victory ? 12 : 0)
       + (Number(resonance.hpBonus) || 0)
     );
+    resonance.flowHpBonus = flowHpBonus;
+    if (flowHpBonus >= 20) {
+      resonance.effect = `${resonance.effect} 机体构筑记录前置流程 +${flowHpBonus}HP。`;
+    }
     resonance.armorCaliberDamage = Math.min(
       resonance.armorCaliberMaxDamage,
       Math.floor(flowHpBonus / resonance.armorCaliberHpPerDamage)
