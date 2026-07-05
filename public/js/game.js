@@ -5,7 +5,7 @@ import { INSPIRATIONS, LEVELS, TILE } from './levels.js';
 import { getMemorySystem } from './aiMemory.js';
 import { ParticleSystem, ScreenEffects } from './particles.js';
 import { NPCManager } from './npcManager.js';
-import { applyAbility } from './abilityHandlers.js';
+import { applyAbility, hasAbilityHandler } from './abilityHandlers.js';
 import { defaultStoryteller } from './storyteller.js';
 import { GameEngine, TERRAIN_LABELS } from './gameEngine.js';
 import { executeChainReaction } from './chainReactionCodex.js';
@@ -705,6 +705,10 @@ class CreatorExam3D extends GameEngine {
 
   applyImmediatePlacement(creation) {
     applyAbility(this, creation, 'immediate');
+    // 回合持续能力在放置时立即生效（仅对没有即时处理器的能力）
+    if (!hasAbilityHandler(creation.card.ability, 'immediate')) {
+      applyAbility(this, creation, 'active');
+    }
   }
 
   // Override endTurn to add browser-specific features (storyteller, applyAbility)
@@ -714,11 +718,11 @@ class CreatorExam3D extends GameEngine {
       return;
     }
     this.addLog(`第 ${this.turn} 回合开始结算。`, true);
+    this.spreadHazards();
+    this.triggerRandomEvent();
     this.applyActiveCreationEffects();
     this.applyChainReactions();
     this.moveUnits();
-    this.spreadHazards();
-    this.triggerRandomEvent();
     this.applyTileHazardsToUnits();
     this.decrementCreationDurations();
     this.checkEndCondition(true);
