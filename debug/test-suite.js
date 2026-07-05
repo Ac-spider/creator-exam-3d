@@ -375,6 +375,28 @@ runner.test('NPC系统 - 应正确初始化和对话', () => {
   runner.assertEqual(context.type, 'dialogue', '上下文类型不正确');
 });
 
+runner.test('NPC系统 - 每个可对话单位都应有预设性格', async () => {
+  const { LEVELS } = await import('../public/js/levels.js');
+  const { NPCManager } = await import('../public/js/npcManager.js');
+  const talkableTypes = new Set(['villager', 'miner', 'tribeA', 'tribeB']);
+
+  for (const level of LEVELS) {
+    const manager = new NPCManager(level);
+    for (const unit of level.units.filter(unit => talkableTypes.has(unit.type))) {
+      const npc = manager.getNPC(unit.residentId || unit.name);
+      runner.assert(npc, `${level.id}:${unit.name} 应有NPC档案`);
+      runner.assert(npc.personality, `${level.id}:${unit.name} 应有性格`);
+      runner.assert(npc.dialogueStyle, `${level.id}:${unit.name} 应有说话方式`);
+
+      const context = manager.buildDialogueContext(unit.residentId || unit.name, '你现在最需要我创造什么？');
+      runner.assert(context.context.personality, `${level.id}:${unit.name} 对话上下文应包含性格`);
+
+      const reply = manager.generateFallbackDialogue(unit.residentId || unit.name, '你现在最需要我创造什么？');
+      runner.assert(reply && reply !== '...', `${level.id}:${unit.name} 本地兜底不应为空`);
+    }
+  }
+});
+
 // 测试世界状态追踪
 runner.test('世界状态 - 应正确追踪玩家行为', () => {
   const game = new DebugGame();
@@ -3049,6 +3071,39 @@ runner.test('Resident Dialogue UI - game.js should call resident dialogue API wi
 
   for (const token of ['ResidentDialogueSystem', 'bindResidentDialogueUI', 'renderResidentDialogueList', 'sendResidentDialogue', '/api/resident-dialogue', 'recordResidentDialogue']) {
     runner.assert(source.includes(token), `game.js should include ${token}`);
+  }
+});
+
+runner.test('NPC Dialogue UI - 快捷对话应保留意图并过滤泛化兜底', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  for (const token of [
+    "submitNpcDialogue(btn.dataset.prompt || btn.textContent || '', { action })",
+    'classifyDialogueAction(input)',
+    'dialogueAction,',
+    'asksNeed && !hasNeedSignal',
+    'asksComfort && !hasComfortSignal',
+    'data?.fallback'
+  ]) {
+    runner.assert(source.includes(token), `game.js should include ${token}`);
+  }
+});
+
+runner.test('Narrative API - 对话提示词应包含玩家原话和当前需求', async () => {
+  const fs = await import('node:fs');
+  const source = fs.readFileSync(new URL('../server.js', import.meta.url), 'utf8');
+
+  for (const token of [
+    'ctx.playerInput',
+    '性格基底',
+    '说话方式',
+    '玩家刚刚说',
+    '当前需求',
+    '必须先直接回应',
+    '不要输出与当前单位'
+  ]) {
+    runner.assert(source.includes(token), `server.js should include ${token}`);
   }
 });
 

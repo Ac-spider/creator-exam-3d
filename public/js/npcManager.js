@@ -4,11 +4,143 @@
 
 import { SocialGraph } from './socialGraph.js';
 
+const TYPE_PERSONAS = Object.freeze({
+  villager: {
+    mood: '不安',
+    attitude: '友善',
+    personality: '朴实、谨慎、遇险时会先确认脚下是否安全',
+    dialogueStyle: '说话直接，常提到路、水位和家人，不做空泛预言',
+    lore: '被灾害困住的普通居民，最关心能否安全抵达目标。',
+    dynamicTraits: { trustLevel: 45, fearLevel: 55, hopeLevel: 40 }
+  },
+  miner: {
+    mood: '紧张',
+    attitude: '中立',
+    personality: '务实、吃苦耐劳、害怕黑暗但不轻易求饶',
+    dialogueStyle: '短句多，常提到灯、出口、岩壁和脚下的路',
+    lore: '永夜矿井中的矿工，靠经验和微弱光线判断方向。',
+    dynamicTraits: { trustLevel: 40, fearLevel: 65, hopeLevel: 35 }
+  },
+  tribeA: {
+    mood: '戒备',
+    attitude: '中立',
+    personality: '自尊、克制、急于证明自己的部落没有偷走星火',
+    dialogueStyle: '语气紧绷，常提到误会、边境和必须送到的话',
+    lore: '东岸部落的使者，在失语战争中寻找会谈机会。',
+    dynamicTraits: { trustLevel: 35, fearLevel: 45, hopeLevel: 45 }
+  },
+  tribeB: {
+    mood: '戒备',
+    attitude: '中立',
+    personality: '敏锐、固执、把族人的安全放在尊严之前',
+    dialogueStyle: '回答谨慎，常确认对方意图和下一步是否会引发冲突',
+    lore: '西岸部落的使者，带着族人的疑惧靠近边境。',
+    dynamicTraits: { trustLevel: 35, fearLevel: 45, hopeLevel: 45 }
+  },
+  beast: {
+    mood: '焦躁',
+    attitude: '警觉',
+    personality: '本能强烈、并非恶意，只会被阻挡和威胁激怒',
+    dialogueStyle: '不说人话，用低鸣、停步、甩水和呼吸变化表达需求',
+    lore: '背负水源的古老生灵，需要被理解而不是征服。',
+    dynamicTraits: { trustLevel: 20, fearLevel: 50, hopeLevel: 30 }
+  }
+});
+
+const NAMED_UNIT_PERSONAS = Object.freeze({
+  阿粟: {
+    mood: '强作镇定',
+    personality: '敏感、顾家、会先照看别人再说自己的害怕',
+    dialogueStyle: '轻声说话，常把需求落到具体一步，不会说玄而空的长篇独白',
+    lore: '洪水村庄的年轻居民，记得每一级石阶通向哪户人家。'
+  },
+  木匠: {
+    mood: '焦急',
+    personality: '踏实、手巧、习惯把危险拆成木料和支点来思考',
+    dialogueStyle: '语气朴素，常提到桥、梁、木桩和能否承重',
+    lore: '村里的木匠，知道什么样的落脚点能撑住逃生的人。'
+  },
+  邮差: {
+    mood: '急迫',
+    personality: '守信、方向感强、即使害怕也惦记必须送到的消息',
+    dialogueStyle: '话短而快，常确认路线、终点和消息能否按时抵达',
+    lore: '洪水村庄的邮差，背包里还有几封没送出的信。'
+  },
+  矿工甲: {
+    personality: '沉着、老练、习惯先判断岩壁和风声',
+    dialogueStyle: '低声短句，先问光在哪里，再问路能不能走'
+  },
+  矿工乙: {
+    personality: '谨慎、细心、会记住同伴的位置',
+    dialogueStyle: '回答会带上坐标感，常提醒不要让队伍散开'
+  },
+  矿工丙: {
+    personality: '年轻、紧张、但很相信明确的指引',
+    dialogueStyle: '问题多，常问下一步是不是安全'
+  },
+  矿工丁: {
+    personality: '倔强、护短、愿意殿后',
+    dialogueStyle: '语气硬，但会把真实需求说得很具体'
+  },
+  东岸使者: {
+    personality: '克制、骄傲、害怕一句错话点燃战争',
+    dialogueStyle: '措辞正式，常要求确认路线和会谈位置'
+  },
+  西岸使者: {
+    personality: '警觉、敏锐、愿意谈判但不愿示弱',
+    dialogueStyle: '先确认安全，再回应善意，避免夸张承诺'
+  },
+  南枝: {
+    personality: '温柔、容易分神、靠植物和气味记路',
+    dialogueStyle: '慢慢说，常把方向和树影、风声联系起来'
+  },
+  北声: {
+    personality: '冷静、爱数步子，失忆时也会努力复盘',
+    dialogueStyle: '短句清楚，常重复目标来稳住自己'
+  },
+  阿眠: {
+    personality: '胆小、想象力强，害怕把梦和路混在一起',
+    dialogueStyle: '声音轻，常问这是不是梦、下一步会不会消失'
+  },
+  谷雨: {
+    personality: '乐观、爱照顾同伴，喜欢用节气和雨水记事情',
+    dialogueStyle: '温和，常把请求说成可以马上执行的小事'
+  },
+  织火: {
+    personality: '勇敢、急性子，怕忘记但不愿停下',
+    dialogueStyle: '句子短促，常催促给出明确方向'
+  },
+  星砂: {
+    personality: '沉默、坚韧，把恐惧藏在行动后面',
+    dialogueStyle: '很少抒情，只问哪里能落脚、哪里能抵达'
+  },
+  青麦: {
+    personality: '朴素、相信秩序，遇险时先照看身边人',
+    dialogueStyle: '语气稳定，常请求可执行的路线和保护'
+  },
+  砾歌: {
+    personality: '敏感、有节奏感，会用声音确认自己还在路上',
+    dialogueStyle: '带一点诗意，但每次都会回到目标和下一步'
+  },
+  北境使者: {
+    personality: '严肃、守礼、把会谈看作最后的秩序',
+    dialogueStyle: '正式克制，常确认边境、证词和安全距离'
+  },
+  南境使者: {
+    personality: '机警、务实、会优先避免误判升级',
+    dialogueStyle: '直接询问风险，回答会贴近当前局势'
+  }
+});
+
+function cloneTraits(traits = {}) {
+  return { trustLevel: 45, fearLevel: 45, hopeLevel: 45, ...traits };
+}
+
 export class NPCManager {
   constructor(level, options = {}) {
     this.level = level;
     this.residentProjections = options.residentProjections || [];
-    this.npcs = this.mergeResidentProjections(this.initializeNPCs());
+    this.npcs = this.mergeResidentProjections(this.mergeLevelUnitPersonas(this.initializeNPCs()));
     this.socialGraph = new SocialGraph();
     this.initSocialGraph();
     this.dialogueHistory = [];
@@ -88,6 +220,7 @@ export class NPCManager {
         onLose: '沉睡'
       }
     };
+    this.ensureMoodTransitionsForNPCs();
 
     // 态度变化阈值
     this.attitudeThresholds = {
@@ -111,7 +244,11 @@ export class NPCManager {
   mergeResidentProjections(npcs) {
     const merged = [...npcs];
     for (const projection of this.residentProjections) {
-      const existing = merged.find(npc => npc.id === projection.id || npc.name === projection.name || npc.residentId === projection.residentId);
+      const existing = merged.find(npc => (
+        npc.id === projection.id ||
+        npc.name === projection.name ||
+        (projection.residentId && npc.residentId === projection.residentId)
+      ));
       const projectedNpc = {
         ...projection,
         id: projection.residentId,
@@ -124,6 +261,68 @@ export class NPCManager {
       else merged.push(projectedNpc);
     }
     return merged;
+  }
+
+  mergeLevelUnitPersonas(npcs) {
+    const merged = [...npcs];
+    const units = Array.isArray(this.level?.units) ? this.level.units : [];
+    units.forEach((unit, index) => {
+      if (!unit?.name) return;
+      const unitNpc = this.buildUnitPersona(unit, index);
+      const existing = merged.find(npc => (
+        npc.name === unit.name ||
+        (unit.residentId && (npc.id === unit.residentId || npc.residentId === unit.residentId))
+      ));
+      if (existing) {
+        existing.personality ||= unitNpc.personality;
+        existing.dialogueStyle ||= unitNpc.dialogueStyle;
+        existing.lore ||= unitNpc.lore;
+        existing.location ||= unitNpc.location;
+        existing.mood ||= unitNpc.mood;
+        existing.attitude ||= unitNpc.attitude;
+        existing.dynamicTraits = cloneTraits(existing.dynamicTraits || unitNpc.dynamicTraits);
+      } else {
+        merged.push(unitNpc);
+      }
+    });
+    return merged;
+  }
+
+  buildUnitPersona(unit, index = 0) {
+    const typeDefaults = TYPE_PERSONAS[unit.type] || TYPE_PERSONAS.villager;
+    const nameDefaults = NAMED_UNIT_PERSONAS[unit.name] || {};
+    const persona = { ...typeDefaults, ...nameDefaults };
+    const levelTitle = this.level?.shortTitle || this.level?.title || '当前关卡';
+    return {
+      id: unit.residentId || `unit-${this.level?.id || 'region'}-${index}`,
+      residentId: unit.residentId,
+      name: unit.name,
+      type: unit.type || typeDefaults.type || 'villager',
+      location: persona.location || levelTitle,
+      mood: persona.mood || typeDefaults.mood || '不安',
+      attitude: persona.attitude || typeDefaults.attitude || '中立',
+      lore: persona.lore || typeDefaults.lore || `${unit.name}正在${levelTitle}中寻找安全路线。`,
+      memories: [],
+      personality: persona.personality || typeDefaults.personality,
+      dialogueStyle: persona.dialogueStyle || typeDefaults.dialogueStyle,
+      dynamicTraits: cloneTraits(persona.dynamicTraits || typeDefaults.dynamicTraits)
+    };
+  }
+
+  ensureMoodTransitionsForNPCs() {
+    for (const npc of this.npcs) {
+      if (this.moodTransitions[npc.name]) continue;
+      const typeDefaults = TYPE_PERSONAS[npc.type] || TYPE_PERSONAS.villager;
+      this.moodTransitions[npc.name] = {
+        default: npc.mood || typeDefaults.mood || '不安',
+        onRescue: '安心',
+        onLoss: '悲伤',
+        onCreation: '惊讶',
+        onHazard: '恐惧',
+        onWin: '庆幸',
+        onLose: '绝望'
+      };
+    }
   }
 
   initializeNPCs() {
@@ -838,7 +1037,34 @@ export class NPCManager {
       return responsePool[Math.floor(Math.random() * responsePool.length)];
     }
 
-    return '...';
+    return this.generatePersonaFallbackDialogue(npc, playerInput);
+  }
+
+  generatePersonaFallbackDialogue(npc, playerInput) {
+    const input = String(playerInput || '');
+    const latestMemory = [...(npc.memories || [])].reverse().find(memory => memory?.text)?.text || npc.lore || '眼前的事还没有定下来';
+    const needText = this.getPersonaNeed(npc);
+
+    if (/需要|最需要|创造什么|要我创造|帮你什么|缺什么/.test(input)) {
+      return `${needText}你给我一个明确、能落脚的办法，我就照着走。`;
+    }
+    if (/相信|救下|救你|放心|别怕|安抚|别担心|我会/.test(input)) {
+      return `我会稳住。${npc.dialogueStyle?.includes('短') ? '你指出下一步，我就走。' : `只要你的指引能让我靠近目标，我愿意相信你。`}`;
+    }
+    if (/记得|记忆|发生过|还记得|过去/.test(input)) {
+      return `我记得：${String(latestMemory).slice(0, 72)}。但现在先别让我在这里停太久。`;
+    }
+    if (/入口|下一步|怎么走|路线|方向|安全|到达|抵达|帮你走|带你|往哪里|去哪/.test(input)) {
+      return `${needText}先告诉我下一步站在哪里，别让我踏进危险里。`;
+    }
+    return `${needText}${npc.lore || '我会按眼前的路判断，不会乱说离题的事。'}`;
+  }
+
+  getPersonaNeed(npc) {
+    if (npc.type === 'miner') return '我最需要光和出口的方向。';
+    if (npc.type === 'tribeA' || npc.type === 'tribeB') return '我最需要安全抵达会谈点，别让误会再升级。';
+    if (npc.type === 'beast') return '它需要空间、水声安静下来，也需要不要再被逼迫。';
+    return '我最需要一条安全、能落脚的路。';
   }
 
   // Generate a short dialogue reflecting the latest world event

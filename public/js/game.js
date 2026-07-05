@@ -444,6 +444,11 @@ class CreatorExam3D extends GameEngine {
     this.ui.restartBtn.addEventListener('click', () => this.loadLevel(this.levelIndex));
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
     this.ui.nightWatchBtn?.addEventListener('click', () => this.openNightWatch());
+    document.querySelectorAll('[data-test-level]').forEach(btn => {
+      btn.addEventListener('click', () => this.jumpToTestLevel(Number(btn.dataset.testLevel)));
+    });
+    document.getElementById('test-night-watch-btn')?.addEventListener('click', () => this.openNightWatch());
+    document.getElementById('test-air-combat-btn')?.addEventListener('click', () => this.openAirCombatMode());
     this.ui.performRitualBtn?.addEventListener('click', () => this.handlePerformRitual());
 
     // Ritual creation checkbox delegation
@@ -507,7 +512,7 @@ class CreatorExam3D extends GameEngine {
       if (action === 'group-chat') {
         this.openNpcGroupDialogue();
       } else {
-        this.submitNpcDialogue(btn.dataset.prompt || btn.textContent || '');
+        this.submitNpcDialogue(btn.dataset.prompt || btn.textContent || '', { action });
       }
     });
 
@@ -954,6 +959,27 @@ class CreatorExam3D extends GameEngine {
       return;
     }
     this.loadLevel(this.levelIndex + 1);
+  }
+
+  jumpToTestLevel(index) {
+    if (!Number.isInteger(index) || !LEVELS[index]) return;
+    this.loadLevel(index);
+    this.addLog(`【测试入口】跳转到第 ${index + 1} 关。`, true);
+    this.showToast(`已跳到第 ${index + 1} 关。`);
+  }
+
+  async openAirCombatMode() {
+    const url = new URL('./modes/air-combat/index.html', window.location.href);
+    try {
+      const response = await fetch(url.toString(), { method: 'HEAD' });
+      if (response.ok) {
+        const tab = window.open(url.toString(), 'creator_exam_air_combat');
+        if (!tab) window.location.href = url.toString();
+        return;
+      }
+    } catch (_error) {}
+
+    this.showToast('空战模式还没迁入；构思文档在 docs/superpowers/specs/2026-07-05-air-combat-integration-concept.md');
   }
 
   isFinalExam() {
@@ -2548,9 +2574,10 @@ class CreatorExam3D extends GameEngine {
     }
   }
 
-  async submitNpcDialogue(prompt = null) {
+  async submitNpcDialogue(prompt = null, options = {}) {
     const input = (prompt ?? this.ui.npcDialogueInput?.value ?? '').trim();
     if (!input) return;
+    const dialogueAction = options.action || this.classifyDialogueAction(input);
 
     const responders = this.selectedDialogueGroup
       ? this.resolveGroupResponders(input)
@@ -2570,7 +2597,10 @@ class CreatorExam3D extends GameEngine {
 
     for (const responder of responders) {
       const { unit, npc } = responder;
-      const reply = await this.generateNpcReply(unit, npc, input, { groupMode: this.selectedDialogueGroup });
+      const reply = await this.generateNpcReply(unit, npc, input, {
+        groupMode: this.selectedDialogueGroup,
+        action: dialogueAction
+      });
       this.addNpcDialogueLine('npc', unit.name, reply);
       this.addLog(`【交流】你：${input} / ${unit.name}：${reply}`, true);
       this.showToast(`${unit.name}：${reply}`);
@@ -2672,8 +2702,10 @@ class CreatorExam3D extends GameEngine {
   }
 
   async generateNpcReply(unit, npc, playerInput, options = {}) {
+    const dialogueAction = options.action || this.classifyDialogueAction(playerInput);
     const baseContext = {
       playerInput,
+      dialogueAction,
       unitName: unit.name,
       unitType: unit.type,
       unitPosition: { x: unit.x, y: unit.y },
@@ -2696,18 +2728,22 @@ class CreatorExam3D extends GameEngine {
         npcId: npc.id,
         npcName: npc.name || unit.name
       });
-      const validated = this.validateNpcReply(unit, playerInput, aiText);
+      const validated = this.validateNpcReply(unit, playerInput, aiText, { npc, action: dialogueAction });
       if (validated) return validated;
+
+      if (dialogueAction !== 'free') {
+        return this.buildGroundedNpcReply(unit, playerInput, npc, dialogueAction);
+      }
 
       const fallback = this.npcManager.generateFallbackDialogue(npc.id, playerInput);
       if (fallback && fallback !== '...') return fallback;
     }
 
     const aiText = await this.fetchNarrative('dialogue', baseContext);
-    const validated = this.validateNpcReply(unit, playerInput, aiText);
+    const validated = this.validateNpcReply(unit, playerInput, aiText, { npc, action: dialogueAction });
     if (validated) return validated;
 
-    return this.buildGroundedNpcReply(unit, playerInput) || this.buildResidentDialogue(unit, npc);
+    return this.buildGroundedNpcReply(unit, playerInput, npc, dialogueAction) || this.buildResidentDialogue(unit, npc);
   }
 
   buildKnownUnitDialogueContext(currentUnit = null) {
@@ -2824,26 +2860,41 @@ class CreatorExam3D extends GameEngine {
       }));
   }
 
-  validateNpcReply(unit, playerInput, aiText) {
+  validateNpcReply(unit, playerInput, aiText, options = {}) {
     const text = String(aiText || '').replace(/\s+/g, ' ').trim();
     if (!text) return null;
 
-    const asksIdentity = this.isIdentityDialogue(playerInput);
-    const asksRoute = this.isRouteDialogue(playerInput);
+    const action = options.action || this.classifyDialogueAction(playerInput);
+    const asksIdentity = action === 'identity';
+    const asksRoute = action === 'route';
+    const asksNeed = action === 'need';
+    const asksComfort = action === 'comfort';
+    const asksMemory = action === 'memory';
     const hasName = text.includes(unit.name);
     const hasRouteSignal = /入口|下一步|目标|安全|方向|往|到达|抵达|桥|路/.test(text);
-    const looksLikeAtmosphereOnly = text.length > 160 && !hasName && !hasRouteSignal;
+    const hasNeedSignal = /需要|缺|方向|下一步|路|桥|高地|出口|安全|目标|落脚|创造|造物|抵达|到达|往/.test(text);
+    const hasComfortSignal = /信|相信|放心|别怕|安|稳|谢谢|跟着|指引|救|安全/.test(text);
+    const hasMemorySignal = /记得|发生|刚才|回合|你问|我说|救|创造|走|目标|位置|来到|见过/.test(text);
+    const needsDirectAnswer = asksIdentity || asksRoute || asksNeed || asksComfort || asksMemory;
+    const hasDirectSignal = hasName || hasRouteSignal || hasNeedSignal || hasComfortSignal || hasMemorySignal;
+    const looksLikeAtmosphereOnly = (text.length > 160 || needsDirectAnswer)
+      && !hasDirectSignal
+      && /涟漪|未完成|故事|青苔|鱼群|堂屋|水底|回响|七个雨季|指尖|被水吞没/.test(text);
 
-    if (this.hasUnsupportedActionTarget(text)) return this.buildGroundedNpcReply(unit, playerInput);
-    if (this.hasUnsupportedIdentityClaim(unit, playerInput, text)) return this.buildGroundedNpcReply(unit, playerInput);
-    if (asksIdentity && !hasName) return this.buildGroundedNpcReply(unit, playerInput);
-    if (asksRoute && !hasRouteSignal) return this.buildGroundedNpcReply(unit, playerInput);
-    if (looksLikeAtmosphereOnly) return this.buildGroundedNpcReply(unit, playerInput);
+    if (this.hasUnsupportedActionTarget(text)) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (this.hasUnsupportedIdentityClaim(unit, playerInput, text)) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (asksIdentity && !hasName) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (asksRoute && !hasRouteSignal) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (asksNeed && !hasNeedSignal) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (asksComfort && !hasComfortSignal) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (asksMemory && !hasMemorySignal) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (looksLikeAtmosphereOnly) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
 
     return this.trimNpcReply(text);
   }
 
-  buildGroundedNpcReply(unit, playerInput) {
+  buildGroundedNpcReply(unit, playerInput, npc = null, action = null) {
+    const dialogueAction = action || this.classifyDialogueAction(playerInput);
     const terrain = this.getTerrain(unit.x, unit.y);
     const terrainText = TERRAIN_LABELS[terrain] || '这里';
     const next = unit.goal ? this.nextStepToward(unit, unit.goal) : null;
@@ -2856,19 +2907,38 @@ class CreatorExam3D extends GameEngine {
         ? '前面的雾太厚了'
         : `我还站在${terrainText}`;
 
-    if (this.isIdentityDialogue(playerInput)) {
+    if (dialogueAction === 'identity') {
       return this.trimNpcReply(`我是${unit.name}${roleText}。${terrainPressure}，你帮我看准下一步，别让我走错。`);
     }
 
-    if (this.isRouteDialogue(playerInput)) {
+    if (dialogueAction === 'route') {
       return this.trimNpcReply(`${directionText}，再朝${goalHint}靠。要是前面被水或雾拦住，给我铺一小段能落脚的路就够。`);
     }
 
-    if (/相信|救下|救你|放心|别怕/.test(String(playerInput || ''))) {
+    if (dialogueAction === 'need') {
+      return this.trimNpcReply(`我现在最需要能安全落脚的路。${directionText}，再朝${goalHint}靠；能造桥、照明或抬高地面都帮得上。`);
+    }
+
+    if (dialogueAction === 'memory') {
+      return this.trimNpcReply(`我记得${this.describeNpcMemoryForDialogue(npc, unit)}。但现在${terrainPressure}，先帮我往${goalHint}靠过去。`);
+    }
+
+    if (dialogueAction === 'comfort') {
       return this.trimNpcReply(`我信你。只要下一步别踏进危险里，我就按你的指引往${goalHint}走。`);
     }
 
     return this.trimNpcReply(`我现在最需要一条能落脚的方向。${directionText}，你看准了我就走。`);
+  }
+
+  describeNpcMemoryForDialogue(npc, unit) {
+    const memories = Array.isArray(npc?.memories) ? npc.memories : [];
+    const memory = [...memories].reverse().find(item => item?.text && !String(item.text).startsWith('造物者问')) || memories[memories.length - 1];
+    if (memory?.text) {
+      const text = String(memory.text).replace(/\s+/g, ' ').replace(/^第 \d+ 回合与造物者交谈：/, '');
+      return `：${text.slice(0, 72)}`;
+    }
+    const terrain = this.getTerrain(unit.x, unit.y);
+    return `自己还在${TERRAIN_LABELS[terrain] || '这里'}，目标是${this.describeGoalHint(unit)}`;
   }
 
   describeDirectionToStep(unit, next) {
@@ -2903,7 +2973,28 @@ class CreatorExam3D extends GameEngine {
   }
 
   isRouteDialogue(input) {
-    return /入口|下一步|怎么走|路线|方向|安全|到达|抵达|救|帮你|带你/.test(String(input || ''));
+    return /入口|下一步|怎么走|路线|方向|安全|到达|抵达|帮你走|带你|往哪里|去哪/.test(String(input || ''));
+  }
+
+  isNeedDialogue(input) {
+    return /需要|最需要|创造什么|要我创造|帮你什么|缺什么/.test(String(input || ''));
+  }
+
+  isMemoryDialogue(input) {
+    return /记得|记忆|发生过|还记得|过去/.test(String(input || ''));
+  }
+
+  isComfortDialogue(input) {
+    return /相信|救下|救你|放心|别怕|安抚|别担心|我会/.test(String(input || ''));
+  }
+
+  classifyDialogueAction(input) {
+    if (this.isIdentityDialogue(input)) return 'identity';
+    if (this.isMemoryDialogue(input)) return 'memory';
+    if (this.isNeedDialogue(input)) return 'need';
+    if (this.isComfortDialogue(input)) return 'comfort';
+    if (this.isRouteDialogue(input)) return 'route';
+    return 'free';
   }
 
   hasUnsupportedActionTarget(text) {
@@ -3639,6 +3730,7 @@ class CreatorExam3D extends GameEngine {
 
       if (!response.ok) return null;
       const data = await response.json();
+      if (data?.fallback) return null;
       return data?.text || null;
     } catch (_error) {
       return null;

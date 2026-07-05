@@ -591,8 +591,8 @@ async function handleNarrative(req, res) {
 
   const { type, context, playerInput, worldState } = payload || {};
   const narrativeType = String(type || 'dialogue'); // dialogue | environment | event | lore
-  const input = String(playerInput || '').trim();
   const ctx = context || {};
+  const input = String(playerInput || ctx.playerInput || ctx.playerText || '').trim();
   const state = worldState || {};
 
   if (!AI_API_KEY) {
@@ -649,6 +649,19 @@ async function handleNarrative(req, res) {
   }
 }
 
+function formatPromptValue(value, fallback = '无') {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (Array.isArray(value)) return value.length ? value.map((item) => formatPromptValue(item, '')).filter(Boolean).join('；') : fallback;
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (_error) {
+      return fallback;
+    }
+  }
+  return String(value);
+}
+
 function buildNarrativePrompt(type, context, worldState) {
   const basePrompt = `你是《创世计划：造物者考核》的叙事引擎。你负责构建一个由AI共同创造的开放世界，玩家的每一个选择都会影响世界的走向。
 
@@ -681,7 +694,20 @@ function buildNarrativePrompt(type, context, worldState) {
 - 类型：${context.characterType || '中立'}
 - 当前情绪：${context.mood || '平静'}
 - 对玩家的态度：${context.attitude || '好奇'}
+- 性格基底：${context.personality || '谨慎、贴近当前处境'}
+- 说话方式：${context.dialogueStyle || '先回应玩家问题，再用简短自然的话补充处境'}
 - 记忆：${(context.memories || []).join('；') || '暂无'}
+- 玩家刚刚说：${context.playerInput || context.playerText || '未提供'}
+- 对话意图：${context.dialogueAction || '自由对话'}
+- 当前关卡：${context.levelTitle || worldState.currentLevel || '未知'}
+- 关卡目标：${context.levelObjective || '未知'}
+- 当前单位：${context.unitName || context.characterName || '未知'}（${context.unitType || context.characterType || '未知类型'}）
+- 当前位置：${formatPromptValue(context.currentTerrain, '未知')}
+- 当前需求：${context.currentNeed || '未知'}
+- 下一步建议：${formatPromptValue(context.nextStep, '未知')}
+- 周边单位：${formatPromptValue(context.nearbyUnits, '无')}
+- 周边造物：${formatPromptValue(context.nearbyCreations, '无')}
+- 已知世界事实：${formatPromptValue(context.knownWorldFacts, '无')}
 
 对话规则：
 1. 角色要有自己独特的说话方式（口头禅、语气、用词习惯）。
@@ -689,6 +715,8 @@ function buildNarrativePrompt(type, context, worldState) {
 3. 如果玩家帮助过角色或与其目标一致，态度会更友好。
 4. 如果玩家的行为造成了伤害，角色会表现出悲伤或愤怒。
 5. 对话中可以适当透露一些世界背景信息，但不要一次性说完。
+6. 必须先直接回应“玩家刚刚说”的内容；如果玩家询问需求、路线、记忆或正在安抚，请先给出具体回应，再保留角色口吻。
+7. 不要输出与当前单位、当前位置、关卡目标无关的泛泛环境独白。
 
 请直接输出角色的对话内容（不要加角色名前缀，不要加引号）。`,
 
