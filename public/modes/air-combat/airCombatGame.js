@@ -372,6 +372,7 @@
       this.fire = 1.4;
       this.fireMult = this.affix?.fireMult || 1;
       this.bulletRateMult = this.affix?.bulletRateMult || 1;
+      this.isBoss = true;
       this.affixTimer = this.affix?.every || 0;
       this.t = 0;
       this.phase = 1;
@@ -925,8 +926,10 @@
       return this.playerDamage(damage, target);
     },
 
-    playerDamage(amount, _target = null) {
-      return amount * (1 + (Number(this.resonance.vitalReactorDamageMult) || 0));
+    playerDamage(amount, target = null) {
+      const vital = Number(this.resonance.vitalReactorDamageMult) || 0;
+      const hunter = target?.isBoss ? Number(this.resonance.bossHunterDamageMult) || 0 : 0;
+      return amount * (1 + vital + hunter);
     },
 
     resolveCollisions() {
@@ -1114,7 +1117,7 @@
         const cd = active?.affix?.attack ? ` · ${Math.max(0, active.affixTimer || 0).toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${cd}` : '';
       }
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
+      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.bossHunterStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
@@ -1140,6 +1143,11 @@
     vitalReactorStatus() {
       const mult = Number(this.resonance.vitalReactorDamageMult) || 0;
       return mult > 0 ? ` · 生命炉心+${Math.round(mult * 100)}%` : '';
+    },
+
+    bossHunterStatus() {
+      const mult = Number(this.resonance.bossHunterDamageMult) || 0;
+      return mult > 0 ? ` · 猎首协议+${Math.round(mult * 100)}%` : '';
     },
 
     painConverterStatus() {

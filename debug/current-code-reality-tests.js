@@ -227,6 +227,7 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('破甲弹芯') && bridgeSource.includes('armorPierceMult: 0.35'), 'air bridge must adapt upstream armor piercer as finite cannon resonance');
   assert.ok(bridgeSource.includes('装甲口径') && bridgeSource.includes('armorCaliberDamage'), 'air bridge must adapt upstream armor caliber as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('生命炉心') && bridgeSource.includes('vitalReactorDamageMult'), 'air bridge must adapt upstream vital reactor as finite prior-flow damage resonance');
+  assert.ok(bridgeSource.includes('猎首协议') && bridgeSource.includes('bossHunterDamageMult'), 'air bridge must adapt upstream boss hunter as finite prior-flow boss damage resonance');
   assert.ok(bridgeSource.includes('痛觉转换') && bridgeSource.includes('painConverterCooldownPerHp'), 'air bridge must adapt upstream pain converter as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('近防协议') && bridgeSource.includes('pointDefenseRange'), 'air bridge must adapt upstream point defense as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('splitPairs') && bridgeSource.includes('分束棱镜'), 'air bridge must adapt upstream split laser as beam resonance');
@@ -268,6 +269,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes("this.burst(b.x, b.y, '#ff922b', 6)"), 'air combat slice must show finite armor-piercer hit feedback');
   assert.ok(airGameSource.includes('armorCaliberDamage()') && airGameSource.includes('armorCaliberStatus') && airGameSource.includes('装甲口径+'), 'air combat slice must fold prior-flow armor caliber into main cannon damage and HUD');
   assert.ok(airGameSource.includes('playerDamage(amount') && airGameSource.includes('vitalReactorStatus') && airGameSource.includes('生命炉心+'), 'air combat slice must fold upstream vital reactor into all player damage and HUD');
+  assert.ok(airGameSource.includes('target?.isBoss') && airGameSource.includes('bossHunterStatus') && airGameSource.includes('猎首协议+'), 'air combat slice must apply boss hunter only to finite Boss targets and HUD');
   assert.ok(airGameSource.includes('triggerPainConverter') && airGameSource.includes('painConverterStatus') && airGameSource.includes('痛觉转译'), 'air combat slice must convert real HP loss into finite creation-pulse cooldown');
   assert.ok(airGameSource.includes('clearEnemyBulletsNear') && airGameSource.includes('triggerPointDefense') && airGameSource.includes('pointDefenseStatus'), 'air combat slice must clear enemy bullets near kills for finite point-defense resonance');
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
@@ -332,6 +334,8 @@ function assertAirCombatRouteBalance() {
   assert.equal(highPressure.routeResonance().armorCaliberDamage, 2, 'prior-flow armor caliber must remain bounded and derived from context');
   assert.ok(highPressure.routeResonance().vitalReactorDamageMult > 0, 'prior-flow extra HP should unlock finite vital reactor damage resonance');
   assert.ok(highPressure.routeResonance().vitalReactorDamageMult <= 0.2, 'vital reactor damage multiplier must stay bounded');
+  assert.ok(highPressure.routeResonance().bossHunterDamageMult > 0, 'discovered lore or high final pressure should unlock finite boss hunter resonance');
+  assert.ok(highPressure.routeResonance().bossHunterDamageMult <= 0.4, 'boss hunter damage multiplier must stay bounded');
   assert.ok(highPressure.routeResonance().painConverterCooldownPerHp > 0, 'high final pressure should unlock finite pain converter resonance');
   assert.ok(highPressure.routeResonance().painConverterMaxCooldown <= 4.2, 'pain converter cooldown refund must stay bounded');
   assert.ok(highPressure.routeResonance().pointDefenseRange > 0, 'rescued residents should unlock finite point-defense resonance');
@@ -381,6 +385,7 @@ function assertAirCombatRouteBalance() {
     recentCreations: [{ name: '记忆航标', ability: 'memory_beacon' }]
   });
   assert.ok(memoryRoute.routeResonance().pointDefenseRange > 0, 'memory beacon weapons should unlock finite point-defense even without rescued residents');
+  assert.equal(memoryRoute.routeResonance().bossHunterDamageMult, 0, 'low-pressure routes without lore must not get boss hunter damage');
 
   const failedDefenseRoute = loadAirBridgeForContext({
     entropy: 4,

@@ -481,6 +481,8 @@
       vitalReactorDamageMult: 0,
       vitalReactorHpPerDamageMult: 20,
       vitalReactorMaxDamageMult: 0.2,
+      bossHunterDamageMult: 0,
+      bossHunterMaxDamageMult: 0.4,
       painConverterCooldownPerHp: 0,
       painConverterMaxCooldown: 0,
       pointDefenseRange: 0,
@@ -515,6 +517,13 @@
     );
     if (resonance.vitalReactorDamageMult > 0) {
       resonance.effect = `${resonance.effect} 生命炉心把额外机体强度转成全武器增伤 ${Math.round(resonance.vitalReactorDamageMult * 100)}%。`;
+    }
+    resonance.bossHunterDamageMult = Math.min(
+      resonance.bossHunterMaxDamageMult,
+      discoveredLore().length * 0.08 + (endingPressure() >= 0.84 ? 0.12 : 0)
+    );
+    if (resonance.bossHunterDamageMult > 0) {
+      resonance.effect = `${resonance.effect} 猎首协议把传说锚点校准为 Boss 增伤 ${Math.round(resonance.bossHunterDamageMult * 100)}%。`;
     }
     const painPressure = lostCount() + Math.max(0, Math.floor((endingPressure() - 0.76) * 10));
     if (painPressure > 0) {
