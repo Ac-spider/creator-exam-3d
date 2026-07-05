@@ -26,12 +26,20 @@
       </div>
 
       <section id="left-panel" class="glass panel">
-        <div class="section-title">当前考核</div>
-        <h2 id="level-title">加载中</h2>
-        <p id="level-story" class="story"></p>
-        <div class="objective-box">
-          <div class="objective-label">目标</div>
-          <div id="level-objective"></div>
+        <div class="mission-dossier">
+          <div class="mission-head">
+            <div>
+              <div class="section-title">当前考核</div>
+              <h2 id="level-title">加载中</h2>
+            </div>
+            <div id="mission-threat" class="mission-threat">读图</div>
+          </div>
+          <p id="level-story" class="story"></p>
+          <div class="objective-box">
+            <div class="objective-label">本关目标</div>
+            <div id="level-objective"></div>
+          </div>
+          <div id="mission-goals" class="mission-goals"></div>
         </div>
 
         <div class="stat-grid">
@@ -43,8 +51,11 @@
 
         <div id="special-meters" class="meters"></div>
 
-        <div class="section-title with-margin">单位状态</div>
+        <div class="section-title with-margin">交流对象</div>
         <div id="unit-list" class="unit-list"></div>
+
+        <div class="section-title with-margin">行动指引</div>
+        <div id="intent-preview-list" class="intent-preview-list"></div>
       </section>
 
       <section id="right-panel" class="glass panel">
@@ -66,11 +77,12 @@
           <button id="compile-btn" class="primary">生成造物卡</button>
           <button id="random-btn" class="secondary">灵感</button>
         </div>
-        <div id="ai-mode" class="hint">AI 接口未配置时会使用本地编译器兜底。</div>
+        <div id="ai-mode" class="hint">描述你想创造的东西，系统会把它整理成可放置的造物卡。</div>
 
         <div id="card-panel" class="card hidden">
           <div class="card-head">
-            <div>
+            <div id="card-rune" class="card-rune">造</div>
+            <div class="card-title-block">
               <div id="card-type" class="card-type">奇迹</div>
               <h3 id="card-name">未生成</h3>
             </div>
@@ -92,6 +104,42 @@
           <button id="restart-btn" class="secondary">重开本关</button>
         </div>
         <button id="next-btn" class="secondary wide hidden">进入下一关</button>
+
+        <section id="npc-dialogue-panel" class="npc-dialogue-panel hidden">
+          <div class="dialogue-head">
+            <div>
+              <div class="section-title">NPC 交流</div>
+              <h3 id="npc-dialogue-title">未选择居民</h3>
+            </div>
+            <button id="npc-dialogue-close" class="secondary small" type="button">关闭</button>
+          </div>
+          <div id="npc-dialogue-meta" class="dialogue-meta"></div>
+          <div id="npc-dialogue-roster" class="dialogue-roster"></div>
+          <div id="npc-dialogue-history" class="dialogue-history"></div>
+          <div id="npc-dialogue-actions" class="dialogue-actions">
+            <button class="secondary" type="button" data-dialogue-action="need" data-prompt="你现在最需要我创造什么？">询问需求</button>
+            <button class="secondary" type="button" data-dialogue-action="route" data-prompt="你觉得下一步应该往哪里走？">询问路线</button>
+            <button class="secondary" type="button" data-dialogue-action="memory" data-prompt="你还记得这里发生过什么吗？">询问记忆</button>
+            <button class="secondary" type="button" data-dialogue-action="comfort" data-prompt="请相信我，我会尽量救下大家。">安抚</button>
+            <button class="secondary" type="button" data-dialogue-action="group-chat">群聊</button>
+          </div>
+          <textarea id="npc-dialogue-input" maxlength="160" placeholder="输入你想对这个NPC说的话"></textarea>
+          <button id="npc-dialogue-send" class="primary wide" type="button">发送回应</button>
+        </section>
+
+        <section id="advanced-mechanics-panel" class="advanced-mechanics-panel collapsible">
+          <button type="button" class="panel-title collapse-toggle" aria-expanded="false" aria-controls="advanced-body">
+            高级世界机制
+            <span class="collapse-icon" aria-hidden="true">+</span>
+          </button>
+          <div id="advanced-body" class="collapse-body">
+            <div id="advanced-mechanic-list" class="advanced-mechanic-list"></div>
+            <div id="advanced-action-list" class="advanced-action-list"></div>
+            <textarea id="advanced-decode-input" maxlength="80" placeholder="输入认知深渊谜题的解码"></textarea>
+            <div id="advanced-detail" class="advanced-detail"></div>
+            <div id="advanced-log" class="advanced-log"></div>
+          </div>
+        </section>
 
         <section id="continuity-panel" class="continuity-panel">
           <div class="panel-title">世界连续性</div>
@@ -257,6 +305,7 @@
           <div id="modal-kicker" class="eyebrow">考核结果</div>
           <h2 id="modal-title"></h2>
           <p id="modal-text"></p>
+          <div id="exploration-choices" class="exploration-choice-list hidden"></div>
           <div class="button-row center">
             <button id="modal-primary" class="primary">继续</button>
             <button id="modal-secondary" class="secondary">重试</button>
