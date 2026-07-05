@@ -132,6 +132,7 @@ class CreatorExam3D extends GameEngine {
     this.unitMeshPool = new Map();
     this.creationMeshPool = new Map();
     this.rescuedMarkerPool = new Map();
+    this.intentArrowGroup = new THREE.Group();
 
     // Initialize new systems
     this.memorySystem = getMemorySystem();
@@ -167,6 +168,9 @@ class CreatorExam3D extends GameEngine {
     this.ui.modal.classList.add('hidden');
     this.ui.nextBtn.classList.add('hidden');
     this.ui.cardPanel.classList.add('hidden');
+
+    // Clear 3D intent arrows from previous level
+    this.clearIntentArrows();
 
     // Initialize NPC manager for this level
     this.npcManager = new NPCManager(this.level);
@@ -318,6 +322,7 @@ class CreatorExam3D extends GameEngine {
     this.scene.add(base);
 
     this.scene.add(this.worldGroup);
+    this.worldGroup.add(this.intentArrowGroup);
 
     // Initialize particle system and screen effects
     this.particleSystem = new ParticleSystem(this.scene);
@@ -1508,6 +1513,93 @@ class CreatorExam3D extends GameEngine {
     return halo;
   }
 
+  clearIntentArrows() {
+    if (!this.intentArrowGroup) return;
+    for (const child of this.intentArrowGroup.children) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          for (const m of child.material) m.dispose();
+        } else {
+          child.material.dispose();
+        }
+      }
+    }
+    this.intentArrowGroup.clear();
+  }
+
+  renderIntentArrows() {
+    if (!this.intentArrowGroup || typeof this.generateEnemyIntentPreview !== 'function') return;
+
+    this.clearIntentArrows();
+    if (this.gameState !== 'playing') return;
+
+    const result = this.generateEnemyIntentPreview();
+    if (!result || !result.previews || result.previews.length === 0) return;
+
+    const threatColor = {
+      high: 0xff3333,
+      medium: 0xffaa33,
+      low: 0x33ff88,
+      none: 0x888888
+    };
+
+    for (const p of result.previews) {
+      const color = threatColor[p.threat] || threatColor.low;
+      const isDangerous = p.intentType === 'rampage' || p.intentType === 'intensify';
+      const start = this.tileToWorld(p.position.x, p.position.y);
+
+      if (p.targetPosition) {
+        const end = this.tileToWorld(p.targetPosition.x, p.targetPosition.y);
+        const dx = end.x - start.x;
+        const dz = end.z - start.z;
+        const length = Math.sqrt(dx * dx + dz * dz);
+        if (length < 0.01) continue;
+
+        const direction = new THREE.Vector3(dx / length, 0, dz / length);
+        const arrowOrigin = new THREE.Vector3(start.x, 0.35, start.z);
+        const arrowLength = Math.max(0.2, length * 0.86);
+        const headLength = isDangerous ? 0.32 : 0.22;
+        const headWidth = isDangerous ? 0.22 : 0.14;
+        const arrow = new THREE.ArrowHelper(direction, arrowOrigin, arrowLength, color, headLength, headWidth);
+        arrow.userData = { intentType: p.intentType, unitId: p.unitId };
+        this.intentArrowGroup.add(arrow);
+
+        if (isDangerous) {
+          const pulse = new THREE.Mesh(
+            new THREE.SphereGeometry(0.12, 8, 8),
+            this.material(color, { transparent: true, opacity: 0.6, emissive: color, emissiveIntensity: 0.5 })
+          );
+          pulse.position.set(start.x, 0.9, start.z);
+          pulse.userData = { pulse: true, baseScale: 1, phase: Math.random() * Math.PI * 2 };
+          this.intentArrowGroup.add(pulse);
+        }
+      } else {
+        const iconGroup = new THREE.Group();
+        iconGroup.position.set(start.x, 1.05, start.z);
+
+        const marker = new THREE.Mesh(
+          new THREE.SphereGeometry(isDangerous ? 0.16 : 0.12, 8, 8),
+          this.material(color, { transparent: true, opacity: 0.85, emissive: color, emissiveIntensity: 0.35 })
+        );
+        marker.userData = { intentType: p.intentType, unitId: p.unitId };
+        iconGroup.add(marker);
+
+        if (isDangerous) {
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(0.22, 0.025, 6, 18),
+            this.material(color, { transparent: true, opacity: 0.5, emissive: color, emissiveIntensity: 0.3 })
+          );
+          ring.rotation.x = Math.PI / 2;
+          ring.userData = { pulse: true, baseScale: 1, phase: Math.random() * Math.PI * 2 };
+          iconGroup.add(ring);
+        }
+
+        this.intentArrowGroup.add(iconGroup);
+      }
+    }
+  }
+
   updateUi() {
     this.ui.levelChip.textContent = `第 ${this.levelIndex + 1} / ${LEVELS.length} 关`;
     this.ui.title.textContent = this.level.title;
@@ -1555,6 +1647,7 @@ class CreatorExam3D extends GameEngine {
     this.renderWorkshopPanel();
     this.renderPersistentPanel();
     this.renderStorytellerPanel();
+    this.renderIntentArrows();
   }
 
   renderLegendPanel() {
@@ -2605,8 +2698,30 @@ class CreatorExam3D extends GameEngine {
       this.particleSystem.update(deltaTime);
     }
 
+    // Pulse dangerous intent markers
+    if (this.intentArrowGroup) {
+      for (const child of this.intentArrowGroup.children) {
+        this.animateIntentMarker(child, t);
+      }
+    }
+
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  animateIntentMarker(child, t) {
+    if (!child) return;
+    if (child.userData?.pulse) {
+      const phase = child.userData.phase || 0;
+      const baseScale = child.userData.baseScale || 1;
+      const s = baseScale + Math.sin(t * 3 + phase) * 0.15;
+      child.scale.setScalar(s);
+    }
+    if (child.type === 'Group') {
+      for (const nested of child.children) {
+        this.animateIntentMarker(nested, t);
+      }
+    }
   }
 }
 

@@ -191,6 +191,34 @@
 
 ---
 
+### 2026-07-05 - Phase 7: 敌方意图 3D 可视化增强 (已完成)
+
+**目标**: 把右侧面板的文字敌方意图升级到 3D 场景中，让玩家直接看到单位下一步行动方向（类似 Into the Breach）。
+
+**涉及文件**:
+- `public/js/game.js`
+
+**主要变更**:
+- `CreatorExam3D` 构造中初始化 `intentArrowGroup` 并加入 `worldGroup`。
+- 新增 `clearIntentArrows()` 清理旧箭头与材质。
+- 新增 `renderIntentArrows()`：
+  - 有 `targetPosition` 时绘制 `ArrowHelper` 指向下一格子。
+  - 无 `targetPosition` 时（blocked/trapped/confused 等）在单位头顶显示图标。
+  - 按 `threat` 字段着色：high 红、medium 橙黄、low/none 绿/灰。
+  - `rampage` / `intensify` 危险意图附加脉冲球/环。
+- 在 `updateUi()` 末尾调用 `renderIntentArrows()`，保持与 UI 同步刷新。
+- 在 `animate()` 中对危险意图标记施加脉冲动画。
+- `loadLevel()` 中清空旧关卡箭头。
+
+**验证**:
+- `node debug/test-suite.js` 171/171 通过
+- 浏览器中单位上方出现绿色行动箭头
+- 控制台无新增错误
+
+**状态**: 已完成
+
+---
+
 ### 后续计划
 
 - 继续扩展 AI 叙事引擎：AI 生成支线任务、自然语言 NPC 对话、动态剧情生成
