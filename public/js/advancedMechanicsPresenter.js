@@ -116,6 +116,42 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
 
   const actions = [
     {
+      id: 'trigger-story',
+      label: '触发叙事',
+      enabled: true,
+      hint: '立即让当前 Storyteller 生成一次事件'
+    },
+    {
+      id: 'trigger-legend',
+      label: '生成传说',
+      enabled: true,
+      hint: '写入神话、神器和因果链'
+    },
+    {
+      id: 'prepare-chain',
+      label: '触发连锁',
+      enabled: true,
+      hint: '放置光+水造物并触发共鸣'
+    },
+    {
+      id: 'prepare-ritual',
+      label: '准备仪式',
+      enabled: true,
+      hint: '放置可执行仪式的两张造物'
+    },
+    {
+      id: 'trigger-corruption',
+      label: '制造悖论',
+      enabled: true,
+      hint: '生成一张腐化造物卡'
+    },
+    {
+      id: 'showcase-workshop',
+      label: '演示工坊',
+      enabled: true,
+      hint: '自动拆解、改造并融合造物'
+    },
+    {
       id: 'dismantle-workshop',
       label: '拆解库存',
       enabled: inventory.length > 0,
@@ -147,16 +183,28 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
       oathType: availableOaths.find(o => o.canForm !== false)?.type || 'protection'
     },
     {
+      id: 'break-oath',
+      label: '背弃誓约',
+      enabled: activeOaths.length > 0,
+      hint: activeOaths.length ? '触发怨恨链与关系恶化' : '需要活跃誓约'
+    },
+    {
+      id: 'record-legacy',
+      label: '记录传承',
+      enabled: true,
+      hint: '把一名单位写入跨关传承'
+    },
+    {
       id: 'manifest-echo',
       label: '召出回响',
-      enabled: entropyRatio >= 0.6 && (workshop.lastCreation || inventory.length > 0),
-      hint: entropyRatio >= 0.6 ? '从旧造物记忆中显现' : '裂隙至少需要 60%'
+      enabled: false,
+      hint: '裂隙回响模块已存在，浏览器演示入口待接入'
     },
     {
       id: 'generate-riddle',
       label: '生成谜题',
-      enabled: !!abyssState.riddlesAvailable,
-      hint: abyss.currentRiddle ? '已有谜题，可重新扰动' : '认知深渊会给出一段待解码文本'
+      enabled: true,
+      hint: abyss.currentRiddle ? '已有谜题，可重新扰动' : '自动提升裂隙并生成谜题'
     },
     {
       id: 'submit-riddle',

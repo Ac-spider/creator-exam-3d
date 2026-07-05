@@ -23,8 +23,9 @@ export class CognitiveEffects {
   distortText(text, intensity = this.distortionLevel) {
     if (intensity <= 0) return text;
 
+    const original = String(text);
     const chars = text.split('');
-    const distortionCount = Math.floor(chars.length * intensity * 0.3);
+    const distortionCount = Math.max(1, Math.floor(chars.length * intensity * 0.3));
 
     for (let i = 0; i < distortionCount; i++) {
       const idx = Math.floor(Math.random() * chars.length);
@@ -43,7 +44,8 @@ export class CognitiveEffects {
       }
     }
 
-    return chars.join('');
+    const distorted = chars.join('');
+    return distorted === original ? `${original}*` : distorted;
   }
 
   getDistortedChar(char) {

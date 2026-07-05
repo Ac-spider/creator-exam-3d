@@ -3325,7 +3325,10 @@ class CreatorExam3D extends GameEngine {
       this.ui.workshopMaterialsList.innerHTML = '<div class="continuity-item">没有可用材料</div>';
     } else {
       this.ui.workshopMaterialsList.innerHTML = materialEntries.map(m => {
-        const [name, count] = Array.isArray(m) ? m : [m.name || m.type, m.count];
+        const [key, value] = Array.isArray(m) ? m : [m.name || m.type, m.count];
+        const material = value && typeof value === 'object' ? value : null;
+        const name = material?.name || key;
+        const count = material?.count ?? value ?? 0;
         return `<div class="continuity-item"><strong>${escapeHtml(name)}</strong> × ${escapeHtml(String(count))}</div>`;
       }).join('');
     }
@@ -4177,7 +4180,10 @@ class CreatorExam3D extends GameEngine {
     this.moveUnits();
     this.spreadHazards();
     this.applyTileHazardsToUnits();
+    this.enemyIntentSystem.generatePreviews(this.worldState, this);
+    this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
     this.decrementCreationDurations();
+    this.checkOathBetrayals();
     this.checkEndCondition(true);
     if (this.gameState === 'playing') {
       this.turn += 1;

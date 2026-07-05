@@ -614,8 +614,10 @@ export class Storyteller {
 
   // Serialize for save/load
   serialize() {
+    const personalityKey = Object.entries(STORYTELLER_PERSONALITIES)
+      .find(([, value]) => value === this.personality || value.name === this.personality.name)?.[0] || 'cassandra';
     return {
-      personality: this.personality.name,
+      personality: personalityKey,
       tension: this.tension,
       lastEventTurn: this.lastEventTurn,
       eventHistory: this.eventHistory,
@@ -625,7 +627,9 @@ export class Storyteller {
 
   deserialize(data) {
     if (!data) return;
-    this.personality = STORYTELLER_PERSONALITIES[data.personality] || STORYTELLER_PERSONALITIES.cassandra;
+    const personality = STORYTELLER_PERSONALITIES[data.personality] ||
+      Object.values(STORYTELLER_PERSONALITIES).find(p => p.name === data.personality);
+    this.personality = personality || STORYTELLER_PERSONALITIES.cassandra;
     this.tension = data.tension || 0.5;
     this.lastEventTurn = data.lastEventTurn || 0;
     this.eventHistory = data.eventHistory || [];

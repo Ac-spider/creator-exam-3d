@@ -2302,6 +2302,7 @@ class GameEngine {
       for (const consequence of result.consequences) {
         this.log(`  ${consequence.description}`);
       }
+      this.oathManager.applyBetrayalConsequences(result.consequences, this.worldState || {});
       this.emitWorldEvent('oath_broken', {
         oathId,
         npcId: result.oath.npcId,
@@ -2321,6 +2322,7 @@ class GameEngine {
       for (const consequence of betrayal.consequences) {
         this.log(`  ${consequence.description}`);
       }
+      this.oathManager.applyBetrayalConsequences(betrayal.consequences, this.worldState || {});
       this.emitWorldEvent('oath_betrayed', {
         oathId: betrayal.oath.id,
         npcId: betrayal.oath.npcId,

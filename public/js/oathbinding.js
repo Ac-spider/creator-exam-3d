@@ -165,6 +165,9 @@ export class Oath {
         value: 30,
         description: `${this.npcName} 对你感到愤怒`
       });
+      if (oathType?.betrayalCost) {
+        consequences.push({ ...oathType.betrayalCost });
+      }
     } else {
       consequences.push({
         type: 'betrayal',
