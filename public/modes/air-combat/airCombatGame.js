@@ -88,7 +88,7 @@
 
     takeDamage(amount) {
       game.noHitT = 0;
-      let rest = amount;
+      let rest = Math.max(1, amount * (this.resonance.damageTakenMult || 1));
       if (this.shield > 0) {
         const blocked = Math.min(this.shield, rest);
         this.shield -= blocked;

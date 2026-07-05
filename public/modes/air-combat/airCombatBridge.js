@@ -230,10 +230,11 @@
     shield: {
       key: 'shield',
       name: '守夜共鸣',
-      effect: '初始护盾提高，居民回声更愿意挡在前面。',
+      effect: '初始护盾提高，钛合装甲削减部分承伤。',
       color: '#8bd3ff',
       startingShield: 28,
       hpBonus: 10,
+      damageTakenMult: 0.92,
       skillCooldownMult: 0.94
     },
     spear: {
@@ -373,6 +374,7 @@
       hpBonus: 0,
       allyWingsBonus: 0,
       scoreMult: 1,
+      damageTakenMult: 1,
       lastStandShield: 0,
       sourceCreation: weapon.sourceCreation,
       ...base,
