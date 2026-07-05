@@ -222,6 +222,26 @@
 
 ---
 
+### 2026-07-05 - 修复：失败重开后红色暗角残留 (已完成)
+
+**目标**: 修复关卡失败点击「重试」后，红色失败暗角（vignette）仍然残留在屏幕边缘的问题。
+
+**涉及文件**:
+- `public/js/particles.js`
+- `public/js/game.js`
+
+**主要变更**:
+- 在 `ScreenEffects` 类中新增 `clear()` 方法，清空所有屏幕 overlay（vignette、flash、floating text 等）。
+- 在 `CreatorExam3D.loadLevel()` 开头调用 `this.screenEffects?.clear()` 和 `this.particleSystem?.clear()`，确保切换关卡或重开后屏幕干净。
+- 递归增强 `clearIntentArrows()`，释放 `ArrowHelper` 和嵌套 `Group` 内部的 geometry/material。
+
+**验证**:
+- `node debug/test-suite.js` 171/171 通过
+- 浏览器中故意失败至出现红色暗角，点击「重试」后暗角消失，场景恢复正常
+- 控制台无新增错误
+
+**状态**: 已完成
+
 ### 后续计划
 
 - 继续扩展 AI 叙事引擎：AI 生成支线任务、自然语言 NPC 对话、动态剧情生成

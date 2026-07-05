@@ -169,6 +169,10 @@ class CreatorExam3D extends GameEngine {
     this.ui.nextBtn.classList.add('hidden');
     this.ui.cardPanel.classList.add('hidden');
 
+    // Clear screen overlays and particles from previous level / defeat
+    if (this.screenEffects) this.screenEffects.clear();
+    if (this.particleSystem) this.particleSystem.clear();
+
     // Clear 3D intent arrows from previous level
     this.clearIntentArrows();
 
@@ -1515,15 +1519,21 @@ class CreatorExam3D extends GameEngine {
 
   clearIntentArrows() {
     if (!this.intentArrowGroup) return;
-    for (const child of this.intentArrowGroup.children) {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) {
-        if (Array.isArray(child.material)) {
-          for (const m of child.material) m.dispose();
+    const disposeObject = (obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          for (const m of obj.material) m.dispose();
         } else {
-          child.material.dispose();
+          obj.material.dispose();
         }
       }
+      if (obj.children) {
+        for (const child of obj.children) disposeObject(child);
+      }
+    };
+    for (const child of this.intentArrowGroup.children) {
+      disposeObject(child);
     }
     this.intentArrowGroup.clear();
   }

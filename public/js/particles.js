@@ -572,6 +572,13 @@ export class ScreenEffects {
 
     setTimeout(() => el.remove(), 1500);
   }
+
+  // Clear all screen overlays (vignette, floating text, lingering flash)
+  clear() {
+    while (this.container.firstChild) {
+      this.container.firstChild.remove();
+    }
+  }
 }
 
 // Add CSS animation for floating text
