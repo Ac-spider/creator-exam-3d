@@ -212,6 +212,7 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('minefield') && bridgeSource.includes('爆雷空域'), 'air bridge must adapt upstream minefield as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes("attack: 'repair'") && bridgeSource.includes('维修词缀'), 'air bridge must adapt upstream repair boss affix into finite route pressure');
   assert.ok(bridgeSource.includes('berserker') && bridgeSource.includes('狂暴'), 'air bridge must adapt upstream berserker elite as finite enemy-pressure affix');
+  assert.ok(bridgeSource.includes('regenerator') && bridgeSource.includes('再生精英'), 'air bridge must adapt upstream regenerating elite as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('fieldRepair') && bridgeSource.includes('纳米修复'), 'air bridge must adapt upstream field repair as a prior-flow reward');
   assert.ok(bridgeSource.includes('damageTakenMult') && bridgeSource.includes('钛合装甲'), 'air bridge must adapt upstream armor plating as finite shield resonance');
   assert.ok(bridgeSource.includes('钨芯重弹') && bridgeSource.includes('fireIntervalMult: 1.12'), 'air bridge must adapt upstream heavy rounds as finite cannon resonance');
@@ -239,6 +240,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('this.sniperAim') && airGameSource.includes("['medium', 'gunner', 'splitter', 'sniper'"), 'sniper enemies must warn before entering late finite route pools');
   assert.ok(airGameSource.includes('detonator') && airGameSource.includes('ringCount') && airGameSource.includes("enemy.type === 'detonator'"), 'air combat slice must adapt upstream detonator minefield enemies locally');
   assert.ok(airGameSource.includes('applyBerserkerElite') && airGameSource.includes('eliteFireMult') && airGameSource.includes('enemy.fireMult'), 'air combat slice must apply upstream berserker elite pressure locally');
+  assert.ok(airGameSource.includes('applyRegeneratorElite') && airGameSource.includes('regenPct') && airGameSource.includes("enemy.elite = 'regenerator'"), 'air combat slice must apply upstream regenerating elite pressure locally');
   assert.ok(airGameSource.includes('hudAffix'), 'air combat HUD must show boss affix details');
   assert.ok(airGameSource.includes('reviewTags'), 'air combat result must adapt upstream run review tags to finite route review');
   assert.ok(airGameSource.includes('renderResultBody'), 'air combat result panel must support late AI verdict updates');
@@ -357,6 +359,7 @@ function assertAirCombatRouteBalance() {
     towerDefenseResult: { victory: true }
   });
   assert.ok(mineRoute.route().some(boss => boss.affix.key === 'minefield'), 'missile-like pressure should introduce finite minefield enemy pressure');
+  assert.ok(mineRoute.route().some(boss => boss.affix.key === 'regenerator'), 'successful night-watch pressure should introduce finite regenerating elite pressure');
 
   const memoryRoute = loadAirBridgeForContext({
     entropy: 2,

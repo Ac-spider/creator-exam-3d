@@ -198,6 +198,9 @@
       this.repairRadius = data.repairRadius || 0;
       this.repairAmount = data.repairAmount || 0;
       this.repairTimer = data.repairInterval ? data.repairInterval * (0.55 + Math.random() * 0.4) : 0;
+      this.regenTimer = 0;
+      this.regenEvery = 0;
+      this.regenPct = 0;
       this.dead = false;
     }
 
@@ -233,6 +236,17 @@
           game.repairNearbyEnemies(this);
         }
       }
+      if (this.elite === 'regenerator' && this.y > 0 && this.y < H * 0.76) {
+        this.regenTimer -= dt;
+        if (this.regenTimer <= 0) {
+          this.regenTimer = this.regenEvery || 2.6;
+          if (this.hp < this.maxHp) {
+            const before = this.hp;
+            this.hp = Math.min(this.maxHp, this.hp + Math.max(1, Math.round(this.maxHp * (this.regenPct || 0.08))));
+            if (this.hp > before) game.burst(this.x, this.y, '#69db7c', 5);
+          }
+        }
+      }
       if (this.y > H + this.r) this.dead = true;
     }
 
@@ -259,9 +273,9 @@
         ctx.stroke();
         ctx.restore();
       }
-      if (this.type === 'jammer' || this.type === 'support') {
+      if (this.type === 'jammer' || this.type === 'support' || this.elite === 'regenerator') {
         const rr = this.type === 'jammer' ? 70 : 58;
-        ctx.strokeStyle = this.type === 'jammer' ? 'rgba(117,215,230,.36)' : 'rgba(114,214,189,.32)';
+        ctx.strokeStyle = this.type === 'jammer' ? 'rgba(117,215,230,.36)' : this.elite === 'regenerator' ? 'rgba(105,219,124,.36)' : 'rgba(114,214,189,.32)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(0, 0, rr + Math.sin(game.time * 5) * 3, 0, Math.PI * 2);
@@ -590,6 +604,7 @@
       const biased = affix?.enemyBias && Math.random() < (affix.spawnBias || 0) ? affix.enemyBias : pool;
       const enemy = new Enemy(pick(biased), stage);
       if (affix?.elite === 'berserker') this.applyBerserkerElite(enemy, affix);
+      else if (affix?.elite === 'regenerator') this.applyRegeneratorElite(enemy, affix);
       this.enemies.push(enemy);
     },
 
@@ -603,6 +618,19 @@
       enemy.score = Math.round(enemy.score * (affix.eliteScoreMult || 1.5));
       enemy.hp = Math.max(1, Math.round(enemy.hp * (affix.eliteHpMult || 0.92)));
       enemy.maxHp = enemy.hp;
+      return enemy;
+    },
+
+    applyRegeneratorElite(enemy, affix) {
+      if (!enemy || !affix) return enemy;
+      enemy.elite = 'regenerator';
+      enemy.color = affix.color || enemy.color;
+      enemy.score = Math.round(enemy.score * (affix.eliteScoreMult || 1.42));
+      enemy.hp = Math.max(1, Math.round(enemy.hp * (affix.eliteHpMult || 1.06)));
+      enemy.maxHp = enemy.hp;
+      enemy.regenEvery = affix.regenEvery || 2.6;
+      enemy.regenPct = affix.regenPct || 0.08;
+      enemy.regenTimer = enemy.regenEvery;
       return enemy;
     },
 

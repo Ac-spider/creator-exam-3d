@@ -107,6 +107,19 @@
       eliteScoreMult: 1.5,
       line: '失控残影把敌机推入狂暴精英态，速度和开火节奏都会抬高。'
     },
+    regenerator: {
+      key: 'regenerator',
+      name: '再生',
+      color: '#69db7c',
+      elite: 'regenerator',
+      enemyBias: ['medium', 'gunner', 'detonator'],
+      spawnBias: 0.46,
+      eliteHpMult: 1.06,
+      eliteScoreMult: 1.42,
+      regenEvery: 2.6,
+      regenPct: 0.08,
+      line: '再生精英会周期缝合机体，别把低血目标留在空域里恢复。'
+    },
     prism: {
       key: 'prism',
       name: '棱镜',
@@ -513,6 +526,7 @@
     if (defense && defense.victory === false) keys.push('breach', 'jammer');
     if (defense?.victory && pressure >= 0.75) keys.push('repair');
     if (entropy >= 6 || pressure >= 0.7 || /absorb_water|block|force_field/.test(abilityText)) keys.push('minefield');
+    if (defense?.victory && (pressure >= 0.66 || residentsCount() >= 2)) keys.push('regenerator');
     if (entropy >= 6 || /memory_beacon|dream_link|guide/.test(abilityText)) keys.push('jammerCloud');
     if (/illuminate|memory_beacon|dream_link|guide/.test(abilityText)) keys.push('support');
     if (!keys.length) keys.push('armored');
