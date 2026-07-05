@@ -60,6 +60,7 @@
       this.targetX = this.x;
       this.targetY = this.y;
       this.r = 15;
+      this.baseMaxHp = 110;
       this.maxHp = difficulty.playerHp;
       this.hp = this.maxHp;
       this.shield = difficulty.startingShield || 0;
@@ -575,7 +576,7 @@
       if (!this.player) return;
       const p = this.player;
       const color = this.weapon.color || '#72d6bd';
-      const damage = (this.weapon.kind === 'cannon' ? 4 : 2) + (this.resonance.damageBonus || 0);
+      const damage = (this.weapon.kind === 'cannon' ? 4 : 2) + (this.resonance.damageBonus || 0) + this.armorCaliberDamage();
       const speed = this.weapon.kind === 'cannon' ? -760 : -900;
       const spread = this.weapon.kind === 'beam' ? [-5, 0, 5] : this.weapon.kind === 'cannon' ? [0] : [-11, 11];
       for (const ox of spread) this.playerBullets.push({ x: p.x + ox, y: p.y - 18, vx: ox * 1.5, vy: speed, r: this.weapon.kind === 'cannon' ? 6 : 4, damage, color, main: true, dead: false });
@@ -737,6 +738,15 @@
         if (dist2({ x, y }, enemy) <= enemy.jamRadius * enemy.jamRadius) factor = Math.max(factor, enemy.weaponSlow);
       }
       return factor;
+    },
+
+    armorCaliberDamage() {
+      const configured = Number(this.resonance.armorCaliberDamage) || 0;
+      if (configured > 0) return configured;
+      const extraHp = Math.max(0, (this.player?.maxHp || 0) - (this.player?.baseMaxHp || 110));
+      const perDamage = this.resonance.armorCaliberHpPerDamage || 15;
+      const maxDamage = this.resonance.armorCaliberMaxDamage || 4;
+      return Math.min(maxDamage, Math.floor(extraHp / perDamage));
     },
 
     armorPierces(bullet, target) {
@@ -928,7 +938,7 @@
         const cd = active?.affix?.attack ? ` · ${Math.max(0, active.affixTimer || 0).toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${cd}` : '';
       }
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
+      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
@@ -944,6 +954,11 @@
       if (!this.player || this.player.hp >= this.player.maxHp) return ' · 纳米修复';
       const wait = Math.max(0, Math.ceil(this.difficulty.fieldRepair.delay - this.noHitT));
       return ` · 纳米修复${wait > 0 ? wait + 's' : '中'}`;
+    },
+
+    armorCaliberStatus() {
+      const damage = this.armorCaliberDamage();
+      return damage > 0 ? ` · 装甲口径+${damage}` : '';
     },
 
     jamStatus() {

@@ -399,6 +399,9 @@
       lastStandShield: 0,
       armorPierceMult: 0,
       armorPierceMinHp: 12,
+      armorCaliberDamage: 0,
+      armorCaliberHpPerDamage: 15,
+      armorCaliberMaxDamage: 4,
       sourceCreation: weapon.sourceCreation,
       ...base,
       towerDefenseRelief: !!defense.victory
@@ -410,6 +413,19 @@
         resonance.lastStandShield = Math.max(Number(resonance.lastStandShield) || 0, 34);
         resonance.effect = `${resonance.effect} 守夜黑匣子可抵消一次致命坠落。`;
       }
+    }
+    const flowHpBonus = Math.max(0,
+      residentsCount() * 4
+      - lostCount() * 6
+      + (defense.victory ? 12 : 0)
+      + (Number(resonance.hpBonus) || 0)
+    );
+    resonance.armorCaliberDamage = Math.min(
+      resonance.armorCaliberMaxDamage,
+      Math.floor(flowHpBonus / resonance.armorCaliberHpPerDamage)
+    );
+    if (resonance.armorCaliberDamage > 0) {
+      resonance.effect = `${resonance.effect} 装甲口径把前置流程的额外机体强度校准为主炮 +${resonance.armorCaliberDamage}。`;
     }
     return resonance;
   }
