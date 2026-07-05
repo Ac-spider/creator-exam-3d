@@ -3,7 +3,7 @@
 
 import { DebugGame } from './debugGame.js';
 import { localCompile } from '../public/js/aiClient.js';
-import { LEVELS } from '../public/js/levels.js';
+import { LEVELS, TILE } from '../public/js/levels.js';
 import { legacySystem } from '../public/js/legacySystem.js';
 
 class TestRunner {
@@ -112,6 +112,15 @@ runner.test('造物编译 - 本地编译器应生成有效卡牌', () => {
     runner.assert(card.range >= 0 && card.range <= 3, `卡牌range超出范围: ${card.range}`);
     runner.assert(card.duration >= 1 && card.duration <= 4, `卡牌duration超出范围: ${card.duration}`);
   }
+});
+
+runner.test('creation compile - two move actions should create tier-2 haste', () => {
+  const game = new DebugGame();
+  game.reset();
+  const card = localCompile('add two move actions to nearby NPCs', game.getGameContext());
+  runner.assertEqual(card.ability, 'haste', 'two move actions should infer haste');
+  runner.assertEqual(card.range, 2, 'two move actions should map to haste tier 2');
+  runner.assert(card.description.includes('3'), 'tier-2 haste description should mention the real movement limit');
 });
 
 // 测试造物放置
@@ -842,7 +851,8 @@ runner.test('能力策略模式 - 所有能力应有处理器', async () => {
     'create_bridge', 'block', 'force_field', 'transform_land', 'freeze_water',
     'raise_earth', 'grow_forest', 'dig_channel', 'trap', 'sun_blessing',
     'absorb_water', 'illuminate', 'cleanse', 'calm', 'guide', 'slow_beast',
-    'dream_link', 'time_dilation', 'reveal_path', 'memory_beacon'
+    'dream_link', 'time_dilation', 'reveal_path', 'memory_beacon',
+    'haste', 'teleport', 'shield_units', 'redirect_hazard'
   ];
 
   for (const ability of abilities) {
@@ -850,6 +860,44 @@ runner.test('能力策略模式 - 所有能力应有处理器', async () => {
     const hasActive = AbilityHandlers.active.has(ability);
     runner.assert(hasImmediate || hasActive, `能力 ${ability} 应至少有一个处理器`);
   }
+});
+
+runner.test('movement - haste should grant real extra steps', () => {
+  const game = new DebugGame();
+  game.reset();
+  const unit = game.units[0];
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  unit.x = 0;
+  unit.y = 0;
+  unit.goal = { x: 3, y: 0 };
+  unit.moveSpeed = 2;
+  const moved = game.moveUnitTowardGoal(unit, game.getUnitMoveSteps(unit));
+  runner.assertEqual(moved, 2, 'haste should move two tiles in one turn');
+  runner.assertEqual(unit.x, 2, 'unit should consume the extra action on the path');
+});
+
+runner.test('pathfinding - weighted A* should allow cheaper updates', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = [
+    [TILE.HIGH, TILE.SWAMP, TILE.FOREST, TILE.BRIDGE, TILE.BRIDGE, TILE.FOG, TILE.BRIDGE],
+    [TILE.BRIDGE, TILE.BRIDGE, TILE.BRIDGE, TILE.HIGH, TILE.LAND, TILE.BRIDGE, TILE.FOG],
+    [TILE.FOREST, TILE.LAND, TILE.HIGH, TILE.SWAMP, TILE.FOG, TILE.LAND, TILE.BRIDGE],
+    [TILE.FOG, TILE.FOREST, TILE.SWAMP, TILE.FOREST, TILE.BRIDGE, TILE.LAND, TILE.LAND],
+    [TILE.FOG, TILE.FOG, TILE.LAND, TILE.BRIDGE, TILE.FOREST, TILE.HIGH, TILE.HIGH],
+    [TILE.HIGH, TILE.BRIDGE, TILE.SWAMP, TILE.BRIDGE, TILE.FOREST, TILE.LAND, TILE.FOREST],
+    [TILE.SWAMP, TILE.HIGH, TILE.LAND, TILE.BRIDGE, TILE.BRIDGE, TILE.SWAMP, TILE.HIGH]
+  ];
+  const unit = { type: 'villager', x: 4, y: 1, goal: { x: 2, y: 6 }, status: 'active' };
+  let cost = 0;
+  for (let i = 0; i < 20 && !game.isGoalReached(unit); i += 1) {
+    const next = game.nextStepToward(unit, unit.goal);
+    if (!next) break;
+    cost += game.getMoveCost(next.x, next.y, unit);
+    unit.x = next.x;
+    unit.y = next.y;
+  }
+  runner.assert(cost <= 10.6, `expected weighted path cost <= 10.6, got ${cost}`);
 });
 
 // ========== 新增边界测试 ==========

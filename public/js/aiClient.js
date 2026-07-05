@@ -18,7 +18,11 @@ const ABILITY_SET = new Set([
   'dig_channel',
   'trap',
   'dream_link',
-  'time_dilation'
+  'time_dilation',
+  'haste',
+  'teleport',
+  'shield_units',
+  'redirect_hazard'
 ]);
 
 const ABILITY_LABELS = {
@@ -41,7 +45,11 @@ const ABILITY_LABELS = {
   dig_channel: '挖掘水渠',
   trap: '设置陷阱',
   dream_link: '梦境链接',
-  time_dilation: '时间延缓'
+  time_dilation: '时间延缓',
+  haste: '行动力/加速',
+  teleport: '传送',
+  shield_units: '护盾/庇护',
+  redirect_hazard: '灾害改道'
 };
 
 const TYPE_BY_ABILITY = {
@@ -64,7 +72,11 @@ const TYPE_BY_ABILITY = {
   dig_channel: '地形',
   trap: '机械',
   dream_link: '仪式',
-  time_dilation: '奇迹'
+  time_dilation: '奇迹',
+  haste: '奇迹',
+  teleport: '法则',
+  shield_units: '奇迹',
+  redirect_hazard: '法则'
 };
 
 const NAME_SEEDS = {
@@ -87,7 +99,11 @@ const NAME_SEEDS = {
   dig_channel: ['引流蚓', '水脉渠', '导洪沟', '分流蚁'],
   trap: ['缚兽藤', '陷地阵', '迟步网', '缠根索'],
   dream_link: ['同梦蛛', '共感茧', '心桥蛾', '识海丝'],
-  time_dilation: ['时漏沙', '缓时花', '凝刻钟', '延流晶']
+  time_dilation: ['时漏沙', '缓时花', '凝刻钟', '延流晶'],
+  haste: ['疾行铃', '二步风', '迅足符', '赶路鼓'],
+  teleport: ['星门', '折路环', '归途门', '瞬径石'],
+  shield_units: ['守护伞', '避水罩', '庇护灯', '护身铃'],
+  redirect_hazard: ['引灾风标', '分洪罗盘', '转流旗', '改道铃']
 };
 
 const TAGS_BY_ABILITY = {
@@ -110,7 +126,11 @@ const TAGS_BY_ABILITY = {
   dig_channel: ['水', '引导', '控制'],
   trap: ['控制', '巨兽', '临时'],
   dream_link: ['精神', '连接', '共享'],
-  time_dilation: ['时间', '延缓', '紧急']
+  time_dilation: ['时间', '延缓', '紧急'],
+  haste: ['行动力', '加速', '移动'],
+  teleport: ['传送', '空间', '救援'],
+  shield_units: ['护盾', '庇护', '防护'],
+  redirect_hazard: ['改道', '灾害', '引导']
 };
 
 const KEYWORDS = [
@@ -133,8 +153,20 @@ const KEYWORDS = [
   { ability: 'dig_channel', words: ['渠', '沟', '挖', '引', '流', '导', '水渠', '分流'] },
   { ability: 'trap', words: ['陷阱', '坑', '网', '索', '绊', '捕', '捉', '机关'] },
   { ability: 'dream_link', words: ['梦', '链接', '连接', '共享', '心', '精神', '同梦', '共感'] },
-  { ability: 'time_dilation', words: ['时间', '缓', '慢', '延', '钟', '沙漏', '凝', '延缓'] }
+  { ability: 'time_dilation', words: ['时间', '缓', '慢', '延', '钟', '沙漏', '凝', '延缓'] },
+  { ability: 'haste', words: ['行动力', '加一', '加二', '多走', '快跑', '疾行', '冲刺', '移动力', 'move', 'speed'] },
+  { ability: 'teleport', words: ['传送', '星门', '瞬移', '空间门', 'portal', 'teleport'] },
+  { ability: 'shield_units', words: ['护盾', '庇护', '保护伞', '雨伞', '罩住', 'shield'] },
+  { ability: 'redirect_hazard', words: ['改道', '转向', '引流', '分洪', '风向', '吹走', 'redirect'] }
 ];
+
+const RULE_DESCRIBED_ABILITIES = new Set([
+  'reveal_path',
+  'haste',
+  'teleport',
+  'shield_units',
+  'redirect_hazard'
+]);
 
 export function abilityLabel(ability) {
   return ABILITY_LABELS[ability] || ability;
@@ -180,13 +212,15 @@ export function localCompile(text, gameContext = {}) {
     force_field: 2, illuminate: 2, calm: 2, sun_blessing: 3,
     grow_forest: 2, dig_channel: 2, trap: 2, dream_link: 2,
     reveal_path: 1, freeze_water: 1, raise_earth: 1,
-    time_dilation: 0, slow_beast: 2, absorb_water: 2, cleanse: 2
+    time_dilation: 0, haste: 1, teleport: 2, shield_units: 2,
+    redirect_hazard: 2, slow_beast: 2, absorb_water: 2, cleanse: 2
   };
-  const range = rangeMap[ability] ?? 1;
+  const range = ability === 'haste' ? inferHasteRange(text) : (rangeMap[ability] ?? 1);
 
   const durationMap = {
     create_bridge: 3, freeze_water: 2, trap: 2, time_dilation: 1,
-    grow_forest: 4, raise_earth: 3, force_field: 2, sun_blessing: 3
+    grow_forest: 4, raise_earth: 3, force_field: 2, sun_blessing: 3,
+    haste: 2, teleport: 2, shield_units: 3, redirect_hazard: 3
   };
   const duration = isTooStrong ? 2 : (durationMap[ability] ?? 3);
 
@@ -195,7 +229,8 @@ export function localCompile(text, gameContext = {}) {
     absorb_water: 2, illuminate: 2, cleanse: 2, calm: 2, slow_beast: 2,
     create_bridge: 2, freeze_water: 2, raise_earth: 2, grow_forest: 2,
     dig_channel: 2, trap: 2, dream_link: 2, memory_beacon: 2,
-    force_field: 2, sun_blessing: 3, transform_land: 3, time_dilation: 2
+    force_field: 2, sun_blessing: 3, transform_land: 3, time_dilation: 2,
+    haste: 2, teleport: 3, shield_units: 2, redirect_hazard: 2
   };
   const cost = isTooStrong ? 3 : (costMap[ability] ?? 2);
 
@@ -204,7 +239,8 @@ export function localCompile(text, gameContext = {}) {
     absorb_water: 1, illuminate: 1, cleanse: 1, calm: 1, slow_beast: 1,
     create_bridge: 1, freeze_water: 1, raise_earth: 1, grow_forest: 1,
     dig_channel: 1, trap: 1, dream_link: 1, memory_beacon: 1,
-    force_field: 1, sun_blessing: 1, transform_land: 1, time_dilation: 2
+    force_field: 1, sun_blessing: 1, transform_land: 1, time_dilation: 2,
+    haste: 1, teleport: 2, shield_units: 1, redirect_hazard: 1
   };
   const stabilityCost = isTooStrong ? 2 : (stabilityMap[ability] ?? 0);
 
@@ -247,6 +283,17 @@ function inferAbility(text, gameContext) {
   return 'transform_land';
 }
 
+function inferHasteRange(text) {
+  return getExplicitHasteRange(text) ?? 1;
+}
+
+function getExplicitHasteRange(text) {
+  const clean = String(text || '').toLowerCase();
+  if (/(?:\+|＋)?\s*2|two|double|加二|二行动力|两行动力|2行动力|二步/.test(clean)) return 2;
+  if (/(?:\+|＋)?\s*1|one|single|加一|一行动力|1行动力|一步/.test(clean)) return 1;
+  return null;
+}
+
 function chooseName(ability, text, isTooStrong) {
   const seeds = NAME_SEEDS[ability] || NAME_SEEDS.transform_land;
   let index = 0;
@@ -278,7 +325,11 @@ function buildDescription(ability, isTooStrong, needsPlacement) {
     dig_channel: '挖掘水渠，引导洪水流向指定方向。',
     trap: '设置陷阱，使进入的巨兽迟缓2回合。',
     dream_link: '连接两个单位，使其共享视野和方向感。',
-    time_dilation: '延缓局部时间，增加1回合（消耗大量奇迹点）。'
+    time_dilation: '延缓局部时间，增加1回合（消耗大量奇迹点）。',
+    haste: '给附近单位增加行动力，使其一回合最多移动2到3格。',
+    teleport: '将附近一名单位传送到其目标点，范围有限且代价很高。',
+    shield_units: '给附近单位套上短暂护盾，抵消危险地形伤害。',
+    redirect_hazard: '临时改道附近洪水、迷雾或污染，打开安全通路。'
   }[ability] || '改写附近世界规则。';
   return `${prefix}${effect}${suffix}`.slice(0, 120);
 }
@@ -305,13 +356,37 @@ function buildSideEffect(ability, isTooStrong) {
     dig_channel: '水渠可能改变洪水方向，造成新威胁。',
     trap: '陷阱对村民同样有效。',
     dream_link: '链接断裂时双方都会迷失方向。',
-    time_dilation: '操控时间会严重撕裂世界稳定性。'
+    time_dilation: '操控时间会严重撕裂世界稳定性。',
+    haste: '加速效果持续短，离开范围后会消失。',
+    teleport: '空间折叠会显著提升世界裂隙。',
+    shield_units: '护盾会在抵消伤害后快速衰减。',
+    redirect_hazard: '被改道的灾害可能在造物消失后回流。'
   }[ability] || '世界裂隙轻微上升。';
+}
+
+function buildResolvedDescription(ability, range, isTooStrong = false) {
+  if (ability === 'haste') {
+    const steps = range >= 2 ? 3 : 2;
+    return `给附近单位增加行动力，使其本回合最多移动${steps}格。`;
+  }
+  if (ability === 'teleport') return '将附近一名单位传送到其目标点，范围有限且代价很高。';
+  if (ability === 'shield_units') return '给附近单位套上短暂护盾，抵消危险地形伤害。';
+  if (ability === 'redirect_hazard') return '临时改道附近最多两格洪水、迷雾或污染，打开安全通路。';
+  return buildDescription(ability, isTooStrong, true);
 }
 
 function sanitizeCard(raw, playerText, source) {
   const ability = ABILITY_SET.has(raw.ability) ? raw.ability : 'transform_land';
   const tags = Array.isArray(raw.tags) ? raw.tags.map(String).filter(Boolean).slice(0, 4) : [];
+  const sanitizedRange = clamp(raw.range, 0, 3, 1);
+  const explicitHasteRange = getExplicitHasteRange(playerText);
+  const range = ability === 'haste' ? (explicitHasteRange ?? sanitizedRange) : sanitizedRange;
+  const description = RULE_DESCRIBED_ABILITIES.has(ability)
+    ? buildResolvedDescription(ability, range)
+    : String(raw.description || buildDescription(ability, false, true)).slice(0, 120);
+  const sideEffect = RULE_DESCRIBED_ABILITIES.has(ability)
+    ? buildSideEffect(ability, false)
+    : String(raw.side_effect || raw.sideEffect || buildSideEffect(ability, false)).slice(0, 80);
 
   // 处理 specialEffect
   let specialEffect = null;
@@ -334,12 +409,12 @@ function sanitizeCard(raw, playerText, source) {
     type: String(raw.type || TYPE_BY_ABILITY[ability] || '奇迹').slice(0, 10),
     ability,
     tags,
-    range: clamp(raw.range, 0, 2, 1),
+    range,
     duration: clamp(raw.duration, 1, 4, 3),
     cost: clamp(raw.cost, 1, 3, 2),
     stabilityCost: clamp(raw.stabilityCost ?? raw.stability_cost, 0, 2, 1),
-    description: String(raw.description || buildDescription(ability, false, true)).slice(0, 120),
-    side_effect: String(raw.side_effect || raw.sideEffect || buildSideEffect(ability, false)).slice(0, 80),
+    description: description.slice(0, 120),
+    side_effect: sideEffect.slice(0, 80),
     specialEffect,
     playerText,
     source: raw.source || source

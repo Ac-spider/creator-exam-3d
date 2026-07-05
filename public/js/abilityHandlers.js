@@ -13,6 +13,7 @@ export const AbilityHandlers = {
 
 // Helper to set temporary terrain linked to a creation
 function setTempTerrain(game, creation, x, y, tile) {
+  if (!creation.restores) creation.restores = [];
   const prev = game.getTerrain(x, y);
   if (prev === tile) return;
   game.setTerrain(x, y, tile);
@@ -305,7 +306,8 @@ AbilityHandlers.active.set('reveal_path', (game, creation) => {
   for (const unit of game.units.filter((u) => game.isCivilian(u) || game.isMessenger(u))) {
     if (unit.status === 'active' && game.distance(unit.x, unit.y, x, y) <= card.range + 1) {
       unit.guidedTurns = 2;
-      unit.moveSpeed = (unit.moveSpeed || 1) + 1;
+      unit.revealedPath = Math.max(unit.revealedPath || 0, 2);
+      unit.moveSpeed = Math.max(unit.moveSpeed || 1, 2);
       guided += 1;
     }
   }
@@ -347,6 +349,64 @@ AbilityHandlers.active.set('memory_beacon', (game, creation) => {
     }
   }
   if (changed) game.addLog(`「${card.name}」唤回记忆，驱散 ${changed} 格迷雾。`);
+});
+
+AbilityHandlers.active.set('haste', (game, creation) => {
+  const { card, x, y } = creation;
+  let boosted = 0;
+  const speed = Math.min(3, 1 + Math.max(1, Math.min(2, card.range || 1)));
+  for (const unit of game.units.filter((u) => game.isCivilian(u) || game.isMessenger(u))) {
+    if (unit.status === 'active' && game.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+      unit.hasteTurns = Math.max(unit.hasteTurns || 0, 2);
+      unit.moveSpeed = Math.max(unit.moveSpeed || 1, speed);
+      boosted += 1;
+    }
+  }
+  if (boosted) game.addLog(`${card.name} grants extra action to ${boosted} unit(s).`);
+});
+
+AbilityHandlers.active.set('teleport', (game, creation) => {
+  const { card, x, y } = creation;
+  const targets = game.units
+    .filter((unit) => (game.isCivilian(unit) || game.isMessenger(unit)) && unit.status === 'active' && unit.goal)
+    .filter((unit) => game.distance(unit.x, unit.y, x, y) <= Math.max(1, card.range))
+    .sort((a, b) => game.distance(b.x, b.y, b.goal.x, b.goal.y) - game.distance(a.x, a.y, a.goal.x, a.goal.y));
+  const unit = targets[0];
+  if (!unit) return;
+
+  unit.x = unit.goal.x;
+  unit.y = unit.goal.y;
+  if (game.isCivilian(unit)) game.rescueUnit(unit);
+  else {
+    unit.met = true;
+    game.addLog(`${card.name} teleports ${unit.name} to the meeting point.`, true);
+  }
+});
+
+AbilityHandlers.active.set('shield_units', (game, creation) => {
+  const { card, x, y } = creation;
+  let shielded = 0;
+  for (const unit of game.units.filter((u) => u.status === 'active')) {
+    if (game.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+      unit.shieldTurns = Math.max(unit.shieldTurns || 0, 2);
+      shielded += 1;
+    }
+  }
+  if (shielded) game.addLog(`${card.name} shields ${shielded} unit(s).`);
+});
+
+AbilityHandlers.active.set('redirect_hazard', (game, creation) => {
+  const { card, x, y } = creation;
+  const hazards = [TILE.WATER, TILE.DARK, TILE.FOG, TILE.POISON, TILE.SWAMP];
+  let changed = 0;
+  for (const cell of game.tilesWithin(x, y, card.range + 1)) {
+    if (changed >= 2) break;
+    const terrain = game.getTerrain(cell.x, cell.y);
+    if (!hazards.includes(terrain)) continue;
+    setTempTerrain(game, creation, cell.x, cell.y, terrain === TILE.WATER ? TILE.BRIDGE : TILE.LAND);
+    changed += 1;
+  }
+  if (changed) game.addLog(`${card.name} redirects ${changed} hazard tile(s).`);
 });
 
 // Apply a handler by ability name

@@ -69,7 +69,19 @@ const ABILITIES = new Set([
   'dig_channel',
   'trap',
   'dream_link',
-  'time_dilation'
+  'time_dilation',
+  'haste',
+  'teleport',
+  'shield_units',
+  'redirect_hazard'
+]);
+
+const RULE_DESCRIBED_ABILITIES = new Set([
+  'reveal_path',
+  'haste',
+  'teleport',
+  'shield_units',
+  'redirect_hazard'
 ]);
 
 const MIME = {
@@ -247,6 +259,15 @@ function sanitizeCard(raw, playerText) {
     cost = Math.min(3, cost + 1);
   }
 
+  const explicitHasteRange = ability === 'haste' ? getExplicitHasteRange(playerText) : null;
+  if (explicitHasteRange !== null) range = explicitHasteRange;
+  const resolvedDescription = RULE_DESCRIBED_ABILITIES.has(ability)
+    ? buildResolvedDescription(ability, range)
+    : description;
+  const resolvedSideEffect = RULE_DESCRIBED_ABILITIES.has(ability)
+    ? buildResolvedSideEffect(ability)
+    : sideEffect;
+
   return {
     name,
     type,
@@ -256,8 +277,8 @@ function sanitizeCard(raw, playerText) {
     duration: clampNumber(duration, 1, 4, 3),
     cost: clampNumber(cost, 1, 3, 2),
     stabilityCost: clampNumber(card.stabilityCost ?? card.stability_cost, 0, 2, 1),
-    description,
-    side_effect: sideEffect,
+    description: resolvedDescription,
+    side_effect: resolvedSideEffect,
     specialEffect,
     source: 'ai',
     _creativityScore: score
@@ -284,25 +305,63 @@ function extractJson(text) {
   return null;
 }
 
+function buildResolvedDescription(ability, range) {
+  if (ability === 'haste') {
+    const steps = range >= 2 ? 3 : 2;
+    return `给附近单位增加行动力，使其本回合最多移动${steps}格。`;
+  }
+  if (ability === 'teleport') return '将附近一名单位传送到其目标点，范围有限且代价很高。';
+  if (ability === 'shield_units') return '给附近单位套上短暂护盾，抵消危险地形伤害。';
+  if (ability === 'redirect_hazard') return '临时改道附近最多两格洪水、迷雾或污染，打开安全通路。';
+  if (ability === 'reveal_path') return '显示附近单位的最优路径，并让其短时间更快移动。';
+  return '由规则系统整理出的可执行造物效果。';
+}
+
+function buildResolvedSideEffect(ability) {
+  if (ability === 'haste') return '加速效果持续短，离开范围后会消失。';
+  if (ability === 'teleport') return '空间折叠会显著提升世界裂隙。';
+  if (ability === 'shield_units') return '护盾会在抵消伤害后快速衰减。';
+  if (ability === 'redirect_hazard') return '被改道的灾害可能在造物消失后回流。';
+  if (ability === 'reveal_path') return '显示路径会消耗单位体力。';
+  return '世界裂隙轻微上升。';
+}
+
+function inferHasteRange(text) {
+  return getExplicitHasteRange(text) ?? 1;
+}
+
+function getExplicitHasteRange(text) {
+  const clean = String(text || '').toLowerCase();
+  if (/(?:\+|＋)?\s*2|two|double|加二|二行动力|两行动力|2行动力|二步/.test(clean)) return 2;
+  if (/(?:\+|＋)?\s*1|one|single|加一|一行动力|1行动力|一步/.test(clean)) return 1;
+  return null;
+}
+
 function buildFallbackCreation(text) {
   const clean = String(text || '').trim();
-  const ability = /water|flood|river|雨|水|洪/.test(clean) ? 'absorb_water'
+  const ability = /teleport|portal|传送|星门|瞬移|空间门/.test(clean) ? 'teleport'
+    : /行动力|加一|加二|多走|快跑|疾行|冲刺|移动力|speed|move|action/.test(clean) ? 'haste'
+    : /shield|护盾|庇护|保护伞|雨伞|罩住/.test(clean) ? 'shield_units'
+    : /redirect|改道|转向|引流|分洪|风向|吹走/.test(clean) ? 'redirect_hazard'
+    : /water|flood|river|雨|水|洪/.test(clean) ? 'absorb_water'
     : /light|lamp|sun|光|灯|照/.test(clean) ? 'illuminate'
     : /bridge|road|path|桥|路/.test(clean) ? 'create_bridge'
     : /calm|peace|talk|安抚|沟通/.test(clean) ? 'calm'
     : 'guide';
+  const strong = ability === 'teleport';
+  const range = ability === 'haste' ? inferHasteRange(clean) : (['illuminate', 'shield_units', 'redirect_hazard', 'teleport'].includes(ability) ? 2 : 1);
   return {
     name: clean.slice(0, 12) || 'Local Gift',
     type: '奇迹',
     ability,
     tags: ['local', ability],
-    range: ability === 'illuminate' ? 2 : 1,
-    duration: 3,
-    cost: 2,
-    stabilityCost: 0,
-    description: `A local rule-safe creation inferred from "${clean}".`,
-    side_effect: 'Local fallback keeps play moving without external AI.',
-    source: 'local-server'
+    range,
+    duration: ['haste', 'teleport'].includes(ability) ? 2 : 3,
+    cost: strong ? 3 : 2,
+    stabilityCost: strong ? 2 : ability === 'haste' ? 1 : 0,
+    description: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedDescription(ability, range) : `A local rule-safe creation inferred from "${clean}".`,
+    side_effect: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedSideEffect(ability) : 'Local fallback keeps play moving without external AI.',
+    source: 'fallback'
   };
 }
 
@@ -335,7 +394,7 @@ async function handleCompileCreation(req, res) {
   }
 
   if (!AI_API_KEY) {
-    sendJson(res, 200, fallbackCard(playerText));
+    sendJson(res, 200, buildFallbackCreation(playerText));
     return;
   }
 
@@ -367,6 +426,10 @@ async function handleCompileCreation(req, res) {
 - trap：设置陷阱迟缓巨兽
 - dream_link：连接两个单位共享视野
 - time_dilation：延缓时间增加1回合（高代价）
+- haste：增加行动力；加一行动力用range=1，加二行动力用range=2，单位每回合可多走
+- teleport：有限范围传送一名相邻/附近单位到目标点，高cost和高stabilityCost
+- shield_units：给附近单位短暂护盾，抵消一次危险地形伤害
+- redirect_hazard：临时改道洪水、迷雾、污染等灾害，打开通路
 
 【JSON Schema】
 {
@@ -374,7 +437,7 @@ async function handleCompileCreation(req, res) {
   "type": "生物/地形/机械/法则/仪式/奇迹之一",
   "ability": "上方枚举之一",
   "tags": ["最多4个短标签"],
-  "range": 0到2的整数,
+  "range": 0到3的整数,
   "duration": 1到4的整数,
   "cost": 1到3的整数,
   "stabilityCost": 0到2的整数,

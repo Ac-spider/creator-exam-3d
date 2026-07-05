@@ -518,12 +518,33 @@ class GameEngine {
     return this.enemyIntentSystem.generatePreviews(this.worldState, this);
   }
 
+  getRitualSuggestions() {
+    const placed = this.creations.filter(c => c.placed && c.remaining > 0);
+    return this.ritualForge.getSuggestions({
+      entropy: this.entropy,
+      entropyLimit: this.level.entropyLimit
+    }, placed);
+  }
+
+  getAbyssState() {
+    return this.cognitiveAbyss.getStateDescription();
+  }
+
+  getCorruptionStats() {
+    return this.verificationCorruption.getStats();
+  }
+
   attemptDecodeAbyss(input) {
     return this.cognitiveAbyss.attemptDecode(input);
   }
 
   generateAbyssRiddle(type = 'instruction') {
-    return this.cognitiveAbyss.generateRiddle(type);
+    const riddle = this.cognitiveAbyss.generateRiddle(type);
+    if (riddle) {
+      riddle.depth = this.cognitiveAbyss.depth;
+      riddle.active = this.cognitiveAbyss.active;
+    }
+    return riddle;
   }
 
   createParadoxCard(paradoxType) {
@@ -1256,6 +1277,7 @@ class GameEngine {
 
   canHazardEnter(x, y, sourceTerrain, terrain) {
     if (this.isProtected(x, y)) return false;
+    if (this.unitAt(x, y)) return false;
     if ([TILE.HIGH, TILE.EXIT, TILE.CITY, TILE.MOUNTAIN, TILE.WALL, TILE.FIELD, TILE.SACRED].includes(terrain)) return false;
     if (terrain === sourceTerrain) return false;
     if (terrain === TILE.BRIDGE && sourceTerrain !== TILE.DARK) return false;
@@ -1578,12 +1600,12 @@ class GameEngine {
 
   getAbilityFamily(ability) {
     const families = {
-      water: ['absorb_water', 'create_bridge', 'freeze_water', 'dig_channel'],
+      water: ['absorb_water', 'create_bridge', 'freeze_water', 'dig_channel', 'redirect_hazard'],
       light: ['illuminate', 'reveal_path', 'sun_blessing'],
       terrain: ['transform_land', 'raise_earth', 'grow_forest', 'dig_channel'],
-      defense: ['block', 'force_field', 'trap'],
-      spirit: ['calm', 'guide', 'memory_beacon', 'dream_link'],
-      special: ['cleanse', 'time_dilation', 'slow_beast']
+      defense: ['block', 'force_field', 'trap', 'shield_units'],
+      spirit: ['calm', 'guide', 'memory_beacon', 'dream_link', 'haste'],
+      special: ['cleanse', 'time_dilation', 'slow_beast', 'teleport']
     };
     for (const [family, abilities] of Object.entries(families)) {
       if (abilities.includes(ability)) return family;
@@ -1815,6 +1837,196 @@ class GameEngine {
     });
   }
 
+  // ========== Movement helpers ==========
+
+  findPath(unit, goal) {
+    if (!goal) return null;
+    const startKey = `${unit.x},${unit.y}`;
+    const goalKey = `${goal.x},${goal.y}`;
+    if (startKey === goalKey) return null;
+
+    const openSet = [{ x: unit.x, y: unit.y, g: 0, f: this.distance(unit.x, unit.y, goal.x, goal.y) }];
+    const closedSet = new Set();
+    const cameFrom = new Map([[startKey, null]]);
+    const gScore = new Map([[startKey, 0]]);
+
+    while (openSet.length > 0) {
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift();
+      const currentKey = `${current.x},${current.y}`;
+      if (closedSet.has(currentKey)) continue;
+      closedSet.add(currentKey);
+      if (currentKey === goalKey) break;
+
+      for (const nb of this.neighbors(current.x, current.y)) {
+        const key = `${nb.x},${nb.y}`;
+        if (closedSet.has(key) || !this.isPassable(nb.x, nb.y, unit)) continue;
+
+        const tentativeG = current.g + this.getMoveCost(nb.x, nb.y, unit);
+        if (!gScore.has(key) || tentativeG < gScore.get(key)) {
+          gScore.set(key, tentativeG);
+          cameFrom.set(key, { x: current.x, y: current.y });
+          openSet.push({
+            x: nb.x,
+            y: nb.y,
+            g: tentativeG,
+            f: tentativeG + this.distance(nb.x, nb.y, goal.x, goal.y)
+          });
+        }
+      }
+    }
+
+    if (!cameFrom.has(goalKey)) return null;
+
+    const path = [];
+    let current = { x: goal.x, y: goal.y };
+    let previous = cameFrom.get(goalKey);
+    while (previous && !(previous.x === unit.x && previous.y === unit.y)) {
+      path.unshift(current);
+      current = previous;
+      previous = cameFrom.get(`${current.x},${current.y}`);
+    }
+    if (current.x !== unit.x || current.y !== unit.y) path.unshift(current);
+    return path;
+  }
+
+  nextStepToward(unit, goal) {
+    const path = this.findPath(unit, goal);
+    return path && path.length ? path[0] : null;
+  }
+
+  getUnitMoveSteps(unit) {
+    const speed = Math.max(1, Math.floor(Number(unit.moveSpeed || 1)));
+    const bonus = Math.max(0, Math.floor(Number(unit.moveBonus || 0)));
+    const revealBonus = unit.revealedPath > 0 ? 1 : 0;
+    return Math.max(1, Math.min(3, Math.max(speed, 1 + bonus + revealBonus)));
+  }
+
+  moveUnitTowardGoal(unit, steps = 1) {
+    let moved = 0;
+    const limit = Math.max(1, Math.floor(Number(steps) || 1));
+    for (let i = 0; i < limit; i += 1) {
+      if (this.isGoalReached(unit)) break;
+      const next = this.nextStepToward(unit, unit.goal);
+      if (!next) break;
+      unit.x = next.x;
+      unit.y = next.y;
+      moved += 1;
+    }
+    return moved;
+  }
+
+  endTurn() {
+    if (this.gameState !== 'playing') return { error: 'level ended' };
+
+    this.log(`========== turn ${this.turn} ==========`, true);
+    this.applyActiveCreationEffects();
+    this.applyChainReactions();
+    this.triggerRandomEvent();
+    this.moveUnits();
+    this.spreadHazards();
+    this.applyTileHazardsToUnits();
+    this.enemyIntentSystem.generatePreviews(this.worldState, this);
+    this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
+    this.decrementCreationDurations();
+    this.checkOathBetrayals();
+
+    if (this.turn % 5 === 0) worldLegendSystem.evolveMyths();
+
+    this.checkEndCondition(true);
+
+    if (this.gameState === 'playing') {
+      this.turn += 1;
+      if (this.turn > this.level.maxTurns) this.checkEndCondition(true, true);
+    }
+
+    this.hooks.onTurnEnd();
+    return { success: true, gameState: this.gameState };
+  }
+
+  applyActiveCreationEffects() {
+    for (const creation of this.creations) {
+      if (creation.remaining <= 0 || creation.placed === false) continue;
+      const type = creation.card.specialEffect?.type;
+      if (type === 'mobile' || type === 'movement') this.moveCreationMobile(creation);
+      if (type === 'environmental') this.applyEnvironmentalEffect(creation);
+      if (type === 'sacrifice') this.applySacrificeEffect(creation);
+      applyAbility(this, creation, 'active');
+    }
+  }
+
+  moveCivilian(unit) {
+    if (this.isGoalReached(unit)) {
+      this.rescueUnit(unit);
+      return;
+    }
+
+    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['guide', 'memory_beacon', 'illuminate']);
+    const immuneChaos = unit.immuneChaos > 0;
+    const hasDreamLink = unit.dreamLinked && this.units.find(u => u.id === unit.dreamLinked && u.status === 'active');
+    if (hasDreamLink && !guided) {
+      const linkedUnit = this.units.find(u => u.id === unit.dreamLinked);
+      if (linkedUnit && this.distance(linkedUnit.x, linkedUnit.y, unit.goal.x, unit.goal.y) < this.distance(unit.x, unit.y, unit.goal.x, unit.goal.y)) {
+        unit.guidedTurns = Math.max(unit.guidedTurns || 0, 1);
+      }
+    }
+
+    let moved = 0;
+    if (this.level.memoryChaos && !guided && !immuneChaos && Math.random() < 0.45) {
+      const next = this.randomPassableNeighbor(unit);
+      if (next) {
+        unit.x = next.x;
+        unit.y = next.y;
+        moved = 1;
+        this.log(`${unit.name} is confused and wanders off path`);
+      }
+    } else {
+      moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
+    }
+
+    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
+      this.log(`${unit.name} uses extra action to move ${moved} steps`);
+    }
+    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
+    if (unit.revealedPath > 0) unit.revealedPath -= 1;
+    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
+    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
+    if (unit.immuneChaos > 0) unit.immuneChaos -= 1;
+    if (this.isGoalReached(unit)) this.rescueUnit(unit);
+  }
+
+  moveMessenger(unit) {
+    if (this.isGoalReached(unit)) {
+      unit.met = true;
+      return;
+    }
+    const terrain = this.getTerrain(unit.x, unit.y);
+    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['calm', 'guide', 'memory_beacon']);
+    const immuneChaos = unit.immuneChaos > 0;
+    if ((terrain === TILE.FOG || terrain === TILE.DARK) && !guided && !immuneChaos) {
+      this.warMeter = Math.min(this.level.hazard?.warLimit || 9, this.warMeter + 1);
+      this.log(`${unit.name} misjudges the fog; war meter +1`);
+      return;
+    }
+    const moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
+    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
+      this.log(`${unit.name} uses extra action to move ${moved} steps`);
+    }
+    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
+    if (unit.revealedPath > 0) unit.revealedPath -= 1;
+    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
+    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
+    if (unit.immuneChaos > 0) unit.immuneChaos -= 1;
+    if (this.isGoalReached(unit)) {
+      unit.met = true;
+      this.log(`${unit.name} reaches the border meeting point`, true);
+    }
+  }
+
+  addLog(text, important = false) {
+    this.log(text, important);
+  }
+
   // ========== Logging ==========
 
   log(text, important = false) {
@@ -1823,6 +2035,10 @@ class GameEngine {
       this.logs = this.logs.slice(0, MAX_LOGS);
     }
     this.hooks.onLog(text, important, this.turn);
+  }
+
+  addLog(text, important = false) {
+    this.log(text, important);
   }
 
   // ========== Rescue ==========

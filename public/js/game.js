@@ -662,6 +662,7 @@ class CreatorExam3D extends GameEngine {
       y,
       remaining: card.duration,
       restores: [],
+      placed: true,
       pulse: Math.random() * Math.PI * 2
     };
     this.creations.push(creation);
@@ -1156,12 +1157,13 @@ class CreatorExam3D extends GameEngine {
 
   // Override nearActiveAbility for simpler browser version (no placed flag)
   nearActiveAbility(x, y, abilities) {
-    return this.creations.some((creation) => creation.remaining > 0 && abilities.includes(creation.card.ability) && this.distance(x, y, creation.x, creation.y) <= creation.card.range + 1);
+    return this.creations.some((creation) => creation.remaining > 0 && creation.placed !== false && abilities.includes(creation.card.ability) && this.distance(x, y, creation.x, creation.y) <= creation.card.range + 1);
   }
 
   // Override canHazardEnter for simpler browser version (no forest block)
   canHazardEnter(x, y, sourceTerrain, terrain) {
     if (this.isProtected(x, y)) return false;
+    if (this.unitAt(x, y)) return false;
     if ([TILE.HIGH, TILE.EXIT, TILE.CITY, TILE.MOUNTAIN, TILE.WALL, TILE.FIELD, TILE.SACRED].includes(terrain)) return false;
     if (terrain === sourceTerrain) return false;
     if (terrain === TILE.BRIDGE && sourceTerrain !== TILE.DARK) return false;
@@ -3604,6 +3606,117 @@ class CreatorExam3D extends GameEngine {
         this.animateIntentMarker(nested, t);
       }
     }
+  }
+
+  applyActiveCreationEffects() {
+    for (const creation of this.creations) {
+      if (creation.remaining <= 0 || creation.placed === false) continue;
+      const type = creation.card.specialEffect?.type;
+      if (type === 'mobile' || type === 'movement') this.moveCreationMobile(creation);
+      if (type === 'environmental') this.applyEnvironmentalEffect(creation);
+      if (type === 'sacrifice') this.applySacrificeEffect(creation);
+      applyAbility(this, creation, 'active');
+    }
+  }
+
+  endTurn() {
+    if (this.gameState !== 'playing') {
+      this.showToast('Level already ended.');
+      return;
+    }
+    this.addLog(`Turn ${this.turn} starts.`, true);
+    this.applyActiveCreationEffects();
+    this.applyChainReactions();
+    this.triggerRandomEvent();
+    this.moveUnits();
+    this.spreadHazards();
+    this.applyTileHazardsToUnits();
+    this.decrementCreationDurations();
+    this.checkEndCondition(true);
+    if (this.gameState === 'playing') {
+      this.turn += 1;
+      if (this.turn % 5 === 0) worldLegendSystem.evolveMyths();
+      const storyResult = this.storyteller.tellStory(this, this.memorySystem);
+      if (storyResult) {
+        this.addLog(`Narrative: ${storyResult.narrative}`, true);
+        this.applyStorytellerEvent(storyResult.event);
+      }
+      this.storyteller.recordBehavior(this, 'turn_end');
+      if (this.turn > this.level.maxTurns) this.checkEndCondition(true, true);
+    }
+    this.renderWorld();
+    this.updateUi();
+  }
+
+  nextStepToward(unit, goal) {
+    return super.nextStepToward(unit, goal);
+  }
+
+  computePath(unit, goal) {
+    return this.findPath(unit, goal) || [];
+  }
+
+  moveCivilian(unit) {
+    if (this.isGoalReached(unit)) {
+      this.rescueUnit(unit);
+      return;
+    }
+
+    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['guide', 'memory_beacon', 'illuminate']);
+    let moved = 0;
+    if (this.level.memoryChaos && !guided && Math.random() < 0.45) {
+      const next = this.randomPassableNeighbor(unit);
+      if (next) {
+        unit.x = next.x;
+        unit.y = next.y;
+        moved = 1;
+        this.addLog(`${unit.name} is confused and wanders off path.`);
+      }
+    } else {
+      moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
+    }
+
+    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
+      this.addLog(`${unit.name} uses extra action to move ${moved} steps.`);
+    }
+    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
+    if (unit.revealedPath > 0) unit.revealedPath -= 1;
+    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
+    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
+    if (this.isGoalReached(unit)) this.rescueUnit(unit);
+  }
+
+  moveMessenger(unit) {
+    if (this.isGoalReached(unit)) {
+      unit.met = true;
+      return;
+    }
+    const terrain = this.getTerrain(unit.x, unit.y);
+    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['calm', 'guide', 'memory_beacon']);
+    if ((terrain === TILE.FOG || terrain === TILE.DARK) && !guided) {
+      this.warMeter = Math.min(this.level.hazard?.warLimit || 9, this.warMeter + 1);
+      this.addLog(`${unit.name} misjudges the fog; war meter +1.`);
+      return;
+    }
+
+    const moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
+    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
+      this.addLog(`${unit.name} uses extra action to move ${moved} steps.`);
+    }
+    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
+    if (unit.revealedPath > 0) unit.revealedPath -= 1;
+    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
+    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
+    if (this.isGoalReached(unit)) {
+      unit.met = true;
+      this.addLog(`${unit.name} reaches the border meeting point.`, true);
+    }
+  }
+
+  calculateFullPath(unit) {
+    if (!unit.goal || unit.status !== 'active') return null;
+    const path = this.findPath(unit, unit.goal);
+    return path && path.length ? path : null;
   }
 }
 

@@ -103,6 +103,16 @@ await withServer(async (baseUrl) => {
   assert(card.json.ability, 'fallback card should include ability');
   assert(card.json.source === 'fallback', 'fallback card source should be explicit');
 
+  const hasteCard = await fetchJson(`${baseUrl}/api/compile-creation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'add two move actions to nearby NPCs', context: {} })
+  });
+  assert(hasteCard.response.status === 200, 'haste fallback should return 200');
+  assert(hasteCard.json.ability === 'haste', 'two move actions should compile to haste');
+  assert(hasteCard.json.range === 2, 'two move actions should use haste tier 2');
+  assert(hasteCard.json.description.includes('3'), 'two move actions should describe the real movement limit');
+
   const narrative = await fetchJson(`${baseUrl}/api/narrative`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

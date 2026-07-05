@@ -428,7 +428,11 @@ export class ParticleSystem {
       dig_channel: 0x7ec8e6,
       trap: 0xffa070,
       dream_link: 0xc8a8ff,
-      time_dilation: 0xffe6a8
+      time_dilation: 0xffe6a8,
+      haste: 0x7dff9a,
+      teleport: 0x9f8cff,
+      shield_units: 0x8de8ff,
+      redirect_hazard: 0x6bd6c8
     };
     return colors[ability] || 0xffffff;
   }
