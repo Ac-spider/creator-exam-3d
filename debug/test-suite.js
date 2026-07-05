@@ -4190,6 +4190,10 @@ runner.test('Night Watch integration - should keep AI bridge and result update w
   runner.assert(tower.includes('NightWatchDialogueEffect'), 'tower mode should render battlefield dialogue bubbles');
   runner.assert(tower.includes('LOCAL_LEADERBOARD_KEY'), 'tower mode should keep Night Watch records local');
   runner.assert(bridge.includes("document.getElementById('open-announcement-btn')?.remove()"), 'Night Watch bridge should remove update announcement chrome');
+  runner.assert(bridge.includes('showNightWatchCinematic()'), 'Night Watch bridge should show a story cutscene before setup');
+  runner.assert(bridge.includes('width: min(760px'), 'Night Watch setup should use a compact selection layout');
+  runner.assert(bridge.includes('第六关到第七关之间'), 'Night Watch should be framed as the interlude before level seven');
+  runner.assert(bridge.includes('每5波推进一夜'), 'Night Watch waves should be grouped into six nights');
   runner.assert(tower.includes('for (const t of towers || [])'), 'resizeCanvas should tolerate pre-game resize');
   runner.assert(game.includes('processedNightWatchResults.has(result.id)'), 'game.js should dedupe Night Watch results');
   runner.assert(game.includes('event.payload = { ...event.payload, ...result }'), 'game.js should merge AI settlement updates into the world event payload');

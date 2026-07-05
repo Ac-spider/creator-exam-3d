@@ -198,9 +198,91 @@
   }
 
   function fallbackNarrative() {
-    const title = context.regionTitle || '终考区域';
     const names = creations().map(creationName).filter(Boolean).slice(0, 3).join('、') || '白天留下的造物';
-    return `${title}进入第七天之前的最后一夜。${names}被搬上防线，居民把名字刻在临时城墙背面；裂隙潮还没有抵达，但风里已经有回声。`;
+    return `第六关结束后，所有幸存区域被临时并入同一条防线。${names}被搬上城墙，居民把名字刻在临时墙背面；第七关还没有开始，但裂隙潮已经在夜里排队。`;
+  }
+
+  function watchStage(wave = 1) {
+    const waveNo = Math.max(1, Number(wave || 1));
+    const day = Math.min(6, Math.max(1, Math.ceil(waveNo / 5)));
+    const innerWave = ((waveNo - 1) % 5) + 1;
+    return { day, innerWave, label: `第 ${day} 夜 · 第 ${innerWave}/5 波` };
+  }
+
+  function cutsceneSlides() {
+    const names = creations().map(creationName).filter(Boolean).slice(0, 2);
+    const creationText = names.length ? names.join('、') : '白天留下的造物';
+    const rescued = residentsCount();
+    return [
+      {
+        kicker: '第六关之后',
+        title: '第七关之前的长夜',
+        body: `主线的六场考核已经把世界撕开。${creationText}没有消失，它们像临时写下的答案，停在所有区域合并后的裂隙边缘。`
+      },
+      {
+        kicker: '六段守夜',
+        title: '30 波被切成 6 个夜段',
+        body: `这里不是第一关到第六关的重复插播。30 波裂隙潮会被分成六段，每 5 波推进一夜；被救下的 ${rescued} 名居民会在这六夜里守住第七关的入口。`
+      },
+      {
+        kicker: '守夜配置',
+        title: '把白天的答案搬上防线',
+        body: `接下来是第六关到第七关之间的过场玩法。选择要带上城墙的守夜器械，防线由系统抽取；裂隙来袭者会在战场上回应你的塔和造物。`
+      }
+    ];
+  }
+
+  function showNightWatchCinematic() {
+    if (document.getElementById('night-watch-cinematic')) return;
+    const slides = cutsceneSlides();
+    let index = 0;
+    const overlay = document.createElement('section');
+    overlay.id = 'night-watch-cinematic';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', '长夜守城过场');
+    overlay.innerHTML = `
+      <div class="night-watch-cg">
+        <div class="night-watch-cg-frame">
+          <div class="night-watch-cg-kicker"></div>
+          <h2></h2>
+          <p></p>
+          <div class="night-watch-cg-visual" aria-hidden="true"></div>
+        </div>
+        <div class="night-watch-cg-footer">
+          <div class="night-watch-cg-dots"></div>
+          <div class="night-watch-cg-actions">
+            <button type="button" data-cg-skip>跳过</button>
+            <button class="primary" type="button" data-cg-next>继续</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const render = () => {
+      const slide = slides[index];
+      overlay.querySelector('.night-watch-cg-kicker').textContent = slide.kicker;
+      overlay.querySelector('h2').textContent = slide.title;
+      overlay.querySelector('p').textContent = slide.body;
+      overlay.querySelector('[data-cg-next]').textContent = index === slides.length - 1 ? '进入守夜配置' : '继续';
+      overlay.querySelector('.night-watch-cg-dots').innerHTML = slides
+        .map((_, i) => `<span class="night-watch-cg-dot${i === index ? ' active' : ''}"></span>`)
+        .join('');
+    };
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-cg-skip]').addEventListener('click', close);
+    overlay.querySelector('[data-cg-next]').addEventListener('click', () => {
+      if (index >= slides.length - 1) close();
+      else {
+        index += 1;
+        render();
+      }
+    });
+    overlay.addEventListener('keydown', event => {
+      if (event.key === 'Escape') close();
+      if (event.key === 'Enter' || event.key === ' ') overlay.querySelector('[data-cg-next]').click();
+    });
+    render();
+    document.body.appendChild(overlay);
+    overlay.querySelector('[data-cg-next]')?.focus();
   }
 
   function worldState(extra = {}) {
@@ -273,23 +355,181 @@
         background: linear-gradient(180deg, rgba(26, 29, 42, .96), rgba(14, 16, 24, .98));
         border: 1px solid rgba(216, 197, 138, .22);
       }
+      #selection-screen {
+        width: min(760px, calc(100vw - 32px));
+        max-width: 760px;
+        max-height: calc(100vh - 32px);
+        gap: 10px;
+        padding: 18px;
+        overflow: hidden;
+      }
+      #selection-screen h1 { font-size: 1.65rem; }
+      #selection-top-actions { gap: 8px; }
+      #open-leaderboard-btn, #open-wiki-btn, #open-settings-btn {
+        min-block-size: 30px;
+        padding: 4px 11px;
+        font-size: .78em;
+      }
+      #selection-slots {
+        min-height: 74px;
+        padding: 8px;
+        gap: 7px;
+      }
+      .slot {
+        width: 58px;
+        height: 58px;
+      }
+      .slot .tower-card canvas {
+        width: 34px;
+        height: 34px;
+      }
+      #selection-main { gap: 12px; }
+      #tower-pool {
+        grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+        max-height: min(330px, calc(100vh - 360px));
+        gap: 7px;
+        padding: 8px;
+      }
+      .tower-card {
+        min-height: 74px;
+        padding: 4px;
+        background: #202635;
+      }
+      .tower-card canvas {
+        width: 38px;
+        height: 38px;
+      }
+      .tower-card .name { font-size: .78em; margin-top: 3px; }
+      .tower-card .cost { font-size: .72em; }
+      #selection-info {
+        width: 220px;
+        padding: 14px;
+        font-size: .92em;
+      }
+      #selection-buttons-container { margin-top: 6px; gap: 10px; }
+      .selection-btn { padding: 9px 18px; font-size: .96em; }
       #night-watch-brief {
         width: 100%;
         display: grid;
         gap: 8px;
-        padding: 12px 14px;
+        padding: 10px 12px;
         border: 1px solid rgba(121, 208, 176, .28);
         background: rgba(10, 16, 24, .72);
         color: var(--text-color);
         line-height: 1.45;
+        box-sizing: border-box;
       }
       #night-watch-brief strong { color: var(--primary-color); }
-      #night-watch-ai-text, #night-watch-wave { color: #cbd5e1; font-size: 13px; }
+      #night-watch-ai-text, #night-watch-wave { color: #cbd5e1; font-size: 12px; }
       .stats-display { border-left-color: #79d0b0; }
-      .tower-card { background: #202635; }
       .tower-card.selected { box-shadow: 0 0 14px rgba(216, 197, 138, .38); }
       #start-wave-btn:not(:disabled), #select-map-btn, #start-game-from-map-btn:not(:disabled), #restart-btn {
         background-image: linear-gradient(180deg, #ead99a, #bda65b);
+      }
+      #night-watch-cinematic {
+        position: fixed;
+        inset: 0;
+        z-index: 220;
+        display: grid;
+        place-items: center;
+        padding: 28px;
+        background:
+          radial-gradient(circle at 50% 30%, rgba(216, 197, 138, .12), transparent 34%),
+          linear-gradient(145deg, rgba(3, 5, 12, .96), rgba(10, 15, 28, .98));
+      }
+      .night-watch-cg {
+        width: min(760px, calc(100vw - 42px));
+        min-height: 380px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        border: 1px solid rgba(216, 197, 138, .34);
+        background: linear-gradient(180deg, rgba(20, 24, 37, .94), rgba(8, 11, 18, .98));
+        box-shadow: 0 24px 70px rgba(0, 0, 0, .58);
+      }
+      .night-watch-cg-frame {
+        position: relative;
+        min-height: 250px;
+        padding: 34px 38px;
+        overflow: hidden;
+      }
+      .night-watch-cg-frame::before {
+        content: "";
+        position: absolute;
+        inset: 18px;
+        border: 1px solid rgba(121, 208, 176, .18);
+        pointer-events: none;
+      }
+      .night-watch-cg-kicker {
+        color: #79d0b0;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+      .night-watch-cg h2 {
+        margin: 16px 0 12px;
+        color: var(--primary-color);
+        font-size: 2rem;
+        letter-spacing: 0;
+      }
+      .night-watch-cg p {
+        max-width: 60ch;
+        margin: 0;
+        color: #d8dee9;
+        font-size: 15px;
+        line-height: 1.75;
+      }
+      .night-watch-cg-visual {
+        position: absolute;
+        right: 38px;
+        bottom: 34px;
+        width: 180px;
+        height: 95px;
+        opacity: .72;
+        background:
+          linear-gradient(90deg, transparent 0 14%, rgba(216, 197, 138, .55) 14% 17%, transparent 17% 31%, rgba(121, 208, 176, .42) 31% 35%, transparent 35%),
+          linear-gradient(180deg, transparent 0 48%, rgba(216, 197, 138, .36) 48% 52%, transparent 52%);
+      }
+      .night-watch-cg-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 20px;
+        border-top: 1px solid rgba(216, 197, 138, .22);
+      }
+      .night-watch-cg-dots { display: flex; gap: 7px; }
+      .night-watch-cg-dot {
+        width: 28px;
+        height: 3px;
+        background: rgba(216, 197, 138, .25);
+      }
+      .night-watch-cg-dot.active { background: var(--primary-color); }
+      .night-watch-cg-actions { display: flex; gap: 10px; }
+      .night-watch-cg button {
+        border: 1px solid rgba(216, 197, 138, .55);
+        background: transparent;
+        color: var(--text-color);
+        padding: 8px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .night-watch-cg button.primary {
+        background: linear-gradient(180deg, #ead99a, #bda65b);
+        color: #090b12;
+        font-weight: 800;
+      }
+      @media (max-width: 820px), (max-height: 680px) {
+        #selection-screen {
+          width: min(700px, calc(100vw - 22px));
+          padding: 12px;
+        }
+        #selection-screen h1 { font-size: 1.35rem; }
+        #selection-info { width: 190px; padding: 10px; }
+        #tower-pool { max-height: min(280px, calc(100vh - 310px)); }
+        .night-watch-cg { min-height: 330px; }
+        .night-watch-cg-frame { padding: 28px; }
+        .night-watch-cg h2 { font-size: 1.55rem; }
+        .night-watch-cg p { font-size: 13px; }
       }
     `;
     document.head.appendChild(style);
@@ -301,9 +541,9 @@
     brief = document.createElement('div');
     brief.id = 'night-watch-brief';
     brief.innerHTML = `
-      <strong>${themeTitle()} · ${context.regionTitle || '第七天之前'}</strong>
+      <strong>${themeTitle()} · 第七关之前 · 六夜守城</strong>
       <span id="night-watch-ai-text">${fallbackNarrative()}</span>
-      <span id="night-watch-wave">AI 正在整理今晚的防守主题。</span>
+      <span id="night-watch-wave">AI 正在整理六夜防守主题。</span>
     `;
     const selectionSlots = document.getElementById('selection-slots');
     selectionSlots?.parentElement?.insertBefore(brief, selectionSlots);
@@ -335,6 +575,7 @@
     const restartBtn = document.getElementById('restart-btn');
     if (restartBtn) restartBtn.textContent = '返回守夜菜单';
     ensureBrief();
+    showNightWatchCinematic();
   }
 
   async function requestAiTheme() {
@@ -344,11 +585,11 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'event',
-          playerInput: '请为塔防守夜生成本次防守主题和第一波前的通讯旁白。不要解释系统规则。',
+          playerInput: '请为第六关到第七关之间的塔防守夜生成防守主题和第一波前的通讯旁白。30波会分成6个夜段。不要解释系统规则。',
           context: {
             eventType: 'night_watch_theme',
             characters: Array.isArray(context.rescuedResidents) ? context.rescuedResidents.slice(0, 5) : [],
-            location: context.regionTitle || '第七天之前',
+            location: '第六关之后，第七关之前',
             result: '裂隙潮正在反扑，居民与造物被编入防线'
           },
           worldState: {
@@ -413,18 +654,19 @@
       finalWave: Number(state.finalWave || 30)
     };
     const target = document.getElementById('night-watch-wave');
-    if (target) target.textContent = '第一波裂隙潮正在靠近，AI 已把白天的记忆编入防线。';
+    if (target) target.textContent = '第 1 夜开始，裂隙潮正在靠近，AI 已把六关记忆编入防线。';
   }
 
   function announceWave(wave, state = {}) {
     {
     const waveNo = Math.max(1, Number(wave || 1));
+    const stage = watchStage(waveNo);
     const fallbackLines = [
-      '居民通讯：北墙有回声，别让它们穿过第一道弯。',
-      'AI Storyteller：裂隙正在模仿你白天创造过的形状。',
-      '居民通讯：拾荒队带回了材料，守住这一波就能继续加固。',
-      'AI Storyteller：长夜进入深段，敌人的影子开始重叠。',
-      '居民通讯：第七天还没有来，城墙必须先替我们醒着。'
+      `${stage.label}：北墙有回声，别让它们穿过第一道弯。`,
+      `${stage.label}：裂隙正在模仿前六关里创造过的形状。`,
+      `${stage.label}：拾荒队带回了材料，守住这一波就能继续加固。`,
+      `${stage.label}：长夜进入深段，敌人的影子开始重叠。`,
+      `${stage.label}：第七关还没有开始，城墙必须先替我们醒着。`
     ];
     const target = document.getElementById('night-watch-wave');
     const fallback = fallbackLines[(waveNo - 1) % fallbackLines.length];
@@ -435,9 +677,9 @@
     activeWaveRequest = requestId;
     requestNightWatchText(
       'night_watch_wave',
-      `请为长夜守城第${waveNo}波生成一句短通讯。只写一句，必须结合当前血量、资源、塔数量和白天造物，不解释规则。`,
-      { wave: waveNo },
-      { wave: waveNo, hp: state.hp, money: state.money, towerCount: state.towerCount }
+      `请为长夜守城${stage.label}生成一句短通讯。30波代表第六关到第七关之间的六段守夜，每5波推进一夜。只写一句，必须结合当前血量、资源、塔数量和白天造物，不解释规则。`,
+      { wave: waveNo, day: stage.day, innerWave: stage.innerWave },
+      { wave: waveNo, day: stage.day, hp: state.hp, money: state.money, towerCount: state.towerCount }
     ).then(text => {
       if (!text || activeWaveRequest !== requestId) return;
       latestWaveText = text;
@@ -462,11 +704,12 @@
   async function enemyWhisper(enemyType, towerName, wave, fallback = '') {
     if (enemyWhisperInFlight) return '';
     enemyWhisperInFlight = true;
+    const stage = watchStage(wave);
     const text = await requestNightWatchText(
       'night_watch_enemy_whisper',
-      `请写一句裂隙来袭者靠近${towerName}时的短句。敌人类型：${enemyType}，当前波次：${wave}。只写一句，18字以内，不解释规则。`,
-      { enemyType, towerName, wave },
-      { enemyType, towerName, wave }
+      `请写一句裂隙来袭者在${stage.label}靠近${towerName}时的短句。敌人类型：${enemyType}。这发生在第六关到第七关之间。只写一句，18字以内，不解释规则。`,
+      { enemyType, towerName, wave, day: stage.day },
+      { enemyType, towerName, wave, day: stage.day }
     );
     enemyWhisperInFlight = false;
     return text || fallback;
@@ -489,7 +732,7 @@
       mode: 'night_watch',
       victory: Boolean(isVictory),
       regionId: context.regionId || 'final-exam',
-      regionTitle: context.regionTitle || '第七天之前',
+      regionTitle: '第七关之前',
       survivedWaves,
       baseDamage,
       residentsProtected: protectedCount,
@@ -534,7 +777,7 @@
       mode: 'night_watch',
       victory: Boolean(isVictory),
       regionId: context.regionId || 'final-exam',
-      regionTitle: context.regionTitle || '第七天之前',
+      regionTitle: '第七关之前',
       survivedWaves,
       baseDamage,
       residentsProtected: protectedCount,
