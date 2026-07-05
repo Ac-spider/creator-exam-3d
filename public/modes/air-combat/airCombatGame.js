@@ -54,6 +54,8 @@
       this.maxHp = difficulty.playerHp;
       this.hp = this.maxHp;
       this.shield = difficulty.startingShield || 0;
+      this.lastStandShield = difficulty.lastStandShield || 0;
+      this.lastStandReady = this.lastStandShield > 0;
       this.fire = 0;
       this.skillCd = 0;
       this.wings = difficulty.allyWings;
@@ -87,6 +89,13 @@
         this.hp -= rest;
         game.damageTaken += rest;
         game.shake = Math.max(game.shake, 8);
+        if (this.hp <= 0 && this.lastStandReady) {
+          this.hp = 1;
+          this.lastStandReady = false;
+          this.shield += this.lastStandShield;
+          game.lastStandTriggered = true;
+          game.say('守夜黑匣子替空域载体保留了最后 1 点生命。', 2.6, { eventType: 'airspace_last_stand' });
+        }
       }
     }
 
@@ -258,6 +267,7 @@
       this.hp = this.maxHp;
       this.fire = 1.4;
       this.fireMult = this.affix?.fireMult || 1;
+      this.bulletRateMult = this.affix?.bulletRateMult || 1;
       this.affixTimer = this.affix?.every || 0;
       this.t = 0;
       this.phase = 1;
@@ -281,7 +291,7 @@
       this.updateAffix(dt);
       this.fire -= dt;
       if (this.fire <= 0) {
-        this.fire = Math.max(0.42, 1.35 - this.phase * 0.18) * this.fireMult / game.difficulty.bulletRate;
+        this.fire = Math.max(0.42, 1.35 - this.phase * 0.18) * this.fireMult / (game.difficulty.bulletRate * this.bulletRateMult);
         this.attack();
       }
     }
@@ -403,6 +413,7 @@
     clearedLayers: 0,
     damageTaken: 0,
     creationOverload: 0,
+    lastStandTriggered: false,
     score: 0,
     time: 0,
     stars: Array.from({ length: 90 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: 60 + Math.random() * 150, r: Math.random() < 0.8 ? 1 : 2 })),
@@ -430,6 +441,7 @@
       this.clearedLayers = 0;
       this.damageTaken = 0;
       this.creationOverload = 0;
+      this.lastStandTriggered = false;
       this.score = 0;
       menu.classList.add('hidden');
       resultPanel.classList.add('hidden');
@@ -665,6 +677,7 @@
       if (this.clearedLayers >= this.route.length) tags.push('Boss处理完整');
       else if (this.clearedLayers >= 3) tags.push('中段清算有效');
       if (this.creationOverload >= 3) tags.push('频繁脉冲');
+      if (this.lastStandTriggered) tags.push('黑匣子保险');
       if (this.route.some(boss => boss.affix?.attack === 'prism')) tags.push('棱镜航线');
       if (!victory && this.bossDefeated.length === 0) tags.push('首段压力高');
       return [...new Set(tags)].slice(0, 4);

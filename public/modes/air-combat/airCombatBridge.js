@@ -311,6 +311,7 @@
       hpBonus: 0,
       allyWingsBonus: 0,
       scoreMult: 1,
+      lastStandShield: 0,
       sourceCreation: weapon.sourceCreation,
       ...base,
       towerDefenseRelief: !!defense.victory
@@ -318,6 +319,10 @@
     if (defense.victory) {
       resonance.startingShield = (Number(resonance.startingShield) || 0) + 16;
       resonance.hpBonus = (Number(resonance.hpBonus) || 0) + 8;
+      if (residentsCount() > 0) {
+        resonance.lastStandShield = Math.max(Number(resonance.lastStandShield) || 0, 34);
+        resonance.effect = `${resonance.effect} 守夜黑匣子可抵消一次致命坠落。`;
+      }
     }
     return resonance;
   }
@@ -369,7 +374,8 @@
       bulletRate: Math.max(0.8, Math.min(1.45, 0.95 + entropy * 0.04 + lostCount() * 0.04)),
       playerHp: Math.max(70, 110 + residentsCount() * 4 - lostCount() * 6 + (defense.victory ? 12 : -8) + (resonance.hpBonus || 0)),
       allyWings: Math.min(4, Math.floor(residentsCount() / 2) + (resonance.allyWingsBonus || 0)),
-      startingShield: Math.max(0, resonance.startingShield || 0)
+      startingShield: Math.max(0, resonance.startingShield || 0),
+      lastStandShield: Math.max(0, resonance.lastStandShield || 0)
     };
   }
 
