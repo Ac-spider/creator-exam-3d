@@ -97,8 +97,11 @@
         game.burst(this.x, this.y, '#8bd3ff', 8);
       }
       if (rest > 0) {
+        const beforeHp = this.hp;
         this.hp -= rest;
-        game.damageTaken += rest;
+        const hpLoss = Math.max(0, Math.min(beforeHp, beforeHp - this.hp));
+        game.damageTaken += hpLoss;
+        game.triggerPainConverter(this, hpLoss);
         game.shake = Math.max(game.shake, 8);
         if (this.hp <= 0 && this.lastStandReady) {
           this.hp = 1;
@@ -185,6 +188,7 @@
       this.bulletSpeed = data.bulletSpeed || 240;
       this.bulletDamage = data.damage || 8;
       this.shots = data.shots || 1;
+      this.fireMult = 1;
       this.sniperWarn = 0;
       this.sniperAim = 0;
       this.repairRadius = data.repairRadius || 0;
@@ -205,7 +209,7 @@
       if (this.sniperWarn > 0 && game.player) {
         this.sniperWarn -= dt;
         if (this.sniperWarn <= 0) {
-          this.fire = 1.8;
+          this.fire = 1.8 * this.fireMult;
           game.fireFan(this.x, this.y, this.sniperAim, 0, this.shots, this.bulletSpeed, this.bulletDamage);
         }
       } else if (this.fire <= 0 && game.player) {
@@ -213,7 +217,7 @@
           this.sniperAim = Math.atan2(game.player.y - this.y, game.player.x - this.x);
           this.sniperWarn = this.warn;
         } else {
-          this.fire = this.type === 'phantom' ? 1.0 : 1.45;
+          this.fire = (this.type === 'phantom' ? 1.0 : 1.45) * this.fireMult;
           game.fireEnemyAt(this.x, this.y, 240 + game.segmentIndex * 12, 8);
         }
       }
@@ -463,6 +467,7 @@
     clearedLayers: 0,
     damageTaken: 0,
     creationOverload: 0,
+    painConverted: 0,
     lastStandTriggered: false,
     jammedTime: 0,
     resultId: '',
@@ -496,6 +501,7 @@
       this.clearedLayers = 0;
       this.damageTaken = 0;
       this.creationOverload = 0;
+      this.painConverted = 0;
       this.lastStandTriggered = false;
       this.jammedTime = 0;
       this.resultId = '';
@@ -560,7 +566,22 @@
           : ['medium', 'gunner', 'splitter', 'sniper', 'phantom', 'phantom'];
       const affix = this.currentAffix();
       const biased = affix?.enemyBias && Math.random() < (affix.spawnBias || 0) ? affix.enemyBias : pool;
-      this.enemies.push(new Enemy(pick(biased), stage));
+      const enemy = new Enemy(pick(biased), stage);
+      if (affix?.elite === 'berserker') this.applyBerserkerElite(enemy, affix);
+      this.enemies.push(enemy);
+    },
+
+    applyBerserkerElite(enemy, affix) {
+      if (!enemy || !affix) return enemy;
+      enemy.elite = 'berserker';
+      enemy.color = affix.color || enemy.color;
+      enemy.speed *= affix.eliteSpeedMult || 1.18;
+      enemy.fireMult = Math.min(enemy.fireMult || 1, affix.eliteFireMult || 0.78);
+      enemy.fire *= enemy.fireMult;
+      enemy.score = Math.round(enemy.score * (affix.eliteScoreMult || 1.5));
+      enemy.hp = Math.max(1, Math.round(enemy.hp * (affix.eliteHpMult || 0.92)));
+      enemy.maxHp = enemy.hp;
+      return enemy;
     },
 
     spawnBoss() {
@@ -681,6 +702,20 @@
       this.burst(boss.x, boss.y, affix.color || '#38d9a9', 16);
       this.say(`${boss.def.title}启动维修词缀，裂隙外壳回复 ${heal} 点。`, 1.8);
       return true;
+    },
+
+    triggerPainConverter(player, hpLoss) {
+      const perHp = Number(this.resonance.painConverterCooldownPerHp) || 0;
+      if (!player || hpLoss <= 0 || perHp <= 0 || player.skillCd <= 0) return 0;
+      const maxRefund = Number(this.resonance.painConverterMaxCooldown) || 3;
+      const refund = Math.min(maxRefund, Math.round(hpLoss * perHp * 10) / 10);
+      const before = player.skillCd;
+      player.skillCd = Math.max(0, player.skillCd - refund);
+      const applied = before - player.skillCd;
+      if (applied <= 0) return 0;
+      this.painConverted += applied;
+      this.burst(player.x, player.y, '#f06595', 8);
+      return applied;
     },
 
     useSkill() {
@@ -865,6 +900,7 @@
       if (this.clearedLayers >= this.route.length) tags.push('Boss处理完整');
       else if (this.clearedLayers >= 3) tags.push('中段清算有效');
       if (this.creationOverload >= 3) tags.push('频繁脉冲');
+      if (this.painConverted >= 2) tags.push('痛觉转译');
       if (this.lastStandTriggered) tags.push('黑匣子保险');
       if (this.route.some(boss => boss.affix?.attack === 'prism')) tags.push('棱镜航线');
       if (this.route.some(boss => boss.affix?.attack === 'ionStorm')) tags.push('离子风暴');
@@ -888,6 +924,7 @@
         bossDefeated: this.bossDefeated,
         damageTaken: this.damageTaken,
         creationOverload: this.creationOverload,
+        painConverted: Math.round(this.painConverted * 10) / 10,
         jammedTime: Math.round(this.jammedTime),
         rescuedEchoes: victory ? this.difficulty.allyWings + this.clearedLayers : this.clearedLayers,
         endingModifier: victory ? 'airspace_cleansed' : 'airspace_scarred',
@@ -948,7 +985,7 @@
         const cd = active?.affix?.attack ? ` · ${Math.max(0, active.affixTimer || 0).toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${cd}` : '';
       }
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
+      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.painConverterStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
@@ -969,6 +1006,10 @@
     armorCaliberStatus() {
       const damage = this.armorCaliberDamage();
       return damage > 0 ? ` · 装甲口径+${damage}` : '';
+    },
+
+    painConverterStatus() {
+      return (this.resonance.painConverterCooldownPerHp || 0) > 0 ? ' · 痛觉转换' : '';
     },
 
     jamStatus() {

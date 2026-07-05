@@ -198,11 +198,13 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('jammerCloud') && bridgeSource.includes('扰频云层'), 'air bridge must adapt upstream jammer cloud as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('sniperLockdown') && bridgeSource.includes('狙击封锁'), 'air bridge must adapt upstream sniper lockdown as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes("attack: 'repair'") && bridgeSource.includes('维修词缀'), 'air bridge must adapt upstream repair boss affix into finite route pressure');
+  assert.ok(bridgeSource.includes('berserker') && bridgeSource.includes('狂暴'), 'air bridge must adapt upstream berserker elite as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('fieldRepair') && bridgeSource.includes('纳米修复'), 'air bridge must adapt upstream field repair as a prior-flow reward');
   assert.ok(bridgeSource.includes('damageTakenMult') && bridgeSource.includes('钛合装甲'), 'air bridge must adapt upstream armor plating as finite shield resonance');
   assert.ok(bridgeSource.includes('钨芯重弹') && bridgeSource.includes('fireIntervalMult: 1.12'), 'air bridge must adapt upstream heavy rounds as finite cannon resonance');
   assert.ok(bridgeSource.includes('破甲弹芯') && bridgeSource.includes('armorPierceMult: 0.35'), 'air bridge must adapt upstream armor piercer as finite cannon resonance');
   assert.ok(bridgeSource.includes('装甲口径') && bridgeSource.includes('armorCaliberDamage'), 'air bridge must adapt upstream armor caliber as finite prior-flow resonance');
+  assert.ok(bridgeSource.includes('痛觉转换') && bridgeSource.includes('painConverterCooldownPerHp'), 'air bridge must adapt upstream pain converter as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('splitPairs') && bridgeSource.includes('分束棱镜'), 'air bridge must adapt upstream split laser as beam resonance');
   assert.ok(bridgeSource.includes('sidePairs') && bridgeSource.includes('侧翼炮塔'), 'air bridge must adapt upstream side cannons as cannon resonance');
 
@@ -220,6 +222,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('jammer') && airGameSource.includes('support'), 'air combat enemy pool must include selected upstream enemy roles');
   assert.ok(airGameSource.includes('sniper') && airGameSource.includes('sniperWarn'), 'air combat slice must adapt upstream sniper warning shots locally');
   assert.ok(airGameSource.includes('this.sniperAim') && airGameSource.includes("['medium', 'gunner', 'splitter', 'sniper'"), 'sniper enemies must warn before entering late finite route pools');
+  assert.ok(airGameSource.includes('applyBerserkerElite') && airGameSource.includes('eliteFireMult') && airGameSource.includes('enemy.fireMult'), 'air combat slice must apply upstream berserker elite pressure locally');
   assert.ok(airGameSource.includes('hudAffix'), 'air combat HUD must show boss affix details');
   assert.ok(airGameSource.includes('reviewTags'), 'air combat result must adapt upstream run review tags to finite route review');
   assert.ok(airGameSource.includes('renderResultBody'), 'air combat result panel must support late AI verdict updates');
@@ -236,6 +239,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('armorPierces') && airGameSource.includes('playerBulletDamage') && airGameSource.includes('armorPierceMinHp') && airGameSource.includes('bullet.main'), 'air combat slice must apply finite armor-piercer bonus only to main bullets');
   assert.ok(airGameSource.includes("this.burst(b.x, b.y, '#ff922b', 6)"), 'air combat slice must show finite armor-piercer hit feedback');
   assert.ok(airGameSource.includes('armorCaliberDamage()') && airGameSource.includes('armorCaliberStatus') && airGameSource.includes('装甲口径+'), 'air combat slice must fold prior-flow armor caliber into main cannon damage and HUD');
+  assert.ok(airGameSource.includes('triggerPainConverter') && airGameSource.includes('painConverterStatus') && airGameSource.includes('痛觉转译'), 'air combat slice must convert real HP loss into finite creation-pulse cooldown');
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
   assert.ok(airGameSource.includes('sideDamage') && airGameSource.includes('#ffd43b'), 'air combat slice must fire finite side cannon shots for cannon resonance');
   assert.ok(airGameSource.includes('showClearanceCard') && airGameSource.includes('updateClearanceCard'), 'air combat must show a short boss clearance card after each boss defeat');
@@ -296,6 +300,8 @@ function assertAirCombatRouteBalance() {
     'high-pressure block route must show the actual six affixes in order'
   );
   assert.equal(highPressure.routeResonance().armorCaliberDamage, 2, 'prior-flow armor caliber must remain bounded and derived from context');
+  assert.ok(highPressure.routeResonance().painConverterCooldownPerHp > 0, 'high final pressure should unlock finite pain converter resonance');
+  assert.ok(highPressure.routeResonance().painConverterMaxCooldown <= 4.2, 'pain converter cooldown refund must stay bounded');
   for (const boss of highRoute) {
     assert.ok(['prism', 'ionStorm', 'escort', 'repair', undefined].includes(boss.affix.attack), `unknown finite affix attack ${boss.affix.attack}`);
     assert.ok(boss.hp >= 300 && boss.hp <= 1100, `boss ${boss.title} hp is outside finite route bounds`);
@@ -310,6 +316,16 @@ function assertAirCombatRouteBalance() {
     towerDefenseResult: { victory: true }
   });
   assert.equal(repairOpening.route()[0].affix.key, 'repair', 'successful night-watch pressure should be able to open with repair affix');
+
+  const lostRoute = loadAirBridgeForContext({
+    entropy: 5,
+    endingPressure: 0.68,
+    rescuedResidents: [],
+    lostResidents: [{ name: '砾' }],
+    recentCreations: [{ name: '透明鲸鱼', ability: 'absorb_water' }],
+    towerDefenseResult: { victory: true }
+  });
+  assert.ok(lostRoute.route().some(boss => boss.affix.key === 'berserker'), 'lost residents plus entropy should introduce finite berserker elite pressure');
 }
 
 async function assertNoKeyServerFallbacks() {

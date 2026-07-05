@@ -94,6 +94,19 @@
       scoreMult: 1.12,
       line: '它不再等待回合，只追问你反应还够不够快。'
     },
+    berserker: {
+      key: 'berserker',
+      name: '狂暴',
+      color: '#ff6b6b',
+      elite: 'berserker',
+      enemyBias: ['gunner', 'phantom', 'sniper'],
+      spawnBias: 0.56,
+      eliteHpMult: 0.92,
+      eliteSpeedMult: 1.18,
+      eliteFireMult: 0.78,
+      eliteScoreMult: 1.5,
+      line: '失控残影把敌机推入狂暴精英态，速度和开火节奏都会抬高。'
+    },
     prism: {
       key: 'prism',
       name: '棱镜',
@@ -421,6 +434,8 @@
       armorCaliberDamage: 0,
       armorCaliberHpPerDamage: 15,
       armorCaliberMaxDamage: 4,
+      painConverterCooldownPerHp: 0,
+      painConverterMaxCooldown: 0,
       sourceCreation: weapon.sourceCreation,
       ...base,
       towerDefenseRelief: !!defense.victory
@@ -446,6 +461,12 @@
     if (resonance.armorCaliberDamage > 0) {
       resonance.effect = `${resonance.effect} 装甲口径把前置流程的额外机体强度校准为主炮 +${resonance.armorCaliberDamage}。`;
     }
+    const painPressure = lostCount() + Math.max(0, Math.floor((endingPressure() - 0.76) * 10));
+    if (painPressure > 0) {
+      resonance.painConverterCooldownPerHp = Math.min(0.16, 0.08 + painPressure * 0.02);
+      resonance.painConverterMaxCooldown = Math.min(4.2, 2.6 + painPressure * 0.4);
+      resonance.effect = `${resonance.effect} 痛觉转换会把承伤回写为造物脉冲冷却。`;
+    }
     return resonance;
   }
 
@@ -462,6 +483,7 @@
     if (pressure >= 0.82) keys.push('armored');
     if (pressure >= 0.72 && /block|memory_beacon|force_field/.test(abilityText)) keys.push('sniperLockdown');
     if (lostCount() > 0) keys.push('phantom');
+    if (lostCount() > 0 && entropy >= 4) keys.push('berserker');
     if (residentsCount() >= 4 || /block|force_field/.test(abilityText)) keys.push('escort');
     if (defense && defense.victory === false) keys.push('breach', 'jammer');
     if (defense?.victory && pressure >= 0.75) keys.push('repair');
@@ -648,6 +670,7 @@
       bossDefeated: result.bossDefeated || [],
       damageTaken: Math.max(0, Math.round(result.damageTaken || 0)),
       creationOverload: result.creationOverload || 0,
+      painConverted: Math.max(0, Math.round((result.painConverted || 0) * 10) / 10),
       jammedTime: Math.max(0, Math.round(result.jammedTime || 0)),
       rescuedEchoes: result.rescuedEchoes || 0,
       endingModifier: result.endingModifier || (result.outcome === 'victory' ? 'airspace_cleansed' : 'airspace_scarred'),
