@@ -5,6 +5,7 @@ import { AIDirector } from './aiDirector.js';
 import { ResidentScheduleSystem } from './residentScheduleSystem.js';
 import { WorldEconomySystem } from './worldEconomySystem.js';
 import { ResidentRumorSystem } from './residentRumorSystem.js';
+import { ExplorationDirector } from './explorationDirector.js';
 
 function hookId(type, eventId) {
   return `hook-${type}-${eventId}`;
@@ -40,6 +41,7 @@ export class WorldSimulation {
       residentRegistry: this.residentRegistry,
       eventBus: this.eventBus
     });
+    this.explorationDirector = new ExplorationDirector(this);
     this.futureHooks = new Map();
   }
 
@@ -157,13 +159,13 @@ export class WorldSimulation {
     const sourceRegionId = options.sourceRegionId || 'unknown';
     const count = options.count || 3;
     const hooks = this.getFutureHooks(sourceRegionId);
-    const choices = [];
+    const baseChoices = [];
 
     for (let i = 0; i < count; i++) {
       const hook = hooks[i];
       const id = hook ? hook.id : `exploration-${sourceRegionId}-${i}`;
       const title = hook ? hook.summary : `探索区域 ${sourceRegionId} 的未知方向 ${i + 1}`;
-      choices.push({
+      baseChoices.push({
         id,
         title,
         regionId: hook?.sourceRegionId || sourceRegionId,
@@ -172,7 +174,20 @@ export class WorldSimulation {
       });
     }
 
-    return choices;
+    // 用旧版 ExplorationDirector 补充风险等级/描述/承诺等丰富信息
+    try {
+      const enriched = this.explorationDirector.buildChoices({
+        sourceRegionId,
+        hooks: baseChoices
+      });
+      if (Array.isArray(enriched) && enriched.length > 0) {
+        return enriched;
+      }
+    } catch (_) {
+      // 降级返回基础选择项
+    }
+
+    return baseChoices;
   }
 
   async resolveExplorationChoice(choiceId, options = {}) {

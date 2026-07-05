@@ -14,6 +14,9 @@ import { worldLegendSystem } from './worldLegend.js';
 import { legacySystem } from './legacySystem.js';
 import { persistentWorld } from './persistentWorld.js';
 import { buildContinuityViewModel } from './continuityPresenter.js';
+import { buildAdvancedMechanicsViewModel } from './advancedMechanicsPresenter.js';
+import { buildExplorationChoiceViewModel } from './explorationPresenter.js';
+import { buildKnownWorldFacts, filterKnownNarrativeMemories, getKnownRegionIdsFromProgress } from './worldKnowledge.js';
 import { ResidentDialogueSystem } from './residentDialogueSystem.js';
 import { DebugSnapshot } from './debugSnapshot.js';
 import { SaveSlotManager } from './saveSlotManager.js';
@@ -137,6 +140,7 @@ class CreatorExam3D extends GameEngine {
     // Initialize new systems
     this.memorySystem = getMemorySystem();
     this.worldSession = new WorldSession();
+    this.worldSimulation = this.worldSession.worldSimulation;
     this.memoryStore = new MemoryStore();
     this.memoryStore.loadWorld(this.worldSession.worldSimulation);
     this.saveSlotManager = new SaveSlotManager();
@@ -147,6 +151,10 @@ class CreatorExam3D extends GameEngine {
     this.storyteller = defaultStoryteller;
     this.cognitiveEffects = new CognitiveEffects();
     this.lastFrameTime = 0;
+    this.selectedDialogueUnit = null;
+    this.selectedDialogueNpc = null;
+    this.selectedDialogueGroup = false;
+    this.dialogueMessages = [];
 
     this.ui = this.collectUi();
     this.initScene();
@@ -205,6 +213,9 @@ class CreatorExam3D extends GameEngine {
       entropy: document.getElementById('entropy-stat'),
       specialMeters: document.getElementById('special-meters'),
       unitList: document.getElementById('unit-list'),
+      missionThreat: document.getElementById('mission-threat'),
+      missionGoals: document.getElementById('mission-goals'),
+      intentPreviewList: document.getElementById('intent-preview-list'),
       input: document.getElementById('creation-input'),
       compileBtn: document.getElementById('compile-btn'),
       randomBtn: document.getElementById('random-btn'),
@@ -273,7 +284,25 @@ class CreatorExam3D extends GameEngine {
       workshopFuseBtn: document.getElementById('workshopFuseBtn'),
       legacyUnitList: document.getElementById('legacy-unit-list'),
       legacyWorldStats: document.getElementById('legacy-world-stats'),
-      legacyResidentList: document.getElementById('legacy-resident-list')
+      legacyResidentList: document.getElementById('legacy-resident-list'),
+      npcDialoguePanel: document.getElementById('npc-dialogue-panel'),
+      npcDialogueTitle: document.getElementById('npc-dialogue-title'),
+      npcDialogueClose: document.getElementById('npc-dialogue-close'),
+      npcDialogueMeta: document.getElementById('npc-dialogue-meta'),
+      npcDialogueRoster: document.getElementById('npc-dialogue-roster'),
+      npcDialogueHistory: document.getElementById('npc-dialogue-history'),
+      npcDialogueActions: document.getElementById('npc-dialogue-actions'),
+      npcDialogueInput: document.getElementById('npc-dialogue-input'),
+      npcDialogueSend: document.getElementById('npc-dialogue-send'),
+      advancedMechanicList: document.getElementById('advanced-mechanic-list'),
+      advancedActionList: document.getElementById('advanced-action-list'),
+      advancedDecodeInput: document.getElementById('advanced-decode-input'),
+      advancedDetail: document.getElementById('advanced-detail'),
+      advancedLog: document.getElementById('advanced-log'),
+      advancedMechanicsPanel: document.getElementById('advanced-mechanics-panel'),
+      cardRune: document.getElementById('card-rune'),
+      explorationChoices: document.getElementById('exploration-choices'),
+      rightPanel: document.getElementById('right-panel')
     };
   }
 
@@ -439,6 +468,67 @@ class CreatorExam3D extends GameEngine {
     this.ui.workshopDismantleBtn?.addEventListener('click', () => this.handleWorkshopDismantle());
     this.ui.workshopModifyBtn?.addEventListener('click', () => this.handleWorkshopModify());
     this.ui.workshopFuseBtn?.addEventListener('click', () => this.handleWorkshopFuse());
+
+    // 高级机制面板折叠/展开
+    const collapseToggles = document.querySelectorAll('.collapse-toggle');
+    collapseToggles.forEach(toggle => {
+      toggle.addEventListener('click', () => {
+        const panel = toggle.closest('.collapsible');
+        if (!panel) return;
+        panel.classList.toggle('expanded');
+        toggle.setAttribute('aria-expanded', panel.classList.contains('expanded'));
+      });
+    });
+
+    // NPC 对话面板关闭
+    this.ui.npcDialogueClose?.addEventListener('click', () => this.closeNpcDialogue());
+
+
+
+    // NPC 对话发送
+    this.ui.npcDialogueSend?.addEventListener('click', () => this.handleNpcDialogueSend());
+
+    // NPC 对话快捷动作
+    this.ui.npcDialogueActions?.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-dialogue-action]');
+      if (!btn) return;
+      const action = btn.dataset.dialogueAction;
+      if (action === 'group-chat') {
+        this.openNpcGroupDialogue();
+      } else {
+        this.submitNpcDialogue(btn.dataset.prompt || btn.textContent || '');
+      }
+    });
+
+
+    // NPC 对话 Ctrl+Enter 快捷发送
+    this.ui.npcDialogueInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        this.handleNpcDialogueSend();
+      }
+    });
+
+    // 点击单位列表打开 NPC 对话
+    this.ui.unitList?.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-unit-id]');
+      if (!row) return;
+      const unitId = row.dataset.unitId;
+      const unit = this.units.find(u => u.id === unitId);
+      if (!unit) return;
+      this.handleUnitInteraction(unit);
+    });
+
+    // 点击对话 roster 切换对话对象
+    this.ui.npcDialogueRoster?.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-roster-id]');
+      if (!chip) return;
+      const unitId = chip.dataset.rosterId;
+      const unit = this.units.find(u => u.id === unitId);
+      if (!unit) return;
+      this.handleUnitInteraction(unit);
+    });
+
 
     // Workshop selection delegation
     this.ui.workshopInventoryList?.addEventListener('change', (e) => {
@@ -1236,8 +1326,8 @@ class CreatorExam3D extends GameEngine {
     // Update units - position only for existing, rebuild for new/changed status
     const activeUnitIds = new Set();
     for (const unit of this.units) {
-      activeUnitIds.add(unit.id);
       if (unit.status === 'active') {
+        activeUnitIds.add(unit.id);
         const existing = this.unitMeshPool.get(unit.id);
         if (existing && existing.userData.unitStatus === unit.status) {
           // Only update position
@@ -1331,17 +1421,150 @@ class CreatorExam3D extends GameEngine {
   }
 
   createTileMesh(terrain, x, y) {
-    const height = terrain === TILE.HIGH ? 0.46 : terrain === TILE.MOUNTAIN ? 0.72 : terrain === TILE.WATER ? 0.08 : 0.18;
-    const geometry = this.getCachedGeometry(`tile-${height}`, () => new THREE.BoxGeometry(TILE_SIZE * 0.94, height, TILE_SIZE * 0.94));
-    const material = this.getTerrainMaterial(terrain);
+    const height = this.getTerrainHeight(terrain);
+    const geometry = this.getCachedGeometry(`tile-hit-${height}`, () => new THREE.BoxGeometry(TILE_SIZE * 0.9, Math.max(height, 0.08), TILE_SIZE * 0.9));
+    const material = this.material(MATERIAL_COLORS[terrain] || MATERIAL_COLORS[TILE.LAND], {
+      transparent: true,
+      opacity: 0.045,
+      depthWrite: false,
+    });
+
     const mesh = new THREE.Mesh(geometry, material);
     const pos = this.tileToWorld(x, y);
     mesh.position.set(pos.x, height / 2, pos.z);
     mesh.receiveShadow = true;
-    mesh.castShadow = terrain !== TILE.WATER;
-    mesh.userData = { x, y, terrain, tile: true };
+    mesh.castShadow = false;
+    mesh.userData = { x, y, terrain, tile: true, visualStyle: 'sculpted-terrain-v2' };
+    mesh.add(this.createTerrainVisual(terrain, height));
     return mesh;
   }
+
+  getTerrainHeight(terrain) {
+    if (terrain === TILE.MOUNTAIN) return 0.74;
+    if (terrain === TILE.HIGH || terrain === TILE.CITY) return 0.5;
+    if (terrain === TILE.WATER) return 0.08;
+    if (terrain === TILE.BRIDGE) return 0.16;
+    if (terrain === TILE.WALL) return 0.62;
+    return 0.2;
+  }
+
+  createTerrainVisual(terrain, height) {
+    const group = new THREE.Group();
+    const color = MATERIAL_COLORS[terrain] || MATERIAL_COLORS[TILE.LAND];
+    const surfaceMaterial = this.getTerrainMaterial(terrain);
+
+    if (terrain === TILE.WATER) {
+      const water = new THREE.Mesh(
+        this.getCachedGeometry('terrain-water-disc', () => new THREE.CylinderGeometry(0.66, 0.7, 0.055, 32)),
+        surfaceMaterial
+      );
+      const rippleA = new THREE.Mesh(
+        this.getCachedGeometry('terrain-water-ripple-a', () => new THREE.TorusGeometry(0.38, 0.01, 6, 32)),
+        this.material(0x9fe8ff, { transparent: true, opacity: 0.5, emissive: 0x0b5b74, emissiveIntensity: 0.18 })
+      );
+      const rippleB = new THREE.Mesh(
+        this.getCachedGeometry('terrain-water-ripple-b', () => new THREE.TorusGeometry(0.54, 0.012, 6, 32)),
+        this.material(0xd8f7ff, { transparent: true, opacity: 0.32, emissive: 0x0b5b74, emissiveIntensity: 0.12 })
+      );
+      rippleA.rotation.x = Math.PI / 2;
+      rippleB.rotation.x = Math.PI / 2;
+      rippleA.position.y = 0.04;
+      rippleB.position.y = 0.045;
+      group.add(water, rippleA, rippleB);
+      return group;
+    }
+
+    if (terrain === TILE.BRIDGE) {
+      const railMaterial = this.material(0x6f4b2e);
+      for (let i = -2; i <= 2; i += 1) {
+        const plank = new THREE.Mesh(
+          this.getCachedGeometry('terrain-bridge-plank', () => new THREE.BoxGeometry(0.18, 0.08, 1.16)),
+          surfaceMaterial
+        );
+        plank.position.set(i * 0.18, 0.04, 0);
+        plank.rotation.y = (i % 2) * 0.035;
+        plank.castShadow = true;
+        group.add(plank);
+      }
+      for (const z of [-0.48, 0.48]) {
+        const rail = new THREE.Mesh(
+          this.getCachedGeometry('terrain-bridge-rail', () => new THREE.BoxGeometry(1.04, 0.08, 0.06)),
+          railMaterial
+        );
+        rail.position.set(0, 0.12, z);
+        rail.castShadow = true;
+        group.add(rail);
+      }
+      return group;
+    }
+
+    if (terrain === TILE.MOUNTAIN || terrain === TILE.WALL) {
+      const base = new THREE.Mesh(
+        this.getCachedGeometry(`terrain-rock-base-${terrain}`, () => new THREE.CylinderGeometry(0.58, 0.72, height, 7)),
+        surfaceMaterial
+      );
+      base.castShadow = true;
+      base.receiveShadow = true;
+      group.add(base);
+      const rockMaterial = this.material(terrain === TILE.WALL ? 0x808899 : 0x8a8b91);
+      for (let i = 0; i < 3; i += 1) {
+        const rock = new THREE.Mesh(
+          this.getCachedGeometry(`terrain-rock-${i}`, () => new THREE.DodecahedronGeometry(0.18 + i * 0.035, 0)),
+          rockMaterial
+        );
+        rock.position.set((i - 1) * 0.2, height / 2 + 0.1 + i * 0.04, (i % 2 ? 0.12 : -0.1));
+        rock.rotation.set(0.4 * i, 0.6 * i, 0.2);
+        rock.castShadow = true;
+        group.add(rock);
+      }
+      return group;
+    }
+
+    const base = new THREE.Mesh(
+      this.getCachedGeometry(`terrain-slab-${terrain}-${height}`, () => new THREE.CylinderGeometry(0.64, 0.72, height, 8)),
+      surfaceMaterial
+    );
+    base.castShadow = terrain !== TILE.FOG && terrain !== TILE.DARK;
+    base.receiveShadow = true;
+    group.add(base);
+
+    const rim = new THREE.Mesh(
+      this.getCachedGeometry('terrain-slab-rim', () => new THREE.TorusGeometry(0.62, 0.018, 6, 32)),
+      this.material(color, { transparent: true, opacity: 0.36, roughness: 0.8 })
+    );
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = height / 2 + 0.016;
+    group.add(rim);
+
+    if (terrain === TILE.FOREST) {
+      for (const offset of [-0.22, 0, 0.22]) {
+        const tuft = new THREE.Mesh(
+          this.getCachedGeometry('terrain-forest-tuft', () => new THREE.ConeGeometry(0.13, 0.34, 7)),
+          this.material(0x4ee28d, { roughness: 0.9 })
+        );
+        tuft.position.set(offset, height / 2 + 0.18, Math.abs(offset) * 0.5);
+        tuft.castShadow = true;
+        group.add(tuft);
+      }
+    }
+
+    if (terrain === TILE.SWAMP || terrain === TILE.POISON) {
+      const pool = new THREE.Mesh(
+        this.getCachedGeometry('terrain-swamp-pool', () => new THREE.CylinderGeometry(0.34, 0.36, 0.025, 24)),
+        this.material(terrain === TILE.POISON ? 0x9dff58 : 0x6f7d39, {
+          transparent: true,
+          opacity: 0.58,
+          emissive: terrain === TILE.POISON ? 0x254000 : 0x101c06,
+          emissiveIntensity: 0.16
+        })
+      );
+      pool.position.y = height / 2 + 0.025;
+      group.add(pool);
+    }
+
+    return group;
+  }
+
 
   getCachedGeometry(key, factory) {
     if (!this.geometryCache.has(key)) {
@@ -1430,42 +1653,127 @@ class CreatorExam3D extends GameEngine {
     const group = new THREE.Group();
     const pos = this.tileToWorld(unit.x, unit.y);
     group.position.set(pos.x, 0.36, pos.z);
+    group.userData = {
+      unit: true,
+      unitId: unit.id,
+      unitName: unit.name,
+      residentId: unit.residentId || null,
+      unitType: unit.type,
+      unitStatus: unit.status,
+      visualStyle: 'voxel-character-v1'
+    };
+
+    const shadow = new THREE.Mesh(
+      this.getCachedGeometry('unit-ground-shadow', () => new THREE.CircleGeometry(0.34, 24)),
+      this.material(0x000000, { transparent: true, opacity: 0.26, depthWrite: false })
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = -0.31;
+    group.add(shadow);
 
     if (this.isCivilian(unit)) {
-      const bodyColor = unit.type === 'miner' ? 0xf0c15c : 0x77d7ff;
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.42, 10), this.material(bodyColor));
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), this.material(0xffd6ad));
-      head.position.y = 0.32;
-      body.castShadow = true;
-      head.castShadow = true;
-      group.add(body, head);
+      group.add(this.createVoxelPerson(unit));
       if (unit.guidedTurns > 0) group.add(this.createHalo(0x9dffb3));
     } else if (this.isMessenger(unit)) {
-      const color = unit.type === 'tribeA' ? 0xff8f70 : 0x7aa2ff;
-      const body = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 4), this.material(color));
-      body.castShadow = true;
-      body.rotation.y = Math.PI / 4;
-      group.add(body);
+      group.add(this.createVoxelMessenger(unit));
       if (unit.met) group.add(this.createHalo(0xd4a6ff));
     } else if (unit.type === 'beast') {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.48, 0.48), this.material(0x3d8caa));
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), this.material(0x6bd3ff));
-      const hornA = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.28, 8), this.material(0xf3f7ff));
-      const hornB = hornA.clone();
-      head.position.set(0.45, 0.12, 0);
-      hornA.position.set(0.54, 0.34, -0.12);
-      hornB.position.set(0.54, 0.34, 0.12);
-      hornA.rotation.z = -Math.PI / 6;
-      hornB.rotation.z = -Math.PI / 6;
-      body.castShadow = true;
-      head.castShadow = true;
-      group.add(body, head, hornA, hornB);
+      group.add(this.createVoxelBeast(unit));
       if (unit.stunned) group.add(this.createHalo(0xfff39a, 0.54));
     }
 
     const labelSprite = this.createLabel(unit.name);
     labelSprite.position.y = unit.type === 'beast' ? 0.88 : 0.7;
     group.add(labelSprite);
+    return group;
+  }
+
+  createVoxelBlock(key, width, height, depth, color, x, y, z, options = {}) {
+    const mesh = new THREE.Mesh(
+      this.getCachedGeometry(`voxel-${key}-${width}-${height}-${depth}`, () => new THREE.BoxGeometry(width, height, depth)),
+      this.material(color, { roughness: 0.82, metalness: 0.02, ...options })
+    );
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    return mesh;
+  }
+
+  createVoxelPerson(unit) {
+    const group = new THREE.Group();
+    const isMiner = unit.type === 'miner';
+    const cloth = isMiner ? 0xe5aa4d : 0x5eb6e8;
+    const trim = isMiner ? 0xffe08a : 0x245d85;
+    const pack = isMiner ? 0x5f432b : 0x31506c;
+
+    group.add(
+      this.createVoxelBlock('person-leg', 0.08, 0.2, 0.08, 0x273044, -0.06, -0.14, 0),
+      this.createVoxelBlock('person-leg', 0.08, 0.2, 0.08, 0x273044, 0.06, -0.14, 0),
+      this.createVoxelBlock('person-body', 0.24, 0.3, 0.16, cloth, 0, 0.06, 0),
+      this.createVoxelBlock('person-arm', 0.07, 0.22, 0.08, cloth, -0.18, 0.07, 0),
+      this.createVoxelBlock('person-arm', 0.07, 0.22, 0.08, cloth, 0.18, 0.07, 0),
+      this.createVoxelBlock('person-head', 0.2, 0.18, 0.18, 0xffd6ad, 0, 0.32, 0),
+      this.createVoxelBlock('person-cap', 0.22, 0.06, 0.2, trim, 0, 0.45, 0),
+      this.createVoxelBlock('person-pack', 0.2, 0.22, 0.08, pack, 0, 0.06, -0.14)
+    );
+
+    if (isMiner) {
+      group.add(
+        this.createVoxelBlock('miner-lamp', 0.08, 0.06, 0.04, 0xfff39a, 0, 0.47, 0.11, { emissive: 0xffd166, emissiveIntensity: 0.45 }),
+        this.createVoxelBlock('miner-tool', 0.04, 0.28, 0.04, 0x8a6a45, 0.22, 0.06, 0.02)
+      );
+    } else {
+      group.add(
+        this.createVoxelBlock('villager-scarf', 0.24, 0.05, 0.18, 0xf5d77a, 0, 0.21, 0.01),
+        this.createVoxelBlock('villager-hand', 0.06, 0.06, 0.06, 0xffd6ad, -0.2, -0.03, 0.03),
+        this.createVoxelBlock('villager-hand', 0.06, 0.06, 0.06, 0xffd6ad, 0.2, -0.03, 0.03)
+      );
+    }
+
+    return group;
+  }
+
+  createVoxelMessenger(unit) {
+    const group = new THREE.Group();
+    const cloak = unit.type === 'tribeA' ? 0xff8f70 : 0x7aa2ff;
+    const flag = unit.type === 'tribeA' ? 0xffd166 : 0xa7c7ff;
+    const hood = unit.type === 'tribeA' ? 0x7b2f28 : 0x25386f;
+
+    group.add(
+      this.createVoxelBlock('messenger-leg', 0.08, 0.18, 0.08, 0x273044, -0.05, -0.16, 0),
+      this.createVoxelBlock('messenger-leg', 0.08, 0.18, 0.08, 0x273044, 0.05, -0.16, 0),
+      this.createVoxelBlock('messenger-cloak', 0.28, 0.36, 0.18, cloak, 0, 0.06, 0),
+      this.createVoxelBlock('messenger-hood', 0.22, 0.14, 0.2, hood, 0, 0.29, 0),
+      this.createVoxelBlock('messenger-face', 0.14, 0.1, 0.04, 0xffd6ad, 0, 0.29, 0.105),
+      this.createVoxelBlock('messenger-pole', 0.035, 0.62, 0.035, 0xe9d8a6, 0.22, 0.12, 0.02),
+      this.createVoxelBlock('messenger-flag', 0.22, 0.14, 0.035, flag, 0.33, 0.36, 0.02),
+      this.createVoxelBlock('messenger-satchel', 0.16, 0.12, 0.08, 0x6b4d35, -0.18, 0.02, -0.1)
+    );
+
+    return group;
+  }
+
+  createVoxelBeast(unit) {
+    const group = new THREE.Group();
+    const rage = Math.min(1, (unit.anger || 0) / Math.max(1, this.level?.beastAngerLimit || 5));
+    const bodyColor = rage > 0.55 ? 0x4b92aa : 0x3d8caa;
+    const glowColor = rage > 0.55 ? 0xff8b7a : 0x9fe8ff;
+
+    group.add(
+      this.createVoxelBlock('beast-body', 0.66, 0.3, 0.36, bodyColor, -0.04, 0.04, 0),
+      this.createVoxelBlock('beast-back', 0.42, 0.18, 0.28, 0x2f7289, -0.16, 0.27, 0),
+      this.createVoxelBlock('beast-head', 0.3, 0.28, 0.28, 0x6bd3ff, 0.42, 0.13, 0),
+      this.createVoxelBlock('beast-snout', 0.18, 0.12, 0.18, 0xb6f4ff, 0.62, 0.1, 0),
+      this.createVoxelBlock('beast-horn', 0.06, 0.2, 0.06, 0xf3f7ff, 0.52, 0.36, -0.11),
+      this.createVoxelBlock('beast-horn', 0.06, 0.2, 0.06, 0xf3f7ff, 0.52, 0.36, 0.11),
+      this.createVoxelBlock('beast-crest', 0.12, 0.22, 0.08, glowColor, -0.08, 0.44, 0, { emissive: glowColor, emissiveIntensity: 0.24 }),
+      this.createVoxelBlock('beast-tail', 0.22, 0.12, 0.14, 0x2f7289, -0.48, 0.07, 0),
+      this.createVoxelBlock('beast-leg', 0.1, 0.24, 0.1, 0x2a6c84, -0.28, -0.16, -0.13),
+      this.createVoxelBlock('beast-leg', 0.1, 0.24, 0.1, 0x2a6c84, -0.28, -0.16, 0.13),
+      this.createVoxelBlock('beast-leg', 0.1, 0.24, 0.1, 0x2a6c84, 0.2, -0.16, -0.13),
+      this.createVoxelBlock('beast-leg', 0.1, 0.24, 0.1, 0x2a6c84, 0.2, -0.16, 0.13)
+    );
+
     return group;
   }
 
@@ -1648,6 +1956,8 @@ class CreatorExam3D extends GameEngine {
 
     this.updateSpecialMeters();
     this.updateUnitList();
+    this.updateMissionDossier();
+    this.renderIntentPreview();
     this.updateLogs();
     this.renderLegendPanel();
     this.renderRitualPanel();
@@ -1660,6 +1970,560 @@ class CreatorExam3D extends GameEngine {
     this.renderStorytellerPanel();
     this.renderIntentArrows();
   }
+
+  updateMissionDossier() {
+    if (this.ui.missionThreat) {
+      this.ui.missionThreat.textContent = this.getMissionThreatLabel();
+      this.ui.missionThreat.dataset.threat = this.level?.hazard?.type || this.level?.win || 'standard';
+    }
+    if (this.ui.missionGoals) {
+      this.ui.missionGoals.innerHTML = this.buildMissionGoalTags()
+        .map(tag => `<span class="mission-goal-chip ${escapeHtml(tag.tone)}"><strong>${escapeHtml(tag.label)}</strong>${escapeHtml(tag.value)}</span>`)
+        .join('');
+    }
+  }
+
+  getMissionThreatLabel() {
+    const type = this.level?.hazard?.type || this.level?.win;
+    const labels = {
+      flood: '洪水逼近',
+      darkness: '永夜扩散',
+      beast: '巨兽压境',
+      war: '失语战争',
+      fog: '记忆迷雾',
+      mixed: '复合灾害',
+      requiredRescue: '救援考核',
+      survive: '守城考核',
+      peace: '会谈考核',
+      final: '终局考核'
+    };
+    return labels[type] || '策略考核';
+  }
+
+  buildMissionGoalTags() {
+    const turnRatio = this.turn / this.level.maxTurns;
+    const entropyRatio = this.entropy / this.level.entropyLimit;
+    const tags = [
+      { label: '回合', value: `${Math.min(this.turn, this.level.maxTurns)}/${this.level.maxTurns}`, tone: turnRatio >= 0.75 ? 'warning' : 'neutral' },
+      { label: '裂隙', value: `${this.entropy}/${this.level.entropyLimit}`, tone: entropyRatio >= 0.7 ? 'danger' : 'neutral' }
+    ];
+
+    if (this.level.requiredRescue) {
+      tags.unshift({ label: '救援', value: `${this.rescued}/${this.level.requiredRescue}`, tone: this.rescued >= this.level.requiredRescue ? 'ok' : 'neutral' });
+      const rescuedNames = this.getRescuedUnitNames();
+      if (rescuedNames.length > 0) {
+        tags.splice(1, 0, {
+          label: '抵达',
+          value: rescuedNames.slice(0, 2).join('、') + (rescuedNames.length > 2 ? `+${rescuedNames.length - 2}` : ''),
+          tone: 'ok'
+        });
+      }
+    }
+    if (this.level.hazard?.warLimit) {
+      tags.push({ label: '战争', value: `${this.warMeter}/${this.level.hazard.warLimit}`, tone: this.warMeter >= this.level.hazard.warLimit * 0.65 ? 'danger' : 'neutral' });
+    }
+    if (this.level.beastAngerLimit) {
+      const beast = this.units.find(unit => unit.type === 'beast');
+      tags.push({ label: '怒气', value: `${beast?.anger || 0}/${this.level.beastAngerLimit}`, tone: (beast?.anger || 0) >= this.level.beastAngerLimit * 0.65 ? 'danger' : 'neutral' });
+    }
+    if (this.level.hazard?.spreadPerTurn) {
+      tags.push({ label: '灾害', value: `+${this.level.hazard.spreadPerTurn}/回合`, tone: 'warning' });
+    }
+    return tags.slice(0, 5);
+  }
+
+  getRescuedUnitNames() {
+    return this.units
+      .filter(unit => unit.status === 'rescued')
+      .map(unit => unit.name);
+  }
+
+  renderIntentPreview() {
+    if (!this.ui.intentPreviewList || !this.level) return;
+    const previews = typeof this.generateEnemyIntentPreview === 'function'
+      ? (this.generateEnemyIntentPreview()?.previews || [])
+      : [];
+    this.ui.intentPreviewList.innerHTML = previews.slice(0, 5).map(preview => {
+      const threat = preview.threat || 'low';
+      const confidence = Math.round((preview.confidence || 0) * 100);
+      const target = preview.targetPosition ? ` → (${preview.targetPosition.x + 1},${preview.targetPosition.y + 1})` : '';
+      return `
+        <div class="intent-item threat-${escapeHtml(threat)}">
+          <strong>${escapeHtml(preview.unitName)} · ${escapeHtml(preview.name || preview.intentType)}${escapeHtml(target)}</strong>
+          <span>${escapeHtml(preview.description || preview.predictedAction || '')} · ${confidence}%</span>
+        </div>
+      `;
+    }).join('') || '<div class="intent-item threat-none"><strong>暂无可预览意图</strong><span>当前没有活跃单位或灾害。</span></div>';
+  }
+
+  renderNpcDialoguePanel() {
+    if (!this.ui?.npcDialoguePanel) return;
+    if (!this.selectedDialogueUnit && !this.selectedDialogueGroup) {
+      this.ui.npcDialoguePanel.classList.add('hidden');
+      this.ui.rightPanel?.classList.remove('dialogue-active');
+      return;
+    }
+    const unit = this.selectedDialogueUnit;
+    const npc = this.selectedDialogueNpc;
+    this.ui.npcDialoguePanel.classList.remove('hidden');
+    this.ui.rightPanel?.classList.add('dialogue-active');
+    this.ui.npcDialogueTitle.textContent = this.selectedDialogueGroup ? '救援群聊' : (unit?.name || 'NPC');
+    if (this.ui.npcDialogueMeta) {
+      const trust = npc?.dynamicTraits?.trustLevel;
+      const mood = this.selectedDialogueGroup ? '多人在线' : npc?.mood || (unit && this.isMessenger(unit) ? '紧张' : '不安');
+      const attitude = npc?.attitude || '未知';
+      const channel = this.selectedDialogueGroup ? '救援群聊' : `单聊 · ${unit?.name || ''}`;
+      this.ui.npcDialogueMeta.innerHTML = `
+        <span class="dialogue-channel">${escapeHtml(channel)}</span>
+        <span>情绪：${escapeHtml(mood)} · 态度：${escapeHtml(attitude)}${Number.isFinite(trust) ? ` · 信任：${trust}` : ''}</span>
+      `;
+    }
+    if (this.ui.npcDialogueRoster) {
+      const currentUnit = this.selectedDialogueUnit;
+      const participants = this.getDialogueParticipants();
+      this.ui.npcDialogueRoster.innerHTML = participants.slice(0, 6).map(u => {
+        const terrain = TERRAIN_LABELS[this.getTerrain(u.x, u.y)] || '未知地形';
+        const next = u.goal ? this.nextStepToward(u, u.goal) : null;
+        const active = !this.selectedDialogueGroup && currentUnit && currentUnit.id === u.id;
+        return `
+          <button class="dialogue-roster-chip ${active ? 'active' : ''}" type="button" data-roster-id="${escapeHtml(u.id)}">
+            <strong>${escapeHtml(u.name)}</strong>
+            <span>${escapeHtml(terrain)} · ${escapeHtml(this.describeDirectionToStep(u, next))}</span>
+          </button>
+        `;
+      }).join('') || '<span class="dialogue-meta">当前没有可交流的居民</span>';
+    }
+    const messages = this.dialogueMessages || [];
+    if (this.ui.npcDialogueHistory) {
+      this.ui.npcDialogueHistory.innerHTML = messages.map(message => `
+        <div class="dialogue-line ${escapeHtml(message.role)}">
+          <strong>${escapeHtml(message.speaker)}</strong>
+          ${escapeHtml(message.text)}
+        </div>
+      `).join('') || '<div class="dialogue-meta">选择上方居民开始交流</div>';
+      this.ui.npcDialogueHistory.scrollTop = this.ui.npcDialogueHistory.scrollHeight;
+    }
+  }
+
+  async submitNpcDialogue(prompt = null) {
+    const input = (prompt ?? this.ui.npcDialogueInput?.value ?? '').trim();
+    if (!input) return;
+
+    const responders = this.selectedDialogueGroup
+      ? this.resolveGroupResponders(input)
+      : this.selectedDialogueUnit
+        ? [{ unit: this.selectedDialogueUnit, npc: this.selectedDialogueNpc }]
+        : [];
+
+    if (!responders.length) {
+      this.showToast('请先点击一个居民或使者。');
+      return;
+    }
+
+    if (this.ui.npcDialogueInput) this.ui.npcDialogueInput.value = '';
+
+    this.addNpcDialogueLine('player', '造物者', input);
+    this.renderNpcDialoguePanel();
+
+    for (const responder of responders) {
+      const { unit, npc } = responder;
+      const reply = await this.generateNpcReply(unit, npc, input, { groupMode: this.selectedDialogueGroup });
+      this.addNpcDialogueLine('npc', unit.name, reply);
+      this.addLog(`【交流】你：${input} / ${unit.name}：${reply}`, true);
+      this.showToast(`${unit.name}：${reply}`);
+
+      if (npc) {
+        this.npcManager.updateNPCMemory(npc.id, `造物者问："${input}"；回应："${reply}"`);
+        this.npcManager.playerBehavior.dialogues += 1;
+        if (this.npcManager.playerBehavior.dialogues >= this.npcManager.attitudeThresholds.dialogue.threshold) {
+          this.npcManager.updateNPCAttitude(npc.id, this.npcManager.attitudeThresholds.dialogue.delta);
+        }
+      }
+    }
+
+    this.renderNpcDialoguePanel();
+  }
+
+  handleNpcDialogueSend() {
+    this.submitNpcDialogue();
+  }
+
+  addNpcDialogueLine(role, speaker, text) {
+    if (!this.dialogueMessages) this.dialogueMessages = [];
+    this.dialogueMessages.push({ role, speaker, text });
+    this.dialogueMessages = this.dialogueMessages.slice(-12);
+  }
+
+  openNpcDialogue(unit, npc = null) {
+    this.selectedDialogueUnit = unit;
+    this.selectedDialogueNpc = npc;
+    this.selectedDialogueGroup = false;
+    this.dialogueMessages = [];
+    const dialogue = this.buildResidentDialogue(unit, npc);
+    this.addNpcDialogueLine('npc', unit.name, dialogue);
+    this.addLog(`【对话】${unit.name}：${dialogue}`, true);
+    this.renderNpcDialoguePanel();
+
+    if (npc) {
+      this.npcManager.updateNPCMemory(npc.id, `第 ${this.turn} 回合与造物者交谈：${dialogue}`);
+    }
+  }
+
+  openNpcGroupDialogue() {
+    const participants = this.getDialogueParticipants();
+    if (!participants.length) {
+      this.showToast('当前没有可以交流的NPC。');
+      return;
+    }
+    this.selectedDialogueUnit = null;
+    this.selectedDialogueNpc = null;
+    this.selectedDialogueGroup = true;
+    this.dialogueMessages = [];
+    this.addNpcDialogueLine('system', '群聊', this.buildGroupSituationBrief(participants));
+    this.renderNpcDialoguePanel();
+  }
+
+  closeNpcDialogue() {
+    this.selectedDialogueUnit = null;
+    this.selectedDialogueNpc = null;
+    this.selectedDialogueGroup = false;
+    this.dialogueMessages = [];
+    this.ui?.npcDialoguePanel?.classList.add('hidden');
+    this.ui?.rightPanel?.classList.remove('dialogue-active');
+  }
+
+  getDialogueParticipants() {
+    return this.units.filter(unit => unit.status === 'active' && (this.isCivilian(unit) || this.isMessenger(unit)));
+  }
+
+  getNpcForUnit(unit) {
+    if (!unit || !this.npcManager) return null;
+    return this.npcManager.getNPC(unit.residentId || unit.name);
+  }
+
+  resolveGroupResponders(input) {
+    const mentioned = this.resolveDialogueMention(input);
+    if (mentioned) return [mentioned];
+    return this.getDialogueParticipants().slice(0, 2).map(unit => ({
+      unit,
+      npc: this.getNpcForUnit(unit)
+    }));
+  }
+
+  resolveDialogueMention(input) {
+    const match = String(input || '').match(/@([\p{Letter}\p{Number}_\u4e00-\u9fa5-]{1,12})/u);
+    if (!match) return null;
+    const name = match[1];
+    const unit = this.getDialogueParticipants().find(candidate => candidate.name === name || candidate.id === name);
+    return unit ? { unit, npc: this.getNpcForUnit(unit) } : null;
+  }
+
+  buildGroupSituationBrief(participants = this.getDialogueParticipants()) {
+    const summaries = participants.slice(0, 4).map(unit => {
+      const terrain = this.getTerrain(unit.x, unit.y);
+      const terrainText = TERRAIN_LABELS[terrain] || '未知地形';
+      const next = unit.goal ? this.nextStepToward(unit, unit.goal) : null;
+      return `${unit.name}：我在${terrainText}，${this.describeDirectionToStep(unit, next)}`;
+    }).join('；');
+    return summaries;
+  }
+
+  async generateNpcReply(unit, npc, playerInput, options = {}) {
+    const baseContext = {
+      playerInput,
+      unitName: unit.name,
+      unitType: unit.type,
+      unitPosition: { x: unit.x, y: unit.y },
+      unitGoal: unit.goal || null,
+      nextStep: unit.goal ? this.nextStepToward(unit, unit.goal) : null,
+      groupMode: !!options.groupMode,
+      knownUnits: this.buildKnownUnitDialogueContext(unit),
+      ...this.buildDialogueSituationContext(unit),
+      levelTitle: this.level?.title || '',
+      levelObjective: this.level?.objective || '',
+      recentDialogue: (this.dialogueMessages || []).slice(-6),
+      currentNeed: this.describeUnitNeed(unit)
+    };
+
+    if (npc) {
+      const dialogueContext = this.npcManager.buildDialogueContext(npc.id, playerInput);
+      const aiText = await this.fetchNarrative('dialogue', {
+        ...baseContext,
+        ...(dialogueContext?.context || {}),
+        npcId: npc.id,
+        npcName: npc.name || unit.name
+      });
+      const validated = this.validateNpcReply(unit, playerInput, aiText);
+      if (validated) return validated;
+
+      const fallback = this.npcManager.generateFallbackDialogue(npc.id, playerInput);
+      if (fallback && fallback !== '...') return fallback;
+    }
+
+    const aiText = await this.fetchNarrative('dialogue', baseContext);
+    const validated = this.validateNpcReply(unit, playerInput, aiText);
+    if (validated) return validated;
+
+    return this.buildGroundedNpcReply(unit, playerInput) || this.buildResidentDialogue(unit, npc);
+  }
+
+  buildKnownUnitDialogueContext(currentUnit = null) {
+    return this.getDialogueParticipants().map(candidate => {
+      const terrain = this.getTerrain(candidate.x, candidate.y);
+      const next = candidate.goal ? this.nextStepToward(candidate, candidate.goal) : null;
+      return {
+        name: candidate.name,
+        type: candidate.type,
+        status: candidate.status,
+        terrain,
+        terrainLabel: TERRAIN_LABELS[terrain] || terrain,
+        x: candidate.x,
+        y: candidate.y,
+        goal: candidate.goal || null,
+        goalHint: this.describeGoalHint(candidate),
+        nextStep: next,
+        nextStepDirection: this.describeDirectionToStep(candidate, next),
+        isCurrent: currentUnit ? candidate.id === currentUnit.id : false
+      };
+    });
+  }
+
+  buildDialogueSituationContext(unit) {
+    const terrain = this.getTerrain(unit.x, unit.y);
+    const knownRegionIds = this.getKnownRegionIdsForContinuity();
+    const knownLevelTitles = LEVELS
+      .filter(level => knownRegionIds.includes(level.id))
+      .map(level => level.title);
+    const facts = buildKnownWorldFacts(this.worldSimulation, {
+      currentRegionId: this.level?.id || '',
+      knownRegionIds,
+      limit: 6
+    });
+    const director = this.worldSimulation?.aiDirector;
+    const directorSummary = director?.getArcSummary?.() || {};
+    const currentRegionId = this.level?.id || '';
+
+    return {
+      currentTerrain: {
+        terrain,
+        label: TERRAIN_LABELS[terrain] || terrain,
+        x: unit.x,
+        y: unit.y
+      },
+      nearbyTerrain: this.describeNearbyTerrainForDialogue(unit),
+      nearbyUnits: this.describeNearbyUnitsForDialogue(unit),
+      nearbyCreations: this.describeNearbyCreationsForDialogue(unit),
+      knownWorldFacts: facts?.recentEvents || [],
+      worldMemories: filterKnownNarrativeMemories(this.memorySystem, {
+        knownRegionIds,
+        knownLevelTitles,
+        currentLevelId: currentRegionId,
+        currentLevelTitle: this.level?.title || '',
+        limit: 4
+      }),
+      memoryProfile: this.memorySystem?.getProfileSummary?.() || '未知',
+      directorState: {
+        activeArcs: directorSummary.activeArcs || 0,
+        completedArcs: directorSummary.completedArcs || 0,
+        recentBeats: (directorSummary.recentBeats || [])
+          .filter(beat => !beat.regionId || knownRegionIds.includes(beat.regionId))
+          .slice(-3)
+      }
+    };
+  }
+
+  getKnownRegionIdsForContinuity() {
+    return getKnownRegionIdsFromProgress({
+      levels: LEVELS,
+      levelIndex: this.levelIndex,
+      currentRegionId: this.level?.id || '',
+      selectedExplorationPath: this.worldSimulation?.getSelectedExplorationPath?.() || []
+    });
+  }
+
+  describeNearbyTerrainForDialogue(unit) {
+    return this.tilesWithin(unit.x, unit.y, 1)
+      .map(cell => ({
+        x: cell.x,
+        y: cell.y,
+        terrain: this.getTerrain(cell.x, cell.y),
+        label: TERRAIN_LABELS[this.getTerrain(cell.x, cell.y)] || this.getTerrain(cell.x, cell.y)
+      }));
+  }
+
+  describeNearbyUnitsForDialogue(unit) {
+    return this.units
+      .filter(candidate => candidate.id !== unit.id && candidate.status === 'active')
+      .filter(candidate => Math.abs(candidate.x - unit.x) + Math.abs(candidate.y - unit.y) <= 3)
+      .slice(0, 4)
+      .map(candidate => {
+        const terrain = this.getTerrain(candidate.x, candidate.y);
+        const next = candidate.goal ? this.nextStepToward(candidate, candidate.goal) : null;
+        return {
+          name: candidate.name,
+          type: candidate.type,
+          terrainLabel: TERRAIN_LABELS[terrain] || terrain,
+          nextStepDirection: this.describeDirectionToStep(candidate, next),
+          goalHint: this.describeGoalHint(candidate)
+        };
+      });
+  }
+
+  describeNearbyCreationsForDialogue(unit) {
+    return this.creations
+      .filter(creation => creation.placed && creation.remaining > 0)
+      .filter(creation => Math.abs(creation.x - unit.x) + Math.abs(creation.y - unit.y) <= 3)
+      .slice(0, 4)
+      .map(creation => ({
+        name: creation.card?.name || '造物',
+        ability: creation.card?.ability || '',
+        remaining: creation.remaining
+      }));
+  }
+
+  validateNpcReply(unit, playerInput, aiText) {
+    const text = String(aiText || '').replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+
+    const asksIdentity = this.isIdentityDialogue(playerInput);
+    const asksRoute = this.isRouteDialogue(playerInput);
+    const hasName = text.includes(unit.name);
+    const hasRouteSignal = /入口|下一步|目标|安全|方向|往|到达|抵达|桥|路/.test(text);
+    const looksLikeAtmosphereOnly = text.length > 160 && !hasName && !hasRouteSignal;
+
+    if (this.hasUnsupportedActionTarget(text)) return this.buildGroundedNpcReply(unit, playerInput);
+    if (this.hasUnsupportedIdentityClaim(unit, playerInput, text)) return this.buildGroundedNpcReply(unit, playerInput);
+    if (asksIdentity && !hasName) return this.buildGroundedNpcReply(unit, playerInput);
+    if (asksRoute && !hasRouteSignal) return this.buildGroundedNpcReply(unit, playerInput);
+    if (looksLikeAtmosphereOnly) return this.buildGroundedNpcReply(unit, playerInput);
+
+    return this.trimNpcReply(text);
+  }
+
+  buildGroundedNpcReply(unit, playerInput) {
+    const terrain = this.getTerrain(unit.x, unit.y);
+    const terrainText = TERRAIN_LABELS[terrain] || '这里';
+    const next = unit.goal ? this.nextStepToward(unit, unit.goal) : null;
+    const directionText = this.describeDirectionToStep(unit, next);
+    const goalHint = this.describeGoalHint(unit);
+    const roleText = this.isMessenger(unit) ? '，负责把口信送过这片危险地带' : '';
+    const terrainPressure = terrain === TILE.WATER
+      ? '水已经贴着腿了'
+      : terrain === TILE.DARK || terrain === TILE.FOG
+        ? '前面的雾太厚了'
+        : `我还站在${terrainText}`;
+
+    if (this.isIdentityDialogue(playerInput)) {
+      return this.trimNpcReply(`我是${unit.name}${roleText}。${terrainPressure}，你帮我看准下一步，别让我走错。`);
+    }
+
+    if (this.isRouteDialogue(playerInput)) {
+      return this.trimNpcReply(`${directionText}，再朝${goalHint}靠。要是前面被水或雾拦住，给我铺一小段能落脚的路就够。`);
+    }
+
+    if (/相信|救下|救你|放心|别怕/.test(String(playerInput || ''))) {
+      return this.trimNpcReply(`我信你。只要下一步别踏进危险里，我就按你的指引往${goalHint}走。`);
+    }
+
+    return this.trimNpcReply(`我现在最需要一条能落脚的方向。${directionText}，你看准了我就走。`);
+  }
+
+  describeDirectionToStep(unit, next) {
+    if (!next) return '我眼前的路断了，还不敢乱走';
+    const dx = next.x - unit.x;
+    const dy = next.y - unit.y;
+    const horizontal = dx > 0 ? '东' : dx < 0 ? '西' : '';
+    const vertical = dy > 0 ? '南' : dy < 0 ? '北' : '';
+    const direction = `${vertical}${horizontal}` || '前';
+    return `我会先往${direction}边挪一步`;
+  }
+
+  describeGoalHint(unit) {
+    if (!unit.goal) return '安全的地方';
+    const terrain = this.getTerrain(unit.goal.x, unit.goal.y);
+    if (terrain === TILE.EXIT || terrain === TILE.HIGH) return '高地那边';
+    if (terrain === TILE.BORDER) return '边境会谈点';
+    if (terrain === TILE.CITY) return '城门那边';
+    return '出口那边';
+  }
+
+  trimNpcReply(text, maxLength = 180) {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length <= maxLength) return normalized;
+    const cut = normalized.slice(0, maxLength);
+    const lastStop = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('！'), cut.lastIndexOf('？'), cut.lastIndexOf('.'));
+    return lastStop >= 30 ? cut.slice(0, lastStop + 1) : `${cut.slice(0, maxLength - 1)}…`;
+  }
+
+  isIdentityDialogue(input) {
+    return /你是谁|是谁|名字|身份|叫什么|介绍/.test(String(input || ''));
+  }
+
+  isRouteDialogue(input) {
+    return /入口|下一步|怎么走|路线|方向|安全|到达|抵达|救|帮你|带你/.test(String(input || ''));
+  }
+
+  hasUnsupportedActionTarget(text) {
+    const value = String(text || '');
+    const matches = value.match(/姑婆|姑妈|姑姑|姨妈|叔叔|伯父|爷爷|奶奶|母亲|父亲|妈妈|爸爸|哥哥|姐姐|弟弟|妹妹|妻子|丈夫|女儿|儿子|孩子|小孩|婴儿|老周|更多人|还有人|其他人|幸存者|先救[他她]|救[他她]/g) || [];
+    if (!matches.length) return false;
+    const knownNames = new Set(this.units.map(unit => unit.name).filter(Boolean));
+    return matches.some(match => !knownNames.has(match));
+  }
+
+  hasUnsupportedIdentityClaim(unit, playerInput, text) {
+    if (!this.isIdentityDialogue(playerInput)) return false;
+    const value = String(text || '');
+    const knownNames = new Set(this.units.map(candidate => candidate.name).filter(Boolean));
+    for (const knownName of knownNames) {
+      if (knownName === unit.name) continue;
+      if (value.includes(`我是${knownName}`) || value.includes(`我叫${knownName}`)) return true;
+    }
+    const roleClaims = value.match(/我是[^。！？]{0,10}(木匠|邮差|矿工|渔夫|使者|驯兽人|诗人|守忆人|世界之灵)/g) || [];
+    return roleClaims.some(claim => {
+      const role = (claim.match(/(木匠|邮差|矿工|渔夫|使者|驯兽人|诗人|守忆人|世界之灵)/) || [])[1];
+      if (!role) return false;
+      return !unit.name.includes(role) && !String(unit.type || '').includes(role);
+    });
+  }
+
+  describeUnitNeed(unit) {
+    if (this.isMessenger(unit)) return '需要安全抵达边境会谈点';
+    const terrain = this.getTerrain(unit.x, unit.y);
+    const goal = unit.goal ? `(${unit.goal.x + 1},${unit.goal.y + 1})` : '未知目标';
+    return `当前位置地形：${TERRAIN_LABELS[terrain] || terrain}，目标：${goal}`;
+  }
+
+  buildResidentDialogue(unit, npc) {
+    if (npc) {
+      const dialogue = this.npcManager.generateFallbackDialogue(npc.id, '我想知道你现在需要什么。');
+      if (dialogue && dialogue !== '...') return dialogue;
+    }
+
+    const nearbyWater = this.tilesWithin(unit.x, unit.y, 1).some(cell => this.getTerrain(cell.x, cell.y) === TILE.WATER);
+    if (this.isMessenger(unit)) {
+      return '我必须把消息带到终点。若路被遮住，请给我一盏光或一条安静的路。';
+    }
+    if (nearbyWater) {
+      return '水声已经贴近脚边了。请把道路变得能走，哪怕只是一小段也好。';
+    }
+    return '我还能走，但不知道下一步是否安全。你的造物会告诉我们方向吗？';
+  }
+
+  handleUnitInteraction(unit) {
+    if (unit.status !== 'active') {
+      this.showToast(`${unit.name} 当前无法回应。`);
+      return;
+    }
+    if (!this.isCivilian(unit) && !this.isMessenger(unit)) {
+      this.showToast(`${unit.name} 暂时无法交谈。`);
+      return;
+    }
+    const npcId = unit.residentId || unit.name;
+    const npc = this.npcManager?.getNPC(npcId);
+    this.openNpcDialogue(unit, npc);
+  }
+
 
   renderLegendPanel() {
     if (!this.ui.legendMyths) return;
@@ -2204,7 +3068,10 @@ class CreatorExam3D extends GameEngine {
       }
       if (unit.type === 'beast' && unit.status === 'active') status = `怒气 ${unit.anger || 0}`;
       if (this.isMessenger(unit) && unit.status === 'active') status = this.isGoalReached(unit) ? '已会合' : '前往边境';
-      return `<div class="unit-row"><strong>${escapeHtml(unit.name)}</strong><span class="${cls}">${escapeHtml(status)}</span></div>`;
+      const canTalk = unit.status === 'active' && !this.isMessenger(unit) && unit.type !== 'beast';
+      const tag = canTalk ? `<button class="unit-row" type="button" data-unit-id="${escapeHtml(unit.id)}">` : `<div class="unit-row">`;
+      const close = canTalk ? '</button>' : '</div>';
+      return `${tag}<strong>${escapeHtml(unit.name)}</strong><span class="${cls}">${escapeHtml(status)}</span>${close}`;
     }).join('');
   }
 
