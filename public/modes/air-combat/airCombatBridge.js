@@ -154,6 +154,15 @@
       scoreMult: 1.08,
       line: '扰频云层正在聚集干扰机，先切开云层再贴近 Boss。'
     },
+    sniperLockdown: {
+      key: 'sniperLockdown',
+      name: '狙击封锁',
+      color: '#e64980',
+      enemyBias: ['sniper'],
+      spawnBias: 0.46,
+      scoreMult: 1.12,
+      line: '狙击封锁让预警线提前咬住航道，别在红线里犹豫。'
+    },
     support: {
       key: 'support',
       name: '修复',
@@ -173,6 +182,16 @@
       maxAdds: 4,
       scoreMult: 1.14,
       line: 'Boss 正在投放重炮僚机，先处理护卫再回到主体。'
+    },
+    repair: {
+      key: 'repair',
+      name: '维修',
+      color: '#38d9a9',
+      attack: 'repair',
+      every: 6.8,
+      healPct: 0.035,
+      scoreMult: 1.17,
+      line: '维修词缀会周期缝合 Boss 外壳，别把输出窗口拖成持久战。'
     }
   };
 
@@ -441,9 +460,11 @@
     if (entropy >= 7) keys.push('prism');
     else if (entropy >= 4) keys.push('rapid');
     if (pressure >= 0.82) keys.push('armored');
+    if (pressure >= 0.72 && /block|memory_beacon|force_field/.test(abilityText)) keys.push('sniperLockdown');
     if (lostCount() > 0) keys.push('phantom');
     if (residentsCount() >= 4 || /block|force_field/.test(abilityText)) keys.push('escort');
     if (defense && defense.victory === false) keys.push('breach', 'jammer');
+    if (defense?.victory && pressure >= 0.75) keys.push('repair');
     if (entropy >= 6 || /memory_beacon|dream_link|guide/.test(abilityText)) keys.push('jammerCloud');
     if (/illuminate|memory_beacon|dream_link|guide/.test(abilityText)) keys.push('support');
     if (!keys.length) keys.push('armored');

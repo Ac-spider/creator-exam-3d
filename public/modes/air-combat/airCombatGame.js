@@ -349,6 +349,7 @@
       if (this.affix.attack === 'prism') game.firePrismLane(this, this.affix);
       else if (this.affix.attack === 'ionStorm') game.fireIonStormLane(this, this.affix);
       else if (this.affix.attack === 'escort') game.fireBossEscort(this, this.affix);
+      else if (this.affix.attack === 'repair') game.repairBoss(this, this.affix);
     }
 
     attack() {
@@ -671,6 +672,15 @@
       this.enemies.push(escort);
       this.burst(escort.x, escort.y, affix.color || escort.color, 10);
       this.say('护卫词缀投放重炮僚机，先清掉侧翼高威胁目标。', 1.8);
+    },
+
+    repairBoss(boss, affix) {
+      if (!boss || boss.hp >= boss.maxHp) return false;
+      const heal = Math.min(boss.maxHp - boss.hp, Math.max(1, Math.round(boss.maxHp * (affix.healPct || 0.03))));
+      boss.hp += heal;
+      this.burst(boss.x, boss.y, affix.color || '#38d9a9', 16);
+      this.say(`${boss.def.title}启动维修词缀，裂隙外壳回复 ${heal} 点。`, 1.8);
+      return true;
     },
 
     useSkill() {
