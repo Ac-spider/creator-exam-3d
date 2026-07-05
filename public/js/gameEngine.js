@@ -10,6 +10,7 @@ import { CognitiveAbyss } from './cognitiveAbyss.js';
 import { VerificationCorruption } from './verificationCorruption.js';
 import { CreatorWorkshop, WorkshopCreation } from './creatorWorkshop.js';
 import { EnemyIntentSystem } from './enemyIntent.js';
+import { applyAbility } from './abilityHandlers.js';
 
 const BOARD_SIZE = 7;
 const MAX_LOGS = 100;
@@ -668,11 +669,11 @@ class GameEngine {
     if (this.gameState !== 'playing') return { error: '本关已结束' };
 
     this.log(`========== 第 ${this.turn} 回合结算 ==========`, true);
+    this.spreadHazards();
+    this.triggerRandomEvent();
     this.applyActiveCreationEffects();
     this.applyChainReactions();
-    this.triggerRandomEvent();
     this.moveUnits();
-    this.spreadHazards();
     this.applyTileHazardsToUnits();
     this.enemyIntentSystem.generatePreviews(this.worldState, this);
     this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
@@ -818,6 +819,12 @@ class GameEngine {
         b.guidedTurns = Math.max(b.guidedTurns, 2);
         this.log(`「${card.name}」连接了 ${a.name} 和 ${b.name} 的梦境，共享视野`);
       }
+    }
+
+    // 回合持续能力在放置时立即生效（仅对没有上方硬编码即时逻辑的能力）
+    const immediateAbilities = ['create_bridge', 'block', 'force_field', 'transform_land', 'freeze_water', 'raise_earth', 'grow_forest', 'dig_channel', 'trap', 'time_dilation', 'reveal_path', 'sun_blessing', 'dream_link'];
+    if (!immediateAbilities.includes(card.ability)) {
+      applyAbility(this, creation, 'active');
     }
   }
 

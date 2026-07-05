@@ -356,3 +356,8 @@ export function applyAbility(game, creation, phase) {
     handler(game, creation);
   }
 }
+
+// Check whether a handler exists for the given ability at the given phase
+export function hasAbilityHandler(ability, phase) {
+  return AbilityHandlers[phase].has(ability);
+}
