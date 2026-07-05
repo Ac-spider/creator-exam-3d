@@ -9,7 +9,7 @@ import { cognitiveEffects } from './cognitiveEffects.js';
 // Paradox templates that overload the validation engine
 const PARADOX_PATTERNS = {
   light_dark: {
-    name: '噬光之灯',
+    name: '噬光黑核',
     paradox: 'illuminate + absorb_light',
     description: '既照亮一切又吞噬一切光芒',
     illegalAbility: 'consume_light',
@@ -171,6 +171,7 @@ export class VerificationCorruption {
   // Generate an illegal card based on paradox pattern
   generateIllegalCard(paradox, gameState) {
     return {
+      id: `paradox-${paradox.illegalAbility}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       name: paradox.name,
       ability: paradox.illegalAbility,
       range: Math.floor(Math.random() * 3) + 1,

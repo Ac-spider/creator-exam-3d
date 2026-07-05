@@ -432,7 +432,11 @@ export class ParticleSystem {
       haste: 0x7dff9a,
       teleport: 0x9f8cff,
       shield_units: 0x8de8ff,
-      redirect_hazard: 0x6bd6c8
+      redirect_hazard: 0x6bd6c8,
+      consume_light: 0xffd166,
+      steam_burst: 0x9ec8d8,
+      creation_burst: 0xff6b6b,
+      memory_loop: 0xa7f3d0
     };
     return colors[ability] || 0xffffff;
   }

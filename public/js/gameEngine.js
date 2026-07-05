@@ -10,7 +10,7 @@ import { CognitiveAbyss } from './cognitiveAbyss.js';
 import { VerificationCorruption } from './verificationCorruption.js';
 import { CreatorWorkshop, WorkshopCreation } from './creatorWorkshop.js';
 import { EnemyIntentSystem } from './enemyIntent.js';
-import { applyAbility } from './abilityHandlers.js';
+import { applyAbility, hasAbilityHandler } from './abilityHandlers.js';
 
 const BOARD_SIZE = 7;
 const MAX_LOGS = 100;
@@ -826,6 +826,11 @@ class GameEngine {
 
   applyImmediatePlacement(creation) {
     const { card, x, y } = creation;
+    const immediateAbilities = ['create_bridge', 'block', 'force_field', 'transform_land', 'freeze_water', 'raise_earth', 'grow_forest', 'dig_channel', 'trap', 'time_dilation', 'reveal_path', 'sun_blessing', 'dream_link'];
+    if (!immediateAbilities.includes(card.ability) && hasAbilityHandler(card.ability, 'immediate')) {
+      applyAbility(this, creation, 'immediate');
+      return;
+    }
     if (card.ability === 'create_bridge') {
       const cells = this.tilesWithin(x, y, Math.max(1, card.range));
       let changed = 0;
@@ -946,7 +951,6 @@ class GameEngine {
     }
 
     // 回合持续能力在放置时立即生效（仅对没有上方硬编码即时逻辑的能力）
-    const immediateAbilities = ['create_bridge', 'block', 'force_field', 'transform_land', 'freeze_water', 'raise_earth', 'grow_forest', 'dig_channel', 'trap', 'time_dilation', 'reveal_path', 'sun_blessing', 'dream_link'];
     if (!immediateAbilities.includes(card.ability)) {
       applyAbility(this, creation, 'active');
     }

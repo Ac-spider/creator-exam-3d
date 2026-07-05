@@ -953,7 +953,8 @@ runner.test('能力策略模式 - 所有能力应有处理器', async () => {
     'raise_earth', 'grow_forest', 'dig_channel', 'trap', 'sun_blessing',
     'absorb_water', 'illuminate', 'cleanse', 'calm', 'guide', 'slow_beast',
     'dream_link', 'time_dilation', 'reveal_path', 'memory_beacon',
-    'haste', 'teleport', 'shield_units', 'redirect_hazard'
+    'haste', 'teleport', 'shield_units', 'redirect_hazard',
+    'consume_light', 'steam_burst', 'creation_burst', 'memory_loop'
   ];
 
   for (const ability of abilities) {
@@ -961,6 +962,111 @@ runner.test('能力策略模式 - 所有能力应有处理器', async () => {
     const hasActive = AbilityHandlers.active.has(ability);
     runner.assert(hasImmediate || hasActive, `能力 ${ability} 应至少有一个处理器`);
   }
+});
+
+runner.test('验证腐化能力 - 悖论卡放置后应真实改变棋盘', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.setTerrain(2, 2, TILE.WATER);
+  game.setTerrain(3, 2, TILE.LAND);
+  game.setTerrain(2, 3, TILE.LAND);
+
+  const card = {
+    id: 'paradox-steam-test',
+    name: '测试蒸腾之焰',
+    ability: 'steam_burst',
+    range: 1,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    description: '水与火同时存在',
+    side_effect: '产生蒸汽迷雾',
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: 'paradox-steam-test', card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  const placed = game.place('paradox-steam-test', 2, 2);
+  const fogged = game.tilesWithin(2, 2, 2).filter(cell => game.getTerrain(cell.x, cell.y) === TILE.FOG).length;
+  runner.assert(placed.success === true, '悖论卡应能被放置');
+  runner.assert(fogged > 0, '蒸腾之焰应把棋盘格变成迷雾');
+});
+
+runner.test('验证腐化能力 - 噬光之灯应熄灭光源并制造黑暗', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+
+  const light = {
+    id: 'existing-light',
+    card: { id: 'existing-light', name: '既有星灯', ability: 'illuminate', range: 1, duration: 3, cost: 0, stabilityCost: 0 },
+    x: 3,
+    y: 2,
+    remaining: 3,
+    restores: [],
+    placed: true
+  };
+  const card = {
+    id: 'paradox-light-test',
+    name: '测试噬光之灯',
+    ability: 'consume_light',
+    range: 1,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    description: '吞噬光源',
+    side_effect: '熄灭照明',
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push(light, { id: 'paradox-light-test', card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  game.place('paradox-light-test', 2, 2);
+  const darkened = game.tilesWithin(2, 2, 2).filter(cell => game.getTerrain(cell.x, cell.y) === TILE.DARK).length;
+  runner.assert(darkened > 0, '噬光之灯应制造黑暗地形');
+  runner.assert(light.remaining === 1, '噬光之灯应削短附近光源持续时间');
+});
+
+runner.test('验证腐化能力 - 噬光悖论应避免伪装成普通光源视觉', async () => {
+  const { readFileSync } = await import('node:fs');
+  const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+  const particles = readFileSync(new URL('../public/js/particles.js', import.meta.url), 'utf8');
+  const corruption = readFileSync(new URL('../public/js/verificationCorruption.js', import.meta.url), 'utf8');
+
+  runner.assert(game.includes("card?.ability === 'consume_light'"), '旧存档里的噬光能力也应使用反光源显示名');
+  runner.assert(game.includes('噬光黑核'), '噬光悖论在棋盘上应显示为反光源而不是普通灯');
+  runner.assert(game.includes('ringColor: 0xffd166'), '噬光悖论应有可见的琥珀警示环');
+  runner.assert(particles.includes('consume_light: 0xffd166'), '噬光悖论粒子应使用可见警示色');
+  runner.assert(corruption.includes("name: '噬光黑核'"), '悖论模板名应避免继续叫普通灯');
+  runner.assert(game.includes('illuminate: 0xfff39a'), '普通照明仍应保持暖黄色光源视觉');
+});
+
+runner.test('验证腐化能力 - 创灭之锤应同时修复和破坏地形', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.setTerrain(2, 2, TILE.WATER);
+  game.setTerrain(3, 2, TILE.LAND);
+  game.setTerrain(2, 3, TILE.LAND);
+
+  const card = {
+    id: 'paradox-burst-test',
+    name: '测试创灭之锤',
+    ability: 'creation_burst',
+    range: 1,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    description: '创造与毁灭同时发生',
+    side_effect: '地形震裂',
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: 'paradox-burst-test', card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  game.place('paradox-burst-test', 2, 2);
+  const fractured = game.tilesWithin(2, 2, 2)
+    .filter(cell => [TILE.SWAMP, TILE.POISON, TILE.DARK].includes(game.getTerrain(cell.x, cell.y))).length;
+  runner.assert(game.getTerrain(2, 2) === TILE.LAND, '创灭之锤应先把目标危险地形修复为平地');
+  runner.assert(fractured > 0, '创灭之锤应破坏周边地形');
 });
 
 runner.test('movement - haste should grant real extra steps', () => {
@@ -1511,6 +1617,47 @@ runner.test('因果引擎 - 应检测跨关卡蝴蝶效应', async () => {
   runner.assert(narrative.includes('night-mine') || narrative.includes('洪水'), '叙事应包含跨关卡关联');
 });
 
+runner.test('因果引擎 - 浏览器传说演示应产生跨关蝴蝶效应', async () => {
+  const { WorldLegendSystem } = await import('../public/js/worldLegend.js');
+  const world = new WorldLegendSystem();
+  const source = world.recordLegendaryEvent({
+    type: 'creation',
+    actor: '造物者',
+    target: '演示星灯',
+    level: '第 1 关：洪水村庄',
+    turn: 1,
+    description: '造物者在第 1 关：洪水村庄用演示星灯留下光与记忆的微小选择',
+    impact: 'major'
+  });
+  world.recordLegendaryEvent({
+    type: 'miracle',
+    actor: '造物者',
+    target: '第 2 关：永夜矿井',
+    level: '第 2 关：永夜矿井',
+    turn: 2,
+    description: '演示星灯的光与记忆在第 2 关：永夜矿井再次改变道路',
+    impact: 'world-shaking',
+    causeId: source.id
+  });
+
+  const effects = world.causalGraph.getButterflyEffectsForLevel('第 2 关：永夜矿井');
+  runner.assert(effects.length > 0, '演示事件应产生当前关卡可查询的蝴蝶效应');
+  runner.assert(effects[0].sourceLevel.includes('洪水村庄'), '蝴蝶效应应记录来源关卡');
+  runner.assert(effects[0].targetLevel.includes('永夜矿井'), '蝴蝶效应应记录目标关卡');
+});
+
+runner.test('世界传说面板 - 应渲染浏览器可见的蝴蝶效应区域', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  runner.assert(html.includes('id="legend-butterfly"'), 'index.html 应提供蝴蝶效应挂载点');
+  runner.assert(game.includes('legendButterfly: document.getElementById'), 'game.js 应收集蝴蝶效应 DOM');
+  runner.assert(game.includes('getButterflyEffectsForLevel'), 'game.js 应从因果图读取蝴蝶效应');
+  runner.assert(game.includes('蝴蝶效应'), '传说演示应记录或显示蝴蝶效应');
+  runner.assert(game.includes('序章：裂隙前夜'), '首关传说演示应使用跨关来源，不能与当前关卡相同');
+});
+
 runner.test('因果引擎 - 序列化与统计', async () => {
   const { CausalGraph } = await import('../public/js/worldLegend.js');
   const graph = new CausalGraph();
@@ -1934,6 +2081,32 @@ runner.test('仪式熔炉 - 应匹配已知仪式并执行', async () => {
   runner.assert(result.entropyChange === 1, '应消耗1点熵值');
   runner.assert(result.miracleCost === 1, '应消耗1点奇迹点');
   runner.assert(result.narrative.length > 0, '应生成仪式叙事');
+});
+
+runner.test('仪式熔炉 - 已知仪式不应被随机失败打断', async () => {
+  const { RitualForge } = await import('../public/js/ritualForge.js');
+  const forge = new RitualForge();
+  const originalRandom = Math.random;
+  Math.random = () => 1;
+
+  try {
+    const creations = [
+      { id: 'c1', card: { name: '吸水蘑菇', ability: 'absorb_water', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } },
+      { id: 'c2', card: { name: '净化圣水', ability: 'cleanse', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } }
+    ];
+    const result = forge.performRitual(creations, {
+      targetTerrain: 'water',
+      miraclePoints: 5,
+      entropy: 2,
+      entropyLimit: 7,
+      turn: 1
+    });
+
+    runner.assert(result.success === true, '已知配方通过验证和资源检查后应稳定成功');
+    runner.assert(result.ritual?.id === 'water_purification', '应仍然匹配净水圣仪');
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 runner.test('仪式熔炉 - 涌现式仪式（无匹配配方）', async () => {

@@ -69,7 +69,11 @@ const ABILITY_COLORS = {
   slow_beast: 0xff91a8,
   memory_beacon: 0x8cb5ff,
   force_field: 0x64f3ff,
-  transform_land: 0xb4e66e
+  transform_land: 0xb4e66e,
+  consume_light: 0xffd166,
+  steam_burst: 0x9ec8d8,
+  creation_burst: 0xff6b6b,
+  memory_loop: 0xa7f3d0
 };
 
 class CreatorExam3D extends GameEngine {
@@ -281,6 +285,7 @@ class CreatorExam3D extends GameEngine {
       legendMyths: document.getElementById('legend-myths'),
       legendArtifacts: document.getElementById('legend-artifacts'),
       legendFigures: document.getElementById('legend-figures'),
+      legendButterfly: document.getElementById('legend-butterfly'),
       ritualCreationList: document.getElementById('ritual-creation-list'),
       performRitualBtn: document.getElementById('perform-ritual-btn'),
       ritualResult: document.getElementById('ritual-result'),
@@ -747,7 +752,7 @@ class CreatorExam3D extends GameEngine {
     // Spawn particle effects
     const pos = this.tileToWorld(x, y);
     this.particleSystem.spawnAbilityParticles(pos.x, 0.5, pos.z, card.ability, card.range);
-    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, card.name, this.particleSystem.getAbilityColor(card.ability));
+    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, this.getCreationDisplayName(card), this.particleSystem.getAbilityColor(card.ability));
 
     // Screen flash for high-cost creations
     if (card.cost >= 3) {
@@ -1587,7 +1592,7 @@ class CreatorExam3D extends GameEngine {
     // Spawn particle effects
     const pos = this.tileToWorld(x, y);
     this.particleSystem.spawnAbilityParticles(pos.x, 0.5, pos.z, creation.card.ability, creation.card.range);
-    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, creation.card.name, this.particleSystem.getAbilityColor(creation.card.ability));
+    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, this.getCreationDisplayName(creation.card), this.particleSystem.getAbilityColor(creation.card.ability));
 
     // Screen flash for high-cost creations
     if (creation.card.cost >= 3) {
@@ -2119,16 +2124,43 @@ class CreatorExam3D extends GameEngine {
     return group;
   }
 
+  getCreationDisplayName(card) {
+    if (card?.ability === 'consume_light') return '噬光黑核';
+    return card?.name || '未命名造物';
+  }
+
+  getCreationVisualStyle(card) {
+    const baseColor = ABILITY_COLORS[card?.ability] || 0xffffff;
+    if (card?.ability === 'consume_light') {
+      return {
+        coreColor: 0x24132c,
+        ringColor: 0xffd166,
+        coreEmissive: 0x8b3dff,
+        ringEmissive: 0xffa64d,
+        coreEmissiveIntensity: 0.38,
+        ringEmissiveIntensity: 0.55
+      };
+    }
+    return {
+      coreColor: baseColor,
+      ringColor: baseColor,
+      coreEmissive: baseColor,
+      ringEmissive: baseColor,
+      coreEmissiveIntensity: 0.18,
+      ringEmissiveIntensity: 0.25
+    };
+  }
+
   createCreationMesh(creation) {
     const { card, x, y, remaining } = creation;
     const group = new THREE.Group();
     const pos = this.tileToWorld(x, y);
     group.position.set(pos.x, 0.45, pos.z);
 
-    const color = ABILITY_COLORS[card.ability] || 0xffffff;
+    const visual = this.getCreationVisualStyle(card);
     const core = new THREE.Mesh(
       new THREE.IcosahedronGeometry(0.25, 1),
-      this.material(color, { emissive: color, emissiveIntensity: 0.18, roughness: 0.45 })
+      this.material(visual.coreColor, { emissive: visual.coreEmissive, emissiveIntensity: visual.coreEmissiveIntensity, roughness: 0.45 })
     );
     core.castShadow = true;
     core.rotation.y = remaining * 0.5;
@@ -2136,13 +2168,13 @@ class CreatorExam3D extends GameEngine {
 
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(0.38 + card.range * 0.08, 0.025, 8, 32),
-      this.material(color, { transparent: true, opacity: 0.72, emissive: color, emissiveIntensity: 0.25 })
+      this.material(visual.ringColor, { transparent: true, opacity: 0.72, emissive: visual.ringEmissive, emissiveIntensity: visual.ringEmissiveIntensity })
     );
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.02;
     group.add(ring);
 
-    const timer = this.createLabel(`${card.name} · ${remaining}`);
+    const timer = this.createLabel(`${this.getCreationDisplayName(card)} · ${remaining}`);
     timer.position.y = 0.62;
     group.add(timer);
     return group;
@@ -2521,14 +2553,36 @@ class CreatorExam3D extends GameEngine {
 
   triggerLegendDemo() {
     const card = this.creations.find(c => c.placed)?.card || this.demoCard('illuminate');
-    const cause = this.recordLegendaryEvent('creation', '造物者', card.name, 'major');
-    const effect = this.recordLegendaryEvent('miracle', '造物者', this.level.title, 'world-shaking');
-    worldLegendSystem.causalGraph.linkCauseEffect(cause.id, effect.id, 'caused');
+    const currentLevel = this.level?.title || this.level?.id || '当前关卡';
+    const previousLevel = this.levelIndex > 0
+      ? LEVELS[this.levelIndex - 1]?.title
+      : '序章：裂隙前夜';
+    const source = worldLegendSystem.recordLegendaryEvent({
+      type: 'creation',
+      actor: '造物者',
+      target: card.name,
+      level: previousLevel,
+      turn: Math.max(1, this.turn - 1),
+      description: `造物者在${previousLevel}用${card.name}留下光与记忆的微小选择`,
+      impact: 'major'
+    });
+    const effect = worldLegendSystem.recordLegendaryEvent({
+      type: 'miracle',
+      actor: '造物者',
+      target: currentLevel,
+      level: currentLevel,
+      turn: this.turn,
+      description: `${card.name}的光与记忆在${currentLevel}再次改变道路`,
+      impact: 'world-shaking',
+      causeId: source.id
+    });
+    worldLegendSystem.causalGraph.linkCauseEffect(source.id, effect.id, 'echoed');
     this.createArtifact(card, 'major');
     const npc = this.npcManager?.getNPCSummary?.()[0];
     if (npc) worldLegendSystem.enshrineNPC(npc, 'legendary_deed');
-    this.memorySystem?.addNarrativeMemory?.('lore', `传说记住了${card.name}与${this.level.title}的因果。`, ['造物者', card.name]);
-    this.addLog('【传说演示】世界传说、神器、封神者与因果链已写入。', true);
+    const butterflyCount = worldLegendSystem.causalGraph.getButterflyEffectsForLevel(currentLevel).length;
+    this.memorySystem?.addNarrativeMemory?.('lore', `传说记住了${card.name}与${currentLevel}的因果。`, ['造物者', card.name]);
+    this.addLog(`【传说演示】世界传说、神器、封神者与因果链已写入；蝴蝶效应 ${butterflyCount} 条。`, true);
   }
 
   triggerAbyssDemo() {
@@ -2636,10 +2690,42 @@ class CreatorExam3D extends GameEngine {
     if (result.success && result.card) {
       this.activeCard = result.card;
       this.showCard(result.card);
-      this.addLog(`【腐化演示】${result.card.name} 已生成，腐化 +${result.corruption}。`, true);
+      const target = this.findCorruptionDemoTile(result.card.ability);
+      if (target) {
+        this.creationCharges = Math.max(this.creationCharges, 1);
+        this.miraclePoints = Math.max(this.miraclePoints, result.card.cost || 0);
+        this.placeCreation(target.x, target.y);
+        const effect = this.creations.find(c => c.id === result.card.id)?.corruptionEffect || {};
+        this.addLog(`【腐化演示】${result.card.name} 已在 (${target.x + 1}, ${target.y + 1}) 触发，腐化 +${result.corruption}，棋盘效果 ${JSON.stringify(effect)}。`, true);
+      } else {
+        this.addLog(`【腐化演示】${result.card.name} 已生成，腐化 +${result.corruption}。`, true);
+      }
     } else {
       this.addLog(`【腐化演示】${result.warnings?.join('；') || '生成失败'}`, true);
     }
+  }
+
+  findCorruptionDemoTile(ability) {
+    const preferredByAbility = {
+      consume_light: [TILE.LAND, TILE.FOG, TILE.FOREST, TILE.VILLAGE, TILE.HIGH],
+      steam_burst: [TILE.WATER, TILE.LAND, TILE.SWAMP, TILE.BRIDGE],
+      creation_burst: [TILE.WATER, TILE.SWAMP, TILE.DARK, TILE.FOG, TILE.POISON],
+      memory_loop: [TILE.FOG, TILE.DARK]
+    };
+    const preferred = preferredByAbility[ability] || [TILE.LAND, TILE.FOG, TILE.WATER, TILE.SWAMP, TILE.DARK];
+    const candidates = [
+      { x: 2, y: 2 }, { x: 2, y: 3 }, { x: 4, y: 2 }, { x: 3, y: 1 },
+      { x: 1, y: 2 }, { x: 4, y: 4 }, { x: 5, y: 2 }, { x: 1, y: 4 }
+    ];
+    const allCells = [];
+    for (let y = 0; y < BOARD_SIZE; y++) {
+      for (let x = 0; x < BOARD_SIZE; x++) allCells.push({ x, y });
+    }
+    const ordered = [...candidates, ...allCells];
+    return ordered.find(cell => {
+      if (!this.inBounds(cell.x, cell.y) || this.unitAt(cell.x, cell.y)) return false;
+      return preferred.includes(this.getTerrain(cell.x, cell.y));
+    }) || ordered.find(cell => this.inBounds(cell.x, cell.y) && !this.unitAt(cell.x, cell.y));
   }
 
   ensureWorkshopInventory(count = 1) {
@@ -3436,6 +3522,29 @@ class CreatorExam3D extends GameEngine {
     this.ui.legendFigures.innerHTML = figures.length
       ? figures.map(f => `<div class="continuity-item"><strong>${escapeHtml(f.name)}</strong> — ${escapeHtml(f.reason)}</div>`).join('')
       : '<div class="continuity-item">尚无封神者</div>';
+
+    if (this.ui.legendButterfly) {
+      const currentKeys = [this.level?.title, this.level?.id].filter(Boolean);
+      const seenEffects = new Set();
+      const effects = currentKeys
+        .flatMap(key => worldLegendSystem.causalGraph.getButterflyEffectsForLevel(key))
+        .filter(effect => {
+          const key = `${effect.sourceLevel}|${effect.targetLevel}|${effect.description}`;
+          if (seenEffects.has(key)) return false;
+          seenEffects.add(key);
+          return true;
+        })
+        .sort((a, b) => (b.strength || 0) - (a.strength || 0))
+        .slice(0, 3);
+      this.ui.legendButterfly.innerHTML = effects.length
+        ? effects.map(effect => `
+          <div class="continuity-item">
+            <strong>${escapeHtml(effect.sourceLevel)} → ${escapeHtml(effect.targetLevel)}</strong>
+            <div>${escapeHtml(effect.description)}</div>
+          </div>
+        `).join('')
+        : '<div class="continuity-item">尚无跨关蝴蝶效应</div>';
+    }
   }
 
   renderRitualPanel() {
@@ -3604,7 +3713,7 @@ class CreatorExam3D extends GameEngine {
     const engineState = stats?.engineOverloaded ? '已崩溃' : '稳定';
 
     const paradoxTypes = [
-      { key: 'light_dark', name: '噬光之灯' },
+      { key: 'light_dark', name: '噬光黑核' },
       { key: 'life_death', name: '生死之种' },
       { key: 'creation_destruction', name: '创灭之锤' },
       { key: 'time_stillness', name: '静时之沙' },

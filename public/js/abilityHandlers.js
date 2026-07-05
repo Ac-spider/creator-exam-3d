@@ -17,7 +17,36 @@ function setTempTerrain(game, creation, x, y, tile) {
   const prev = game.getTerrain(x, y);
   if (prev === tile) return;
   game.setTerrain(x, y, tile);
-  creation.restores.push({ x, y, tile: prev });
+  creation.restores.push({ x, y, prev, tile: prev });
+}
+
+function logGame(game, text, important = false) {
+  if (typeof game.addLog === 'function') game.addLog(text, important);
+  else if (typeof game.log === 'function') game.log(text, important);
+}
+
+function canRewriteTerrain(terrain) {
+  return ![TILE.MOUNTAIN, TILE.WALL, TILE.EXIT, TILE.CITY, TILE.SACRED].includes(terrain);
+}
+
+function rewriteTerrain(game, x, y, tile) {
+  if (typeof game.inBounds === 'function' && !game.inBounds(x, y)) return false;
+  const current = game.getTerrain(x, y);
+  if (current === tile || !canRewriteTerrain(current)) return false;
+  game.setTerrain(x, y, tile);
+  return true;
+}
+
+function affectNearbyUnits(game, x, y, range, updater) {
+  let affected = 0;
+  for (const unit of game.units || []) {
+    if (unit.status !== 'active') continue;
+    if (game.distance(unit.x, unit.y, x, y) <= range) {
+      updater(unit);
+      affected += 1;
+    }
+  }
+  return affected;
 }
 
 // ========== Immediate Handlers ==========
@@ -407,6 +436,137 @@ AbilityHandlers.active.set('redirect_hazard', (game, creation) => {
     changed += 1;
   }
   if (changed) game.addLog(`${card.name} redirects ${changed} hazard tile(s).`);
+});
+
+// ========== Verification Corruption / Illegal Abilities ==========
+
+AbilityHandlers.immediate.set('consume_light', (game, creation) => {
+  const { card, x, y } = creation;
+  const range = Math.max(1, (card.range || 1) + 1);
+  let darkened = 0;
+  for (const cell of game.tilesWithin(x, y, range)) {
+    if (darkened >= 6) break;
+    const terrain = game.getTerrain(cell.x, cell.y);
+    if ([TILE.LAND, TILE.FOG, TILE.FOREST, TILE.BRIDGE, TILE.VILLAGE, TILE.HIGH].includes(terrain)) {
+      if (rewriteTerrain(game, cell.x, cell.y, TILE.DARK)) darkened += 1;
+    }
+  }
+  if (!darkened && rewriteTerrain(game, x, y, TILE.DARK)) darkened = 1;
+
+  let extinguished = 0;
+  for (const other of game.creations || []) {
+    if (other === creation || !other.placed || other.remaining <= 0) continue;
+    if (!['illuminate', 'sun_blessing', 'memory_beacon'].includes(other.card?.ability)) continue;
+    if (game.distance(other.x, other.y, x, y) > range) continue;
+    other.remaining = Math.min(other.remaining, 1);
+    other.corruptedBy = card.ability;
+    extinguished += 1;
+  }
+
+  creation.corruptionEffect = { type: 'consume_light', darkened, extinguished };
+  logGame(game, `「${card.name}」吞噬光源，${darkened} 格地形坠入黑暗，熄灭 ${extinguished} 个光源。`, true);
+});
+
+AbilityHandlers.active.set('consume_light', (game, creation) => {
+  if (creation.corruptionEffect?.activeLogged) return;
+  creation.corruptionEffect = { ...(creation.corruptionEffect || {}), activeLogged: true };
+  affectNearbyUnits(game, creation.x, creation.y, Math.max(1, creation.card.range || 1) + 1, (unit) => {
+    unit.guidedTurns = 0;
+    unit.lightConsumedTurns = Math.max(unit.lightConsumedTurns || 0, 2);
+  });
+});
+
+AbilityHandlers.immediate.set('steam_burst', (game, creation) => {
+  const { card, x, y } = creation;
+  const range = Math.max(1, (card.range || 1) + 1);
+  let fogged = 0;
+  for (const cell of game.tilesWithin(x, y, range)) {
+    if (fogged >= 7) break;
+    const terrain = game.getTerrain(cell.x, cell.y);
+    if ([TILE.WATER, TILE.LAND, TILE.SWAMP, TILE.BRIDGE, TILE.VILLAGE].includes(terrain)) {
+      if (rewriteTerrain(game, cell.x, cell.y, TILE.FOG)) fogged += 1;
+    }
+  }
+  if (!fogged && rewriteTerrain(game, x, y, TILE.FOG)) fogged = 1;
+
+  const blinded = affectNearbyUnits(game, x, y, range, (unit) => {
+    unit.steamBlindTurns = Math.max(unit.steamBlindTurns || 0, 2);
+    unit.revealedPath = 0;
+  });
+
+  creation.corruptionEffect = { type: 'steam_burst', fogged, blinded };
+  logGame(game, `「${card.name}」把水火压成蒸汽，${fogged} 格地形被迷雾覆盖，${blinded} 个单位失去路径感。`, true);
+});
+
+AbilityHandlers.active.set('steam_burst', (game, creation) => {
+  if (creation.remaining <= 1) return;
+  const range = Math.max(1, creation.card.range || 1);
+  let refreshed = 0;
+  for (const cell of game.tilesWithin(creation.x, creation.y, range)) {
+    if (refreshed >= 2) break;
+    if (game.getTerrain(cell.x, cell.y) === TILE.LAND && rewriteTerrain(game, cell.x, cell.y, TILE.FOG)) {
+      refreshed += 1;
+    }
+  }
+});
+
+AbilityHandlers.immediate.set('creation_burst', (game, creation) => {
+  const { card, x, y } = creation;
+  const range = Math.max(1, card.range || 1);
+  let restored = 0;
+  for (const cell of game.tilesWithin(x, y, range)) {
+    const terrain = game.getTerrain(cell.x, cell.y);
+    if ([TILE.WATER, TILE.SWAMP, TILE.DARK, TILE.FOG, TILE.POISON].includes(terrain)) {
+      if (rewriteTerrain(game, cell.x, cell.y, TILE.LAND)) restored += 1;
+    }
+  }
+
+  let shattered = 0;
+  const fractureTiles = [TILE.SWAMP, TILE.POISON, TILE.DARK];
+  for (const cell of game.tilesWithin(x, y, range + 1)) {
+    if (shattered >= 4) break;
+    if (cell.x === x && cell.y === y) continue;
+    const terrain = game.getTerrain(cell.x, cell.y);
+    if (![TILE.LAND, TILE.FOREST, TILE.BRIDGE, TILE.VILLAGE].includes(terrain)) continue;
+    const next = fractureTiles[shattered % fractureTiles.length];
+    if (rewriteTerrain(game, cell.x, cell.y, next)) shattered += 1;
+  }
+  if (!restored && rewriteTerrain(game, x, y, TILE.LAND)) restored = 1;
+
+  creation.corruptionEffect = { type: 'creation_burst', restored, shattered };
+  logGame(game, `「${card.name}」同时创造与毁灭：修复 ${restored} 格，震裂 ${shattered} 格。`, true);
+});
+
+AbilityHandlers.active.set('creation_burst', (game, creation) => {
+  if (creation.corruptionEffect?.aftershock) return;
+  creation.corruptionEffect = { ...(creation.corruptionEffect || {}), aftershock: true };
+  affectNearbyUnits(game, creation.x, creation.y, Math.max(1, creation.card.range || 1) + 1, (unit) => {
+    unit.shieldTurns = Math.max(unit.shieldTurns || 0, 1);
+  });
+});
+
+AbilityHandlers.immediate.set('memory_loop', (game, creation) => {
+  const { card, x, y } = creation;
+  const range = Math.max(1, card.range || 1);
+  let rewritten = 0;
+  for (const cell of game.tilesWithin(x, y, range)) {
+    if ([TILE.FOG, TILE.DARK].includes(game.getTerrain(cell.x, cell.y))) {
+      if (rewriteTerrain(game, cell.x, cell.y, TILE.LAND)) rewritten += 1;
+    }
+  }
+  const looped = affectNearbyUnits(game, x, y, range + 1, (unit) => {
+    unit.guidedTurns = Math.max(unit.guidedTurns || 0, 1);
+    unit.memoryLoopTurns = Math.max(unit.memoryLoopTurns || 0, 2);
+  });
+  game.memoryLoopCount = (game.memoryLoopCount || 0) + 1;
+  creation.corruptionEffect = { type: 'memory_loop', rewritten, looped };
+  logGame(game, `「${card.name}」重写记忆：${rewritten} 格迷雾被擦除，${looped} 个单位陷入既视感。`, true);
+});
+
+AbilityHandlers.active.set('memory_loop', (game, creation) => {
+  affectNearbyUnits(game, creation.x, creation.y, Math.max(1, creation.card.range || 1) + 1, (unit) => {
+    unit.guidedTurns = Math.max(unit.guidedTurns || 0, 1);
+  });
 });
 
 // Apply a handler by ability name
