@@ -4,6 +4,9 @@ const suites = [
   { label: 'syntax-check', command: 'node', args: ['debug/syntax-check.js'] },
   { label: 'test-suite', command: 'node', args: ['debug/test-suite.js'] },
   { label: 'current-code-reality', command: 'node', args: ['debug/current-code-reality-tests.js'] },
+  { label: 'ai-reliability', command: 'node', args: ['debug/ai-reliability-tests.js'] },
+  { label: 'compile-reliability', command: 'node', args: ['debug/compile-reliability-tests.js'] },
+  { label: 'turn-reliability', command: 'node', args: ['debug/turn-reliability-tests.js'] },
   { label: 'server-api', command: 'node', args: ['debug/server-api-tests.js'] },
 ];
 
