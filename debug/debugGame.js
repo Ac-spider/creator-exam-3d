@@ -71,28 +71,8 @@ class DebugGame extends GameEngine {
 
   // Override moveCivilian to add NPC interactions
   moveCivilian(unit) {
-    if (this.isGoalReached(unit)) {
-      this.rescueUnit(unit);
-      return;
-    }
-    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['guide', 'memory_beacon', 'illuminate']);
-    const hasRevealPath = unit.revealedPath > 0;
-    const hasDreamLink = unit.dreamLinked && this.units.find(u => u.id === unit.dreamLinked && u.status === 'active');
-    const immuneChaos = unit.immuneChaos > 0;
-
-    if (hasDreamLink && !guided) {
-      const linkedUnit = this.units.find(u => u.id === unit.dreamLinked);
-      if (linkedUnit) {
-        const myDist = this.distance(unit.x, unit.y, unit.goal.x, unit.goal.y);
-        const linkedDist = this.distance(linkedUnit.x, linkedUnit.y, unit.goal.x, unit.goal.y);
-        if (linkedDist < myDist) {
-          unit.guidedTurns = 1;
-        }
-      }
-    }
-
     // Check NPC interactions
-    if (this.npcManager) {
+    if (!this.isGoalReached(unit) && this.npcManager) {
       const npcsHere = this.npcManager.npcs.filter(n => n.location && n.location.x === unit.x && n.location.y === unit.y);
       for (const npc of npcsHere) {
         if (npc.status !== 'met') {
@@ -111,28 +91,7 @@ class DebugGame extends GameEngine {
       }
     }
 
-    let next = null;
-    if (this.level.memoryChaos && !guided && !immuneChaos && Math.random() < 0.45) {
-      next = this.randomPassableNeighbor(unit);
-      if (next) this.log(`${unit.name} 被记忆瘟疫影响，偏离了道路`);
-    }
-    if (!next) next = this.nextStepToward(unit, unit.goal);
-    if (next) {
-      unit.x = next.x;
-      unit.y = next.y;
-      if (hasRevealPath && !this.isGoalReached(unit)) {
-        const extraStep = this.nextStepToward(unit, unit.goal);
-        if (extraStep) {
-          unit.x = extraStep.x;
-          unit.y = extraStep.y;
-          this.log(`${unit.name} 借助路径指引快速移动`);
-        }
-      }
-    }
-    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
-    if (unit.revealedPath > 0) unit.revealedPath -= 1;
-    if (unit.immuneChaos > 0) unit.immuneChaos -= 1;
-    if (this.isGoalReached(unit)) this.rescueUnit(unit);
+    return super.moveCivilian(unit);
   }
 
   // ========== CLI-specific methods ==========

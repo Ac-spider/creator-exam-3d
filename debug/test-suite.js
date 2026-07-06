@@ -2,7 +2,8 @@
 // Comprehensive tests for game mechanics, AI systems, and narrative features
 
 import { DebugGame } from './debugGame.js';
-import { localCompile } from '../public/js/aiClient.js';
+import { GameEngine } from '../public/js/gameEngine.js';
+import { compileCreation, localCompile } from '../public/js/aiClient.js';
 import { LEVELS, TILE } from '../public/js/levels.js';
 import { legacySystem } from '../public/js/legacySystem.js';
 
@@ -121,6 +122,65 @@ runner.test('creation compile - two move actions should create tier-2 haste', ()
   runner.assertEqual(card.ability, 'haste', 'two move actions should infer haste');
   runner.assertEqual(card.range, 2, 'two move actions should map to haste tier 2');
   runner.assert(card.description.includes('3'), 'tier-2 haste description should mention the real movement limit');
+});
+
+runner.test('creation compile - explicit movement and hazard intents should win over generic keywords', () => {
+  const game = new DebugGame();
+  game.reset();
+
+  const haste = localCompile('给NPC加速但不要指路', game.getGameContext());
+  runner.assertEqual(haste.ability, 'haste', 'explicit speed boost should infer haste instead of path reveal');
+  runner.assert(haste.description.includes('2'), 'speed +1 card should describe the real 2-tile movement limit');
+
+  const revealPath = localCompile('指路并加速的灯塔', game.getGameContext());
+  runner.assertEqual(revealPath.ability, 'reveal_path', 'path wording should still infer reveal_path');
+
+  const redirect = localCompile('把洪水改道，不要让它吞路', game.getGameContext());
+  runner.assertEqual(redirect.ability, 'redirect_hazard', 'explicit hazard redirect should not be stolen by water absorption');
+});
+
+runner.test('creation compile - AI response should be corrected by explicit player intent', async () => {
+  const originalFetch = globalThis.fetch;
+  const makeResponse = (card) => ({
+    ok: true,
+    json: async () => card
+  });
+
+  try {
+    globalThis.fetch = async () => makeResponse({
+      name: '错配吸水卡',
+      type: '生物',
+      ability: 'absorb_water',
+      tags: ['水'],
+      range: 2,
+      duration: 3,
+      cost: 2,
+      stabilityCost: 1,
+      description: '错误地吸水。',
+      side_effect: '错误副作用。'
+    });
+    const redirect = await compileCreation('把洪水改道，不要让它吞路', { compileTimeoutMs: 1000 });
+    runner.assertEqual(redirect.ability, 'redirect_hazard', 'AI water card should be corrected to redirect_hazard');
+    runner.assert(redirect.description.includes('改道'), 'corrected hazard card should describe redirect behavior');
+
+    globalThis.fetch = async () => makeResponse({
+      name: '错配显路卡',
+      type: '奇迹',
+      ability: 'reveal_path',
+      tags: ['路径'],
+      range: 1,
+      duration: 3,
+      cost: 1,
+      stabilityCost: 0,
+      description: '错误地显示路径。',
+      side_effect: '错误副作用。'
+    });
+    const haste = await compileCreation('给NPC加速但不要指路', { compileTimeoutMs: 1000 });
+    runner.assertEqual(haste.ability, 'haste', 'AI path card should be corrected to haste');
+    runner.assert(haste.description.includes('2'), 'corrected haste card should describe the real movement limit');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 // 测试造物放置
@@ -1220,6 +1280,89 @@ runner.test('movement - haste should grant real extra steps', () => {
   const moved = game.moveUnitTowardGoal(unit, game.getUnitMoveSteps(unit));
   runner.assertEqual(moved, 2, 'haste should move two tiles in one turn');
   runner.assertEqual(unit.x, 2, 'unit should consume the extra action on the path');
+});
+
+runner.test('movement - placed haste card should grant real extra steps in core and debug games', () => {
+  for (const GameClass of [GameEngine, DebugGame]) {
+    const game = new GameClass();
+    game.reset();
+    game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+    game.units = [{
+      id: 'haste-chain-unit',
+      type: 'villager',
+      name: '测试NPC',
+      x: 0,
+      y: 0,
+      goal: { x: 4, y: 0 },
+      status: 'active',
+      guidedTurns: 0
+    }];
+    game.level.hazard = null;
+    game.level.memoryChaos = false;
+    game.level.requiredRescue = 99;
+    game.level.maxTurns = 10;
+    game.miraclePoints = 10;
+    game.creationCharges = 1;
+    game.triggerRandomEvent = () => null;
+    game.spreadHazards = () => null;
+    game.checkEndCondition = () => null;
+
+    const placed = game.createAndPlace('让NPC行动力加一', 0, 0);
+    runner.assertTrue(placed.success, `${GameClass.name} should place haste card`);
+    runner.assertEqual(game.creations[0].card.ability, 'haste', `${GameClass.name} should compile haste card`);
+
+    game.endTurn();
+    runner.assertEqual(game.units[0].x, 2, `${GameClass.name} should move the NPC two tiles after haste`);
+    runner.assertEqual(game.units[0].y, 0, `${GameClass.name} should keep following the path`);
+  }
+});
+
+runner.test('movement - chaos immunity should preserve goal path and extra movement', () => {
+  const game = new GameEngine();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  const unit = {
+    id: 'immune-chaos-unit',
+    type: 'villager',
+    name: '免疫NPC',
+    x: 1,
+    y: 1,
+    goal: { x: 4, y: 1 },
+    status: 'active',
+    guidedTurns: 0,
+    immuneChaos: 1,
+    moveSpeed: 2,
+    hasteTurns: 1
+  };
+  game.units = [unit];
+  game.level.memoryChaos = true;
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.6;
+  try {
+    game.moveCivilian(unit);
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  runner.assertEqual(unit.x, 3, 'immune NPC should ignore random wandering and spend haste on the goal path');
+  runner.assertEqual(unit.y, 1, 'immune NPC should not drift off the path');
+});
+
+runner.test('creation behavior - hazard redirect card should change real hazard tiles', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.terrain[0][1] = TILE.WATER;
+  game.terrain[1][0] = TILE.FOG;
+  game.miraclePoints = 10;
+  game.creationCharges = 1;
+
+  const result = game.createAndPlace('把洪水改道，不要让它吞路', 0, 0);
+  runner.assertTrue(result.success, 'hazard redirect card should be placeable');
+  runner.assertEqual(game.creations[0].card.ability, 'redirect_hazard', 'card should keep redirect_hazard ability');
+  runner.assertEqual(game.getTerrain(1, 0), TILE.BRIDGE, 'nearby water should become a bridge');
+  runner.assertEqual(game.getTerrain(0, 1), TILE.LAND, 'nearby fog should become safe land');
 });
 
 runner.test('pathfinding - weighted A* should allow cheaper updates', () => {
@@ -4885,6 +5028,9 @@ runner.test('Test jump UI - should expose all levels and mode buttons only', asy
   runner.assert(game.includes('openNightWatchTestMode()'), 'game.js should include local tower-defense test handler');
   runner.assert(game.includes('openAirCombatMode()'), 'game.js should include air-combat test handler');
   runner.assert(game.includes('if (options.testEntry)') && game.includes('window.location.href = url.toString()'), 'air-combat test entry should navigate in-page for browser verification');
+  runner.assert(game.includes('window.__creatorExam3D = this'), 'browser game should expose the live instance for behavior verification');
+  runner.assert(game.includes('updateDebugDataset()') && game.includes('dataset.debugState'), 'browser game should expose compact DOM debug state for behavior verification');
+  runner.assert(game.includes('return super.moveCivilian(unit)') && game.includes('return super.moveMessenger(unit)'), 'browser movement should reuse core movement rules');
 });
 
 runner.run().then(success => {

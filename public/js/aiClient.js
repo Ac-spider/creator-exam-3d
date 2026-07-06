@@ -154,7 +154,7 @@ const KEYWORDS = [
   { ability: 'trap', words: ['陷阱', '坑', '网', '索', '绊', '捕', '捉', '机关'] },
   { ability: 'dream_link', words: ['梦', '链接', '连接', '共享', '心', '精神', '同梦', '共感'] },
   { ability: 'time_dilation', words: ['时间', '缓', '慢', '延', '钟', '沙漏', '凝', '延缓'] },
-  { ability: 'haste', words: ['行动力', '加一', '加二', '多走', '快跑', '疾行', '冲刺', '移动力', 'move', 'speed'] },
+  { ability: 'haste', words: ['行动力', '加一', '加二', '多走', '快跑', '疾行', '冲刺', '移动力', '加速', '加快', '提速', '速度', 'move', 'speed'] },
   { ability: 'teleport', words: ['传送', '星门', '瞬移', '空间门', 'portal', 'teleport'] },
   { ability: 'shield_units', words: ['护盾', '庇护', '保护伞', '雨伞', '罩住', 'shield'] },
   { ability: 'redirect_hazard', words: ['改道', '转向', '引流', '分洪', '风向', '吹走', 'redirect'] }
@@ -295,6 +295,9 @@ export function localCompile(text, gameContext = {}) {
 }
 
 function inferAbility(text, gameContext) {
+  if (wantsHazardRedirect(text)) return 'redirect_hazard';
+  if (wantsHaste(text)) return 'haste';
+
   let best = { ability: null, score: -1 };
   for (const item of KEYWORDS) {
     const score = item.words.reduce((sum, word) => sum + (text.includes(word) ? 1 : 0), 0);
@@ -311,6 +314,35 @@ function inferAbility(text, gameContext) {
   if (hazard === 'fog') return 'memory_beacon';
   if (hazard === 'mixed') return 'transform_land';
   return 'transform_land';
+}
+
+function wantsHazardRedirect(text) {
+  const clean = String(text || '').toLowerCase();
+  const hasRedirectIntent = /改道|转向|风向|吹走|引开|绕开|redirect/.test(clean);
+  const hasHazardTarget = /洪|水|灾害|迷雾|雾|污染|毒|黑暗|flood|hazard|poison|dark/.test(clean);
+  const isDiggingChannel = /挖|开渠|水渠|沟渠|渠道/.test(clean);
+  return hasRedirectIntent && hasHazardTarget && !isDiggingChannel;
+}
+
+function wantsHaste(text) {
+  const clean = String(text || '').toLowerCase();
+  const hasSpeedIntent = /行动力|移动力|加速|加快|提速|速度|多走|快跑|疾行|冲刺|move|speed/.test(clean);
+  if (!hasSpeedIntent) return false;
+
+  const hasPathIntent = /指路|带路|路径|显示|显现|导航|地图|路标|灯塔|发光|照明/.test(clean);
+  const negatesPathIntent = negatesPathReveal(clean);
+  const explicitActionStat = /行动力|移动力|多走|加一|加二|\+|＋|move|speed/.test(clean);
+  return !hasPathIntent || negatesPathIntent || explicitActionStat;
+}
+
+function wantsPathReveal(text) {
+  const clean = String(text || '').toLowerCase();
+  if (negatesPathReveal(clean)) return false;
+  return /指路|带路|路径|显示路线|显示道路|显现道路|导航|路标/.test(clean);
+}
+
+function negatesPathReveal(text) {
+  return /不要\s*指路|不\s*要\s*指路|无需\s*指路|不用\s*指路|不是\s*指路|不要\s*路径|不\s*显示\s*路径/.test(String(text || '').toLowerCase());
 }
 
 function inferHasteRange(text) {
@@ -407,7 +439,10 @@ function buildResolvedDescription(ability, range, isTooStrong = false) {
 
 function sanitizeCard(raw, playerText, source) {
   const card = raw && typeof raw === 'object' ? raw : {};
-  const ability = ABILITY_SET.has(card.ability) ? card.ability : 'transform_land';
+  let ability = ABILITY_SET.has(card.ability) ? card.ability : 'transform_land';
+  if (wantsHazardRedirect(playerText)) ability = 'redirect_hazard';
+  else if (wantsHaste(playerText)) ability = 'haste';
+  else if (wantsPathReveal(playerText)) ability = 'reveal_path';
   const tags = Array.isArray(card.tags) ? card.tags.map(String).filter(Boolean).slice(0, 4) : [];
   const sanitizedRange = clamp(card.range, 0, 3, 1);
   const explicitHasteRange = getExplicitHasteRange(playerText);

@@ -177,6 +177,7 @@ class CreatorExam3D extends GameEngine {
     this.turnUnlockTimer = null;
 
     this.ui = this.collectUi();
+    window.__creatorExam3D = this;
     this.initScene();
     this.bindEvents();
     this.bindSaveSlotUI();
@@ -698,6 +699,7 @@ class CreatorExam3D extends GameEngine {
     this.ui.cardSide.textContent = `副作用：${card.side_effect}`;
     this.ui.cardTags.innerHTML = card.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
     this.ui.placeBtn.disabled = card.cost > this.miraclePoints || this.creationCharges <= 0;
+    this.updateDebugDataset();
   }
 
   startPlacement() {
@@ -2425,6 +2427,72 @@ class CreatorExam3D extends GameEngine {
     this.renderNightWatchPanel();
     this.renderAirCombatPanel();
     this.renderIntentArrows();
+    this.updateDebugDataset();
+  }
+
+  updateDebugDataset() {
+    if (!this.root) return;
+    try {
+      this.root.dataset.debugState = JSON.stringify({
+        levelId: this.level?.id || '',
+        turn: this.turn,
+        gameState: this.gameState,
+        activeCard: this.activeCard ? {
+          name: this.getCreationDisplayName(this.activeCard),
+          ability: this.activeCard.ability,
+          range: this.activeCard.range,
+          duration: this.activeCard.duration,
+          description: this.activeCard.description,
+          playerText: this.activeCard.playerText || ''
+        } : null,
+        units: this.units.map(unit => ({
+          id: unit.id,
+          name: unit.name,
+          type: unit.type,
+          x: unit.x,
+          y: unit.y,
+          goal: unit.goal ? { ...unit.goal } : null,
+          status: unit.status,
+          moveSpeed: unit.moveSpeed || 1,
+          moveBonus: unit.moveBonus || 0,
+          revealedPath: unit.revealedPath || 0,
+          guidedTurns: unit.guidedTurns || 0,
+          immuneChaos: unit.immuneChaos || 0
+        })),
+        creations: this.creations.map(creation => ({
+          id: creation.id,
+          name: this.getCreationDisplayName(creation.card),
+          ability: creation.card.ability,
+          x: creation.x,
+          y: creation.y,
+          remaining: creation.remaining,
+          placed: creation.placed !== false
+        })),
+        tiles: this.getDebugTileScreens(),
+        logs: this.logs.slice(0, 6).map(entry => entry.text)
+      });
+    } catch (error) {
+      delete this.root.dataset.debugState;
+    }
+  }
+
+  getDebugTileScreens() {
+    if (!this.camera || !this.renderer) return [];
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const tiles = [];
+    for (let y = 0; y < BOARD_SIZE; y += 1) {
+      for (let x = 0; x < BOARD_SIZE; x += 1) {
+        const world = this.tileToWorld(x, y);
+        const projected = new THREE.Vector3(world.x, 0, world.z).project(this.camera);
+        tiles.push({
+          x,
+          y,
+          screenX: Math.round(rect.left + ((projected.x + 1) / 2) * rect.width),
+          screenY: Math.round(rect.top + ((-projected.y + 1) / 2) * rect.height)
+        });
+      }
+    }
+    return tiles;
   }
 
   setTurnControlsPending(pending) {
@@ -4869,60 +4937,11 @@ class CreatorExam3D extends GameEngine {
   }
 
   moveCivilian(unit) {
-    if (this.isGoalReached(unit)) {
-      this.rescueUnit(unit);
-      return;
-    }
-
-    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['guide', 'memory_beacon', 'illuminate']);
-    let moved = 0;
-    if (this.level.memoryChaos && !guided && Math.random() < 0.45) {
-      const next = this.randomPassableNeighbor(unit);
-      if (next) {
-        unit.x = next.x;
-        unit.y = next.y;
-        moved = 1;
-        this.addLog(`${unit.name} is confused and wanders off path.`);
-      }
-    } else {
-      moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
-    }
-
-    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
-      this.addLog(`${unit.name} uses extra action to move ${moved} steps.`);
-    }
-    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
-    if (unit.revealedPath > 0) unit.revealedPath -= 1;
-    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
-    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
-    if (this.isGoalReached(unit)) this.rescueUnit(unit);
+    return super.moveCivilian(unit);
   }
 
   moveMessenger(unit) {
-    if (this.isGoalReached(unit)) {
-      unit.met = true;
-      return;
-    }
-    const terrain = this.getTerrain(unit.x, unit.y);
-    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['calm', 'guide', 'memory_beacon']);
-    if ((terrain === TILE.FOG || terrain === TILE.DARK) && !guided) {
-      this.warMeter = Math.min(this.level.hazard?.warLimit || 9, this.warMeter + 1);
-      this.addLog(`${unit.name} misjudges the fog; war meter +1.`);
-      return;
-    }
-
-    const moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
-    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
-      this.addLog(`${unit.name} uses extra action to move ${moved} steps.`);
-    }
-    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
-    if (unit.revealedPath > 0) unit.revealedPath -= 1;
-    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
-    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
-    if (this.isGoalReached(unit)) {
-      unit.met = true;
-      this.addLog(`${unit.name} reaches the border meeting point.`, true);
-    }
+    return super.moveMessenger(unit);
   }
 
   calculateFullPath(unit) {
