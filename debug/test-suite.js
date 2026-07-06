@@ -4795,7 +4795,7 @@ runner.test('Night Watch dynamic towers - should derive different tower plans fr
     },
     causes: [],
     buffChoices: [
-      { id: '<bad id>', name: 'Bad buff', description: 'test', reason: 'test', effect: { type: 'made_up', value: 999, towerTypes: ['slow', 'madeUpTower'] } }
+      { id: '<bad id>', name: '越界加成', description: '测试', reason: '测试', effect: { type: 'made_up', value: 999, towerTypes: ['slow', 'madeUpTower'] } }
     ]
   }, waterMemory);
 
@@ -4810,6 +4810,7 @@ runner.test('Night Watch dynamic towers - should derive different tower plans fr
   runner.assert(sanitized.buffChoices[0].effect.type !== 'made_up', 'invalid buff effect types should be replaced');
   runner.assert(sanitized.buffChoices[0].effect.towerTypes.every(type => sanitized.towerPool.includes(type)), 'buff tower types should stay inside the selected tower pool');
 });
+
 runner.test('Air Combat integration - should keep finite airspace bridge and result wiring', async () => {
   const { readFileSync } = await import('node:fs');
   const bridge = readFileSync(new URL('../public/modes/air-combat/airCombatBridge.js', import.meta.url), 'utf8');
@@ -4827,6 +4828,8 @@ runner.test('Air Combat integration - should keep finite airspace bridge and res
   runner.assert(airGame.includes('class Boss'), 'air combat should include Boss logic');
   runner.assert(airGame.includes('class Enemy'), 'air combat should include enemy logic');
   runner.assert(airGame.includes('useSkill()'), 'air combat should include creation weapon pulse');
+  runner.assert(airGame.includes('movingWallGap') && airGame.includes('wallGapStep') && airGame.includes('laneOffset'), 'air combat wall Boss should sweep the safe gap horizontally');
+  runner.assert(airGame.includes('bossContactCd') && airGame.includes('this.player.takeDamage(28 + this.boss.def.stage * 2)'), 'air combat Boss body contact should damage the player with cooldown');
   runner.assert(airGame.includes("finish('victory')"), 'air combat should have a finite victory route');
   runner.assert(airGame.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'air combat should expose browser readiness');
   for (const eventType of [
