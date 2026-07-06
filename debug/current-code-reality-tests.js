@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createServer as createNetServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -230,6 +230,10 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('regenerator') && bridgeSource.includes('再生精英'), 'air bridge must adapt upstream regenerating elite as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('carrierWing') && bridgeSource.includes('母舰残群'), 'air bridge must adapt upstream carrier enemies as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('barrage') && bridgeSource.includes("attack: 'ring'"), 'air bridge must adapt upstream barrage boss affix into finite ring pressure');
+  assert.ok(bridgeSource.includes('prismBurst') && bridgeSource.includes('棱爆') && bridgeSource.includes('boss-08-prism-judge.png'), 'air bridge must adapt latest Skyward prism judge boss image and prism burst affix');
+  assert.ok(bridgeSource.includes('ironCarrier') && bridgeSource.includes('铁幕') && bridgeSource.includes('boss-09-iron-carrier.png'), 'air bridge must adapt latest Skyward iron carrier boss image and escort pressure');
+  assert.ok(bridgeSource.includes('tideCore') && bridgeSource.includes('引潮') && bridgeSource.includes('boss-10-tide-core.png'), 'air bridge must adapt latest Skyward tide core boss image and gravity pressure');
+  assert.ok(bridgeSource.includes('skywardBossSignals') && bridgeSource.includes('Skyward更新回响'), 'air bridge must expose AI-driven Skyward boss signals to narrative context');
   assert.ok(bridgeSource.includes('fieldRepair') && bridgeSource.includes('纳米修复'), 'air bridge must adapt upstream field repair as a prior-flow reward');
   assert.ok(bridgeSource.includes('repairLoopEvery') && bridgeSource.includes('维修循环'), 'air bridge must adapt upstream repair loop as finite shield-route sustain');
   assert.ok(bridgeSource.includes('exposedCore') && bridgeSource.includes("attack: 'weak'") && bridgeSource.includes('weakDamageMult'), 'air bridge must adapt upstream exposed core as a finite boss weak-point affix');
@@ -261,6 +265,11 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('syncUiState') && airGameSource.includes("this.state === 'playing'"), 'air combat opening must hide battle HUD until combat starts');
   assert.ok(airGameSource.includes('bridge.routeResonance()'), 'air combat slice must consume creation resonance locally');
   assert.ok(airGameSource.includes('firePrismLane'), 'air combat slice must apply prism boss affix locally');
+  assert.ok(airGameSource.includes('bossImageCache') && airGameSource.includes('drawImage(img'), 'air combat slice must draw copied Skyward boss images with canvas fallback');
+  assert.ok(airGameSource.includes('_hitFlash = 0.09') && airGameSource.includes('rgba(255, 212, 59'), 'air combat slice must preserve latest Skyward boss-hit feedback for copied boss art');
+  assert.ok(airGameSource.includes('firePrismBurst') && airGameSource.includes('finishPrismBurst'), 'air combat slice must apply Skyward prism burst as finite laser-side-bullet pressure');
+  assert.ok(airGameSource.includes('fireGravityPulse') && airGameSource.includes('gravityPullAt') && airGameSource.includes('drawGravityPulses'), 'air combat slice must apply Skyward tide core as visible finite gravity pressure');
+  assert.ok(airGameSource.includes('guardDR') && airGameSource.includes('bossGuardCount') && airGameSource.includes('guardWeakDamageMult'), 'air combat slice must apply Skyward iron carrier guard reduction and weak deck window');
   assert.ok(airGameSource.includes('movingWallGap') && airGameSource.includes('wallGapStep') && airGameSource.includes('laneOffset'), 'wall-pattern Boss bullets must scan their safe gap left and right instead of keeping a static center');
   assert.ok(airGameSource.includes('wallGapLanes') && airGameSource.includes('-0.78') && airGameSource.includes('0.78'), 'stage-2 wall Boss gap must sweep visibly across left and right lanes');
   assert.ok(airGameSource.includes('bossContactCd') && airGameSource.includes('this.player.takeDamage(28 + this.boss.def.stage * 2)'), 'Boss body contact must damage the player with a short collision cooldown');
@@ -325,6 +334,13 @@ function assertAirCombatIntegration() {
   assert.ok(airIndexSource.includes('id="airspace-choices"'), 'air combat markup must expose prior-flow weapon choices');
   assert.ok(airIndexSource.includes('id="airspace-hud" class="airspace-hud hidden"'), 'air combat battle HUD must start hidden during briefing');
   assert.ok(airIndexSource.includes('id="airspace-clearance-card"'), 'air combat markup must expose a boss clearance card');
+  for (const asset of [
+    'public/modes/air-combat/assets/bosses/boss-08-prism-judge.png',
+    'public/modes/air-combat/assets/bosses/boss-09-iron-carrier.png',
+    'public/modes/air-combat/assets/bosses/boss-10-tide-core.png'
+  ]) {
+    assert.ok(existsSync(new URL(asset, rootUrl)), `${asset} must exist for copied Skyward boss art`);
+  }
   for (const eventType of [
     'airspace_intro',
     'airspace_segment',
@@ -397,7 +413,7 @@ function assertAirCombatRouteBalance() {
   assert.equal(highPressure.routeResonance().livingArmorEvery, 12, 'stable defense flow should unlock finite living armor growth');
   assert.equal(highPressure.routeResonance().livingArmorMaxHp, 30, 'finite living armor growth must stay capped');
   for (const boss of highRoute) {
-    assert.ok(['prism', 'ionStorm', 'ring', 'escort', 'repair', 'weak', undefined].includes(boss.affix.attack), `unknown finite affix attack ${boss.affix.attack}`);
+    assert.ok(['prism', 'prismBurst', 'ionStorm', 'ring', 'escort', 'repair', 'weak', 'gravity', undefined].includes(boss.affix.attack), `unknown finite affix attack ${boss.affix.attack}`);
     assert.ok(boss.hp >= 300 && boss.hp <= 1100, `boss ${boss.title} hp is outside finite route bounds`);
   }
 
@@ -541,6 +557,21 @@ function assertAirCombatRouteBalance() {
     towerDefenseResult: { victory: false }
   });
   assert.ok(ewarRoute.route().some(boss => boss.affix.key === 'ewar'), 'failed defense plus memory routes should introduce finite electronic warfare pressure');
+
+  const skywardRoute = loadAirBridgeForContext({
+    entropy: 2,
+    endingPressure: 0.58,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '会折射重力潮汐的棱镜护卫舰', ability: 'illuminate', description: '玩家提到棱镜审判者、铁幕空母和引潮核心都会在空域重现' }],
+    skywardRaidUpdate: 'Skyward 最新重大更新：棱镜审判者、铁幕空母、引潮核心 Boss 设计完成。'
+  });
+  assert.equal(skywardRoute.skywardBossSignals().map(signal => signal.key).join(' / '), 'prismBurst / ironCarrier / tideCore', 'AI/Skyward update context should expose three latest boss signals');
+  const skywardKeys = skywardRoute.route().map(boss => boss.affix.key);
+  assert.ok(skywardKeys.includes('prismBurst'), 'Skyward prism judge signal should introduce finite prism burst route pressure');
+  assert.ok(skywardKeys.includes('ironCarrier'), 'Skyward iron carrier signal should introduce finite guard escort route pressure');
+  assert.ok(skywardKeys.includes('tideCore'), 'Skyward tide core signal should introduce finite gravity route pressure');
+
   const coveredAffixes = new Set([
     ...highPressure.route(),
     ...repairOpening.route(),
@@ -549,7 +580,8 @@ function assertAirCombatRouteBalance() {
     ...memoryRoute.route(),
     ...exposedCoreRoute.route(),
     ...failedDefenseRoute.route(),
-    ...ewarRoute.route()
+    ...ewarRoute.route(),
+    ...skywardRoute.route()
   ].map(boss => boss.affix.key));
   for (const key of configuredAirAffixKeys()) {
     assert.ok(coveredAffixes.has(key), `configured finite air affix ${key} must be reachable from a main-flow context`);

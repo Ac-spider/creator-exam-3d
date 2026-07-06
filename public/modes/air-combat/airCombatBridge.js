@@ -145,11 +145,28 @@
       key: 'prism',
       name: '棱镜',
       color: '#d8c58a',
+      image: 'assets/bosses/boss-08-prism-judge.png',
       attack: 'prism',
       every: 5.6,
       warn: 0.55,
       scoreMult: 1.14,
       line: '光被折成竖直裂缝，别停在同一条航线里。'
+    },
+    prismBurst: {
+      key: 'prismBurst',
+      name: '棱爆',
+      color: '#d8c58a',
+      image: 'assets/bosses/boss-08-prism-judge.png',
+      attack: 'prismBurst',
+      every: 6.4,
+      warn: 0.58,
+      dur: 0.52,
+      width: 38,
+      count: 6,
+      speed: 210,
+      damageMult: 0.72,
+      scoreMult: 1.18,
+      line: '棱镜审判者回响会在光束结束时折出侧弹，别沿原路回头。'
     },
     ionStorm: {
       key: 'ionStorm',
@@ -265,6 +282,21 @@
       scoreMult: 1.18,
       line: '电子战词缀会周期投放扰频精英机，先拉开干扰圈再输出 Boss。'
     },
+    ironCarrier: {
+      key: 'ironCarrier',
+      name: '铁幕',
+      color: '#91a7ff',
+      image: 'assets/bosses/boss-09-iron-carrier.png',
+      attack: 'escort',
+      every: 7.8,
+      enemy: 'gunner',
+      maxAdds: 3,
+      guardDR: 0.28,
+      guardWeakDur: 2.4,
+      guardWeakDamageMult: 0.28,
+      scoreMult: 1.19,
+      line: '铁幕空母回响会让护卫替 Boss 承压，清掉护卫后甲板弱点短暂打开。'
+    },
     phantomEscort: {
       key: 'phantomEscort',
       name: '幻影护航',
@@ -296,6 +328,20 @@
       healPct: 0.035,
       scoreMult: 1.17,
       line: '维修词缀会周期缝合 Boss 外壳，别把输出窗口拖成持久战。'
+    },
+    tideCore: {
+      key: 'tideCore',
+      name: '引潮',
+      color: '#4dabf7',
+      image: 'assets/bosses/boss-10-tide-core.png',
+      attack: 'gravity',
+      every: 7.1,
+      warn: 0.82,
+      dur: 2.1,
+      radius: 230,
+      strength: 92,
+      scoreMult: 1.18,
+      line: '引潮核心回响会先给圆形预警，再轻拉机体横向惯性。'
     }
   };
 
@@ -766,6 +812,35 @@
     return resonance;
   }
 
+  function skywardBossSignals() {
+    const loreText = discoveredLore()
+      .map(item => [item.title, item.text, item.summary, item.description].filter(Boolean).join(' '))
+      .join(' ');
+    const creationText = creations()
+      .map(creation => [creationName(creation), creationDescription(creation), creationAbility(creation), ...(creationTags(creation) || [])].filter(Boolean).join(' '))
+      .join(' ');
+    const defense = context.towerDefenseResult || {};
+    const text = [
+      context.skywardRaidUpdate,
+      context.airCombatUpdate,
+      context.aiBrief,
+      context.narrativeBrief,
+      defense.name,
+      defense.summary,
+      defense.brief,
+      loreText,
+      creationText
+    ].filter(Boolean).join(' ');
+    const signals = [];
+    const add = (key, name, reason) => {
+      if (!signals.some(signal => signal.key === key)) signals.push({ key, name, reason });
+    };
+    if (/棱镜|审判者|prism|折射/i.test(text)) add('prismBurst', '棱镜审判者', 'Skyward 最新 Boss 设计里的折射光束被 AI 简报识别为空域棱爆词缀。');
+    if (/铁幕|空母|护卫编队|甲板|carrier|deck/i.test(text)) add('ironCarrier', '铁幕空母', 'Skyward 最新 Boss 设计里的护卫编队被 AI 简报识别为空域铁幕词缀。');
+    if (/引潮|潮汐|重力|gravity|tide/i.test(text)) add('tideCore', '引潮核心', 'Skyward 最新 Boss 设计里的重力潮汐被 AI 简报识别为空域引潮词缀。');
+    return signals;
+  }
+
   function contextualAffixKeys() {
     const entropy = Number(context.entropy || 0);
     const pressure = endingPressure();
@@ -773,6 +848,7 @@
     const abilityText = creations().map(creationAbility).join(' ');
     const lightRoute = /illuminate|force_field|memory_beacon|guide/.test(abilityText);
     const keys = [];
+    for (const signal of skywardBossSignals()) keys.push(signal.key);
     if (entropy >= 8 || lightRoute) keys.push('ionStorm');
     if (entropy >= 7) keys.push('prism');
     else if (entropy >= 4) keys.push('rapid');
@@ -826,7 +902,8 @@
     const rescued = residentsCount();
     const comm = communicator();
     const lore = loreSignal();
-    return `第六关和长夜之后，${names}被压缩为空域载体。${rescued}名居民的回声在通讯里等待第七天清算；${comm.line}${lore ? ` ${lore}` : ''}`;
+    const skyward = skywardBossSignals().map(signal => signal.name).join('、');
+    return `第六关和长夜之后，${names}被压缩为空域载体。${rescued}名居民的回声在通讯里等待第七天清算；${comm.line}${skyward ? ` Skyward更新回响：${skyward}。` : ''}${lore ? ` ${lore}` : ''}`;
   }
 
   function briefingSlides() {
@@ -900,6 +977,7 @@
       weapon.focusText ? `武器定位：${weapon.focusText}` : '',
       extraContext.boss?.title ? `当前Boss：${extraContext.boss.title}` : '',
       extraContext.route ? `航线：${extraContext.route}` : '',
+      skywardBossSignals().length ? `Skyward更新回响：${skywardBossSignals().map(signal => `${signal.name}→${BOSS_AFFIXES[signal.key]?.name || signal.key}`).join('、')}` : '',
       residentsCount() ? `已救下${residentsCount()}名居民` : '没有居民通讯员接入',
       lostCount() ? `失去${lostCount()}名居民` : '',
       creations().length ? `前序造物：${creations().map(creationName).filter(Boolean).slice(-3).join('、')}` : ''
@@ -925,6 +1003,8 @@
       playStyle: context.playerStyle || '未知',
       playerStyle: context.playerStyle || '未知',
       routeResonance: routeResonance().name,
+      skywardBossSignals: skywardBossSignals().map(signal => signal.name),
+      skywardBossSignalReasons: skywardBossSignals().map(signal => signal.reason),
       airspaceAffixes: route().map(boss => `${boss.affix.name}·${boss.title}`),
       communicator: `${comm.name}（${comm.role}）`,
       ...extra
@@ -1078,6 +1158,7 @@
     communicator,
     discoveredLore,
     loreSignal,
+    skywardBossSignals,
     contextualAffixKeys,
     briefingSlides,
     lineFor,
