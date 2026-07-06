@@ -46,13 +46,14 @@ const aiGateway = new AIGateway({
         model: AI_MODEL,
         temperature: request.temperature ?? 0.7,
         messages: request.messages
-      })
+      }),
+      signal: request.signal
     });
-    if (!response.ok) return { ok: false, json: null };
+    if (!response.ok) return { ok: false, json: null, reason: 'http_error' };
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.message?.reasoning_content || '';
     const json = extractJson(content);
-    return { ok: Boolean(json), json };
+    return { ok: Boolean(json), json, reason: json ? null : 'invalid_json' };
   }
 });
 
@@ -344,8 +345,24 @@ function getExplicitHasteRange(text) {
   return null;
 }
 
-function buildFallbackCreation(text) {
+const COMPILE_FALLBACK_MESSAGES = {
+  no_key: 'AI 编译未配置，已使用本地规则兜底。',
+  timeout: 'AI 编译超时，已使用本地规则兜底。',
+  budget: 'AI 调用预算已用尽，已使用本地规则兜底。',
+  invalid_response: 'AI 编译返回异常，已使用本地规则兜底。',
+  provider_failed: 'AI 编译服务暂不可用，已使用本地规则兜底。'
+};
+
+function normalizeCompileFallbackReason(reason) {
+  if (reason === 'missing_key') return 'no_key';
+  if (reason === 'invalid_json') return 'invalid_response';
+  if (reason === 'timeout' || reason === 'budget' || reason === 'no_key') return reason;
+  return 'provider_failed';
+}
+
+function buildFallbackCreation(text, fallbackReason = 'no_key') {
   const clean = String(text || '').trim();
+  const reason = normalizeCompileFallbackReason(fallbackReason);
   const ability = /teleport|portal|传送|星门|瞬移|空间门/.test(clean) ? 'teleport'
     : /行动力|加一|加二|多走|快跑|疾行|冲刺|移动力|speed|move|action/.test(clean) ? 'haste'
     : /shield|护盾|庇护|保护伞|雨伞|罩住/.test(clean) ? 'shield_units'
@@ -368,7 +385,10 @@ function buildFallbackCreation(text) {
     stabilityCost: strong ? 2 : ability === 'haste' ? 1 : 0,
     description: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedDescription(ability, range) : `A local rule-safe creation inferred from "${clean}".`,
     side_effect: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedSideEffect(ability) : 'Local fallback keeps play moving without external AI.',
-    source: 'fallback'
+    source: 'fallback',
+    fallback: true,
+    fallbackReason: reason,
+    fallbackMessage: COMPILE_FALLBACK_MESSAGES[reason]
   };
 }
 
@@ -479,42 +499,24 @@ async function handleCompileCreation(req, res) {
     context: context || {}
   });
 
-  try {
-    const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${AI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        temperature: 0.55,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ]
-      })
-    });
+  const result = await aiGateway.requestJson({
+    kind: 'compile_creation',
+    temperature: 0.55,
+    cacheKey: `compile-creation:${playerText}:${levelTitle || ''}:${levelObjective || ''}`,
+    fallback: buildFallbackCreation(playerText, 'provider_failed'),
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ]
+  });
 
-    if (!response.ok) {
-      const body = await response.text();
-      sendJson(res, 502, { error: 'ai_request_failed', detail: body.slice(0, 300), fallback: true });
-      return;
-    }
-
-    const data = await response.json();
-    const message = data?.choices?.[0]?.message || {};
-    const content = message.content || message.reasoning_content || '';
-    const parsed = extractJson(content);
-    if (!parsed) {
-      sendJson(res, 502, { error: 'ai_invalid_json', fallback: true, content: content.slice(0, 300) });
-      return;
-    }
-
-    sendJson(res, 200, sanitizeCard(parsed, playerText));
-  } catch (error) {
-    sendJson(res, 500, { error: 'ai_proxy_error', message: String(error?.message || error), fallback: true });
+  if (result.source !== 'provider') {
+    const reason = result.source === 'fallback_budget' ? 'budget' : normalizeCompileFallbackReason(result.error);
+    sendJson(res, 200, buildFallbackCreation(playerText, reason));
+    return;
   }
+
+  sendJson(res, 200, sanitizeCard(result.data, playerText));
 }
 
 async function handleResidentDialogue(req, res) {

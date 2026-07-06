@@ -655,10 +655,13 @@ class CreatorExam3D extends GameEngine {
       this.activeCard = card;
       this.showCard(card);
       const displayName = this.getCreationDisplayName(card);
-      this.addLog(`造物编译完成：${displayName}。${card.source === 'ai' ? 'AI 已生成结构化卡牌。' : '使用本地兜底编译器。'}`, true);
+      const compileNote = card.source === 'ai'
+        ? 'AI 已生成结构化卡牌。'
+        : (card.fallbackMessage || '使用本地兜底编译器。');
+      this.addLog(`造物编译完成：${displayName}。${compileNote}`, true);
       this.ui.aiMode.textContent = card.source === 'ai'
         ? '当前使用后端 AI 接口编译。'
-        : '当前使用本地兜底编译器；配置 .env 后可切换为真实 AI。';
+        : (card.fallbackMessage || '当前使用本地兜底编译器；配置 .env 后可切换为真实 AI。');
     } catch (error) {
       this.showToast(error.message || '造物编译失败。');
     } finally {

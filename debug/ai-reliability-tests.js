@@ -68,14 +68,22 @@ async function testRetryThenSuccess() {
 }
 
 async function testTimeoutFallback() {
+  let aborted = false
   const gateway = new AIGateway({
     timeoutMs: 5,
     budget: { maxCalls: 10, remainingCalls: 10 },
-    provider: async () => new Promise(resolve => setTimeout(() => resolve({ ok: true, json: { value: 'late' } }), 50))
+    provider: async (request) => new Promise(resolve => {
+      request.signal?.addEventListener('abort', () => {
+        aborted = true
+      }, { once: true })
+      setTimeout(() => resolve({ ok: true, json: { value: 'late' } }), 50)
+    })
   })
 
   const result = await gateway.requestJson({ kind: 'dialogue', cacheKey: 'timeout', fallback: { value: 'fallback' } })
   assert(result.data.value === 'fallback', 'timeout should return fallback')
+  assert(result.error === 'timeout', 'timeout should be recorded as the fallback reason')
+  assert(aborted, 'timeout should abort the provider signal')
 }
 
 function testFallbackPayloads() {

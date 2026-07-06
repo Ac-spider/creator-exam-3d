@@ -168,6 +168,16 @@ const RULE_DESCRIBED_ABILITIES = new Set([
   'redirect_hazard'
 ]);
 
+const COMPILE_TIMEOUT_MS = 5000;
+const FALLBACK_MESSAGES = {
+  timeout: 'AI 编译超时，已使用本地规则兜底。',
+  network_error: 'AI 编译连接失败，已使用本地规则兜底。',
+  server_error: 'AI 编译服务暂不可用，已使用本地规则兜底。',
+  invalid_response: 'AI 编译返回异常，已使用本地规则兜底。',
+  no_key: 'AI 编译未配置，已使用本地规则兜底。',
+  provider_failed: 'AI 编译失败，已使用本地规则兜底。'
+};
+
 export function abilityLabel(ability) {
   return ABILITY_LABELS[ability] || ability;
 }
@@ -178,10 +188,16 @@ export async function compileCreation(text, gameContext = {}) {
     throw new Error('请先输入一个造物想法。');
   }
 
+  let fallbackReason = 'network_error';
+  const timeoutMs = Number.isFinite(gameContext.compileTimeoutMs) ? gameContext.compileTimeoutMs : COMPILE_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetch('/api/compile-creation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         text: clean,
         levelTitle: gameContext.levelTitle || '',
@@ -194,11 +210,25 @@ export async function compileCreation(text, gameContext = {}) {
       const card = await response.json();
       return sanitizeCard(card, clean, 'ai');
     }
-  } catch (_error) {
-    // Local fallback below.
+    fallbackReason = 'server_error';
+  } catch (error) {
+    fallbackReason = error?.name === 'AbortError'
+      ? 'timeout'
+      : error instanceof SyntaxError ? 'invalid_response' : 'network_error';
+  } finally {
+    clearTimeout(timeoutId);
   }
 
-  return localCompile(clean, gameContext);
+  return withFallbackMeta(localCompile(clean, gameContext), fallbackReason);
+}
+
+function withFallbackMeta(card, reason) {
+  const fallbackReason = FALLBACK_MESSAGES[reason] ? reason : 'provider_failed';
+  return {
+    ...card,
+    fallbackReason,
+    fallbackMessage: FALLBACK_MESSAGES[fallbackReason]
+  };
 }
 
 export function localCompile(text, gameContext = {}) {
@@ -376,22 +406,23 @@ function buildResolvedDescription(ability, range, isTooStrong = false) {
 }
 
 function sanitizeCard(raw, playerText, source) {
-  const ability = ABILITY_SET.has(raw.ability) ? raw.ability : 'transform_land';
-  const tags = Array.isArray(raw.tags) ? raw.tags.map(String).filter(Boolean).slice(0, 4) : [];
-  const sanitizedRange = clamp(raw.range, 0, 3, 1);
+  const card = raw && typeof raw === 'object' ? raw : {};
+  const ability = ABILITY_SET.has(card.ability) ? card.ability : 'transform_land';
+  const tags = Array.isArray(card.tags) ? card.tags.map(String).filter(Boolean).slice(0, 4) : [];
+  const sanitizedRange = clamp(card.range, 0, 3, 1);
   const explicitHasteRange = getExplicitHasteRange(playerText);
   const range = ability === 'haste' ? (explicitHasteRange ?? sanitizedRange) : sanitizedRange;
   const description = RULE_DESCRIBED_ABILITIES.has(ability)
     ? buildResolvedDescription(ability, range)
-    : String(raw.description || buildDescription(ability, false, true)).slice(0, 120);
+    : String(card.description || buildDescription(ability, false, true)).slice(0, 120);
   const sideEffect = RULE_DESCRIBED_ABILITIES.has(ability)
     ? buildSideEffect(ability, false)
-    : String(raw.side_effect || raw.sideEffect || buildSideEffect(ability, false)).slice(0, 80);
+    : String(card.side_effect || card.sideEffect || buildSideEffect(ability, false)).slice(0, 80);
 
   // 处理 specialEffect
   let specialEffect = null;
-  if (raw.specialEffect && typeof raw.specialEffect === 'object') {
-    const se = raw.specialEffect;
+  if (card.specialEffect && typeof card.specialEffect === 'object') {
+    const se = card.specialEffect;
     const validTypes = ['mobile', 'movement', 'reactive', 'environmental', 'sacrifice', 'none'];
     const validTriggers = ['onTurnStart', 'onPlacement', 'onExpire', 'onResonance', 'none'];
     if (validTypes.includes(se.type) && validTriggers.includes(se.trigger)) {
@@ -403,22 +434,27 @@ function sanitizeCard(raw, playerText, source) {
     }
   }
 
-  return {
+  const sanitized = {
     id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-    name: String(raw.name || '未命名造物').slice(0, 14),
-    type: String(raw.type || TYPE_BY_ABILITY[ability] || '奇迹').slice(0, 10),
+    name: String(card.name || '未命名造物').slice(0, 14),
+    type: String(card.type || TYPE_BY_ABILITY[ability] || '奇迹').slice(0, 10),
     ability,
     tags,
     range,
-    duration: clamp(raw.duration, 1, 4, 3),
-    cost: clamp(raw.cost, 1, 3, 2),
-    stabilityCost: clamp(raw.stabilityCost ?? raw.stability_cost, 0, 2, 1),
+    duration: clamp(card.duration, 1, 4, 3),
+    cost: clamp(card.cost, 1, 3, 2),
+    stabilityCost: clamp(card.stabilityCost ?? card.stability_cost, 0, 2, 1),
     description: description.slice(0, 120),
     side_effect: sideEffect.slice(0, 80),
     specialEffect,
     playerText,
-    source: raw.source || source
+    source: card.source || source
   };
+
+  if (card.fallbackReason) sanitized.fallbackReason = String(card.fallbackReason).slice(0, 40);
+  if (card.fallbackMessage) sanitized.fallbackMessage = String(card.fallbackMessage).slice(0, 80);
+
+  return sanitized;
 }
 
 function clamp(value, min, max, fallback) {

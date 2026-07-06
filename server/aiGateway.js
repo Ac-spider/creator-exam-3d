@@ -36,6 +36,7 @@ export class AIGateway {
     this.stats.remainingCalls--;
 
     let lastError = null;
+    let lastReason = null;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       try {
         const result = await this._callProviderWithTimeout(request);
@@ -44,6 +45,7 @@ export class AIGateway {
           this.cache.set(cacheKey, result.json);
           return { data: result.json, fromCache: false, source: 'provider' };
         }
+        lastReason = result.reason || 'provider_failed';
         if (result.reason === 'missing_key') {
           break;
         }
@@ -53,16 +55,25 @@ export class AIGateway {
     }
 
     this.stats.fallbackCalls++;
-    return { data: request.fallback, fromCache: false, error: lastError?.message || 'provider_failed', source: 'fallback' };
+    return { data: request.fallback, fromCache: false, error: lastError?.message || lastReason || 'provider_failed', source: 'fallback' };
   }
 
   async _callProviderWithTimeout(request) {
     if (!this.provider) {
       return { ok: false, json: null, reason: 'no_provider' };
     }
+    const controller = new AbortController();
+    let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('timeout')), this.timeoutMs);
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(new Error('timeout'));
+      }, this.timeoutMs);
     });
-    return Promise.race([this.provider(request), timeoutPromise]);
+    try {
+      return await Promise.race([this.provider({ ...request, signal: controller.signal }), timeoutPromise]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 }
