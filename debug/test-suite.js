@@ -2,7 +2,8 @@
 // Comprehensive tests for game mechanics, AI systems, and narrative features
 
 import { DebugGame } from './debugGame.js';
-import { localCompile } from '../public/js/aiClient.js';
+import { GameEngine } from '../public/js/gameEngine.js';
+import { compileCreation, localCompile } from '../public/js/aiClient.js';
 import { LEVELS, TILE } from '../public/js/levels.js';
 import { legacySystem } from '../public/js/legacySystem.js';
 
@@ -121,6 +122,65 @@ runner.test('creation compile - two move actions should create tier-2 haste', ()
   runner.assertEqual(card.ability, 'haste', 'two move actions should infer haste');
   runner.assertEqual(card.range, 2, 'two move actions should map to haste tier 2');
   runner.assert(card.description.includes('3'), 'tier-2 haste description should mention the real movement limit');
+});
+
+runner.test('creation compile - explicit movement and hazard intents should win over generic keywords', () => {
+  const game = new DebugGame();
+  game.reset();
+
+  const haste = localCompile('给NPC加速但不要指路', game.getGameContext());
+  runner.assertEqual(haste.ability, 'haste', 'explicit speed boost should infer haste instead of path reveal');
+  runner.assert(haste.description.includes('2'), 'speed +1 card should describe the real 2-tile movement limit');
+
+  const revealPath = localCompile('指路并加速的灯塔', game.getGameContext());
+  runner.assertEqual(revealPath.ability, 'reveal_path', 'path wording should still infer reveal_path');
+
+  const redirect = localCompile('把洪水改道，不要让它吞路', game.getGameContext());
+  runner.assertEqual(redirect.ability, 'redirect_hazard', 'explicit hazard redirect should not be stolen by water absorption');
+});
+
+runner.test('creation compile - AI response should be corrected by explicit player intent', async () => {
+  const originalFetch = globalThis.fetch;
+  const makeResponse = (card) => ({
+    ok: true,
+    json: async () => card
+  });
+
+  try {
+    globalThis.fetch = async () => makeResponse({
+      name: '错配吸水卡',
+      type: '生物',
+      ability: 'absorb_water',
+      tags: ['水'],
+      range: 2,
+      duration: 3,
+      cost: 2,
+      stabilityCost: 1,
+      description: '错误地吸水。',
+      side_effect: '错误副作用。'
+    });
+    const redirect = await compileCreation('把洪水改道，不要让它吞路', { compileTimeoutMs: 1000 });
+    runner.assertEqual(redirect.ability, 'redirect_hazard', 'AI water card should be corrected to redirect_hazard');
+    runner.assert(redirect.description.includes('改道'), 'corrected hazard card should describe redirect behavior');
+
+    globalThis.fetch = async () => makeResponse({
+      name: '错配显路卡',
+      type: '奇迹',
+      ability: 'reveal_path',
+      tags: ['路径'],
+      range: 1,
+      duration: 3,
+      cost: 1,
+      stabilityCost: 0,
+      description: '错误地显示路径。',
+      side_effect: '错误副作用。'
+    });
+    const haste = await compileCreation('给NPC加速但不要指路', { compileTimeoutMs: 1000 });
+    runner.assertEqual(haste.ability, 'haste', 'AI path card should be corrected to haste');
+    runner.assert(haste.description.includes('2'), 'corrected haste card should describe the real movement limit');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 // 测试造物放置
@@ -1038,6 +1098,12 @@ runner.test('验证腐化能力 - 噬光悖论应避免伪装成普通光源视�
 
   runner.assert(game.includes('normalizeCreationName(card)'), '旧存档里的噬光能力也应使用反光源显示名');
   runner.assert(engine.includes('const creationName = normalizeCreationName(card)'), '世界事件里的噬光造物名也应归一化');
+  runner.assert(!engine.includes('${card.name}') && !engine.includes('${creation.card.name}') && !engine.includes('${trapHere.card.name}'), '核心引擎日志不应绕过造物显示名归一化');
+  const debugGame = new DebugGame();
+  const oldNamedTrap = { name: '噬光之灯', ability: 'trap', type: '测试', range: 1, duration: 1, cost: 0, tags: [] };
+  debugGame.applyImmediatePlacement({ card: oldNamedTrap, x: 1, y: 1, remaining: 1, placed: true, restores: [] });
+  runner.assert(debugGame.logs[0].text.includes('噬光黑核'), '核心引擎日志应实际输出归一化后的噬光黑核');
+  runner.assert(!debugGame.logs[0].text.includes('噬光之灯'), '核心引擎日志不应输出旧噬光之灯名称');
   runner.assert(game.includes('噬光黑核'), '噬光悖论在棋盘上应显示为反光源而不是普通灯');
   runner.assert(display.includes("replace(/噬光之灯/g, CONSUME_LIGHT_DISPLAY_NAME)"), '旧日志中的噬光之灯也应在展示时兼容成噬光黑核');
   runner.assertEqual(normalizeCreationName({ name: '噬光之灯', ability: 'consume_light' }), '噬光黑核', 'consume_light 应始终显示为噬光黑核');
@@ -1214,6 +1280,89 @@ runner.test('movement - haste should grant real extra steps', () => {
   const moved = game.moveUnitTowardGoal(unit, game.getUnitMoveSteps(unit));
   runner.assertEqual(moved, 2, 'haste should move two tiles in one turn');
   runner.assertEqual(unit.x, 2, 'unit should consume the extra action on the path');
+});
+
+runner.test('movement - placed haste card should grant real extra steps in core and debug games', () => {
+  for (const GameClass of [GameEngine, DebugGame]) {
+    const game = new GameClass();
+    game.reset();
+    game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+    game.units = [{
+      id: 'haste-chain-unit',
+      type: 'villager',
+      name: '测试NPC',
+      x: 0,
+      y: 0,
+      goal: { x: 4, y: 0 },
+      status: 'active',
+      guidedTurns: 0
+    }];
+    game.level.hazard = null;
+    game.level.memoryChaos = false;
+    game.level.requiredRescue = 99;
+    game.level.maxTurns = 10;
+    game.miraclePoints = 10;
+    game.creationCharges = 1;
+    game.triggerRandomEvent = () => null;
+    game.spreadHazards = () => null;
+    game.checkEndCondition = () => null;
+
+    const placed = game.createAndPlace('让NPC行动力加一', 0, 0);
+    runner.assertTrue(placed.success, `${GameClass.name} should place haste card`);
+    runner.assertEqual(game.creations[0].card.ability, 'haste', `${GameClass.name} should compile haste card`);
+
+    game.endTurn();
+    runner.assertEqual(game.units[0].x, 2, `${GameClass.name} should move the NPC two tiles after haste`);
+    runner.assertEqual(game.units[0].y, 0, `${GameClass.name} should keep following the path`);
+  }
+});
+
+runner.test('movement - chaos immunity should preserve goal path and extra movement', () => {
+  const game = new GameEngine();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  const unit = {
+    id: 'immune-chaos-unit',
+    type: 'villager',
+    name: '免疫NPC',
+    x: 1,
+    y: 1,
+    goal: { x: 4, y: 1 },
+    status: 'active',
+    guidedTurns: 0,
+    immuneChaos: 1,
+    moveSpeed: 2,
+    hasteTurns: 1
+  };
+  game.units = [unit];
+  game.level.memoryChaos = true;
+
+  const originalRandom = Math.random;
+  Math.random = () => 0.6;
+  try {
+    game.moveCivilian(unit);
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  runner.assertEqual(unit.x, 3, 'immune NPC should ignore random wandering and spend haste on the goal path');
+  runner.assertEqual(unit.y, 1, 'immune NPC should not drift off the path');
+});
+
+runner.test('creation behavior - hazard redirect card should change real hazard tiles', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.terrain[0][1] = TILE.WATER;
+  game.terrain[1][0] = TILE.FOG;
+  game.miraclePoints = 10;
+  game.creationCharges = 1;
+
+  const result = game.createAndPlace('把洪水改道，不要让它吞路', 0, 0);
+  runner.assertTrue(result.success, 'hazard redirect card should be placeable');
+  runner.assertEqual(game.creations[0].card.ability, 'redirect_hazard', 'card should keep redirect_hazard ability');
+  runner.assertEqual(game.getTerrain(1, 0), TILE.BRIDGE, 'nearby water should become a bridge');
+  runner.assertEqual(game.getTerrain(0, 1), TILE.LAND, 'nearby fog should become safe land');
 });
 
 runner.test('pathfinding - weighted A* should allow cheaper updates', () => {
@@ -4795,7 +4944,7 @@ runner.test('Night Watch dynamic towers - should derive different tower plans fr
     },
     causes: [],
     buffChoices: [
-      { id: '<bad id>', name: 'Bad buff', description: 'test', reason: 'test', effect: { type: 'made_up', value: 999, towerTypes: ['slow', 'madeUpTower'] } }
+      { id: '<bad id>', name: '越界加成', description: '测试', reason: '测试', effect: { type: 'made_up', value: 999, towerTypes: ['slow', 'madeUpTower'] } }
     ]
   }, waterMemory);
 
@@ -4810,6 +4959,7 @@ runner.test('Night Watch dynamic towers - should derive different tower plans fr
   runner.assert(sanitized.buffChoices[0].effect.type !== 'made_up', 'invalid buff effect types should be replaced');
   runner.assert(sanitized.buffChoices[0].effect.towerTypes.every(type => sanitized.towerPool.includes(type)), 'buff tower types should stay inside the selected tower pool');
 });
+
 runner.test('Air Combat integration - should keep finite airspace bridge and result wiring', async () => {
   const { readFileSync } = await import('node:fs');
   const bridge = readFileSync(new URL('../public/modes/air-combat/airCombatBridge.js', import.meta.url), 'utf8');
@@ -4827,6 +4977,8 @@ runner.test('Air Combat integration - should keep finite airspace bridge and res
   runner.assert(airGame.includes('class Boss'), 'air combat should include Boss logic');
   runner.assert(airGame.includes('class Enemy'), 'air combat should include enemy logic');
   runner.assert(airGame.includes('useSkill()'), 'air combat should include creation weapon pulse');
+  runner.assert(airGame.includes('movingWallGap') && airGame.includes('wallGapStep') && airGame.includes('laneOffset'), 'air combat wall Boss should sweep the safe gap horizontally');
+  runner.assert(airGame.includes('bossContactCd') && airGame.includes('this.player.takeDamage(28 + this.boss.def.stage * 2)'), 'air combat Boss body contact should damage the player with cooldown');
   runner.assert(airGame.includes("finish('victory')"), 'air combat should have a finite victory route');
   runner.assert(airGame.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'air combat should expose browser readiness');
   runner.assert(airGame.includes("dataset.airCombatReady = 'true'"), 'air combat readiness should be visible to DOM smoke tests');
@@ -4861,17 +5013,24 @@ runner.test('Air Combat integration - should keep finite airspace bridge and res
 runner.test('Test jump UI - should expose all levels and mode buttons only', async () => {
   const { readFileSync } = await import('node:fs');
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
   const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
 
   for (let i = 0; i < LEVELS.length; i += 1) {
     runner.assert(html.includes(`data-test-level="${i}"`), `test UI should include level ${i + 1}`);
   }
+  runner.assert(html.includes('id="test-jump-panel" class="test-jump-panel" open'), 'test UI should keep sandbox buttons in normal layout flow');
+  runner.assert(styles.includes('.test-jump-panel:not([open]) .test-jump-grid'), 'closed test sandbox should not leak hidden buttons over later panels');
   runner.assert(html.includes('id="test-night-watch-btn"'), 'test UI should include tower-defense button');
   runner.assert(html.includes('id="test-air-combat-btn"'), 'test UI should include air-combat button');
   runner.assert(!html.includes('docs/superpowers/specs/2026-07-05-air-combat-integration-concept.md'), 'test UI should not expose internal doc paths');
   runner.assert(game.includes('jumpToTestLevel(index)'), 'game.js should include test level jump handler');
   runner.assert(game.includes('openNightWatchTestMode()'), 'game.js should include local tower-defense test handler');
   runner.assert(game.includes('openAirCombatMode()'), 'game.js should include air-combat test handler');
+  runner.assert(game.includes('if (options.testEntry)') && game.includes('window.location.href = url.toString()'), 'air-combat test entry should navigate in-page for browser verification');
+  runner.assert(game.includes('window.__creatorExam3D = this'), 'browser game should expose the live instance for behavior verification');
+  runner.assert(game.includes('updateDebugDataset()') && game.includes('dataset.debugState'), 'browser game should expose compact DOM debug state for behavior verification');
+  runner.assert(game.includes('return super.moveCivilian(unit)') && game.includes('return super.moveMessenger(unit)'), 'browser movement should reuse core movement rules');
 });
 
 runner.run().then(success => {

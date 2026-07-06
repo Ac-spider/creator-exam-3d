@@ -1136,6 +1136,10 @@ button.small {
   color: var(--text);
 }
 
+.test-jump-panel:not([open]) .test-jump-grid {
+  display: none;
+}
+
 .test-jump-grid {
   display: none;
   grid-template-columns: repeat(4, minmax(0, 1fr));

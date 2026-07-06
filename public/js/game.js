@@ -140,6 +140,7 @@ class CreatorExam3D extends GameEngine {
     this.selectedRitualCreations = new Set();
     this.selectedWorkshopItems = new Set();
     this.currentAbyssRiddle = null;
+    this.suppressAbyssAutoRiddle = false;
     this.materials = new Map();
     this.geometryCache = new Map();
     this.labelCache = new Map();
@@ -176,6 +177,7 @@ class CreatorExam3D extends GameEngine {
     this.turnUnlockTimer = null;
 
     this.ui = this.collectUi();
+    window.__creatorExam3D = this;
     this.initScene();
     this.bindEvents();
     this.bindSaveSlotUI();
@@ -192,6 +194,7 @@ class CreatorExam3D extends GameEngine {
     this.selectedRitualCreations.clear();
     this.selectedWorkshopItems.clear();
     this.currentAbyssRiddle = null;
+    this.suppressAbyssAutoRiddle = false;
     this.isResolvingTurn = false;
     if (this.turnUnlockTimer) {
       window.clearTimeout(this.turnUnlockTimer);
@@ -696,6 +699,7 @@ class CreatorExam3D extends GameEngine {
     this.ui.cardSide.textContent = `副作用：${card.side_effect}`;
     this.ui.cardTags.innerHTML = card.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('');
     this.ui.placeBtn.disabled = card.cost > this.miraclePoints || this.creationCharges <= 0;
+    this.updateDebugDataset();
   }
 
   startPlacement() {
@@ -1060,6 +1064,12 @@ class CreatorExam3D extends GameEngine {
     const url = new URL('./modes/air-combat/index.html', window.location.href);
     url.searchParams.set('from', 'creator-exam');
     if (options.testEntry) url.searchParams.set('testEntry', '1');
+
+    if (options.testEntry) {
+      window.location.href = url.toString();
+      return;
+    }
+
     try {
       const response = await fetch(url.toString(), { method: 'HEAD' });
       if (response.ok) {
@@ -2458,6 +2468,72 @@ class CreatorExam3D extends GameEngine {
     this.renderNightWatchPanel();
     this.renderAirCombatPanel();
     this.renderIntentArrows();
+    this.updateDebugDataset();
+  }
+
+  updateDebugDataset() {
+    if (!this.root) return;
+    try {
+      this.root.dataset.debugState = JSON.stringify({
+        levelId: this.level?.id || '',
+        turn: this.turn,
+        gameState: this.gameState,
+        activeCard: this.activeCard ? {
+          name: this.getCreationDisplayName(this.activeCard),
+          ability: this.activeCard.ability,
+          range: this.activeCard.range,
+          duration: this.activeCard.duration,
+          description: this.activeCard.description,
+          playerText: this.activeCard.playerText || ''
+        } : null,
+        units: this.units.map(unit => ({
+          id: unit.id,
+          name: unit.name,
+          type: unit.type,
+          x: unit.x,
+          y: unit.y,
+          goal: unit.goal ? { ...unit.goal } : null,
+          status: unit.status,
+          moveSpeed: unit.moveSpeed || 1,
+          moveBonus: unit.moveBonus || 0,
+          revealedPath: unit.revealedPath || 0,
+          guidedTurns: unit.guidedTurns || 0,
+          immuneChaos: unit.immuneChaos || 0
+        })),
+        creations: this.creations.map(creation => ({
+          id: creation.id,
+          name: this.getCreationDisplayName(creation.card),
+          ability: creation.card.ability,
+          x: creation.x,
+          y: creation.y,
+          remaining: creation.remaining,
+          placed: creation.placed !== false
+        })),
+        tiles: this.getDebugTileScreens(),
+        logs: this.logs.slice(0, 6).map(entry => entry.text)
+      });
+    } catch (error) {
+      delete this.root.dataset.debugState;
+    }
+  }
+
+  getDebugTileScreens() {
+    if (!this.camera || !this.renderer) return [];
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const tiles = [];
+    for (let y = 0; y < BOARD_SIZE; y += 1) {
+      for (let x = 0; x < BOARD_SIZE; x += 1) {
+        const world = this.tileToWorld(x, y);
+        const projected = new THREE.Vector3(world.x, 0, world.z).project(this.camera);
+        tiles.push({
+          x,
+          y,
+          screenX: Math.round(rect.left + ((projected.x + 1) / 2) * rect.width),
+          screenY: Math.round(rect.top + ((-projected.y + 1) / 2) * rect.height)
+        });
+      }
+    }
+    return tiles;
   }
 
   setTurnControlsPending(pending) {
@@ -2619,12 +2695,16 @@ class CreatorExam3D extends GameEngine {
         this.triggerAbyssDemo();
         break;
       case 'submit-riddle':
-        if (this.currentAbyssRiddle?.decoded && this.ui.abyssRiddleInput) {
-          this.ui.abyssRiddleInput.value = this.currentAbyssRiddle.decoded;
+        {
+          const riddle = this.currentAbyssRiddle || this.cognitiveAbyss?.currentRiddle;
+          if (!riddle) break;
+          this.currentAbyssRiddle = riddle;
+          const answer = this.ui.advancedDecodeInput?.value?.trim() || riddle.decoded;
+          if (this.ui.advancedDecodeInput) this.ui.advancedDecodeInput.value = answer;
+          if (this.ui.abyssRiddleInput) this.ui.abyssRiddleInput.value = answer;
           this.handleDecodeAbyss();
           return;
         }
-        break;
     }
     this.renderWorld();
     this.updateUi();
@@ -2723,6 +2803,7 @@ class CreatorExam3D extends GameEngine {
   triggerAbyssDemo() {
     this.entropy = Math.max(this.entropy, Math.ceil((this.level.entropyLimit || 7) * 0.9));
     this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
+    this.suppressAbyssAutoRiddle = false;
     this.currentAbyssRiddle = this.generateAbyssRiddle('instruction');
     if (this.currentAbyssRiddle) {
       this.addLog(`【深渊演示】谜题出现：${this.currentAbyssRiddle.displayed}`, true);
@@ -2913,8 +2994,10 @@ class CreatorExam3D extends GameEngine {
 
   triggerOathBreakDemo() {
     const oath = this.oathManager.getAllActiveOaths()[0];
-    if (!oath) return this.triggerOathDemo();
-    this.handleBreakOath(oath.id);
+    if (oath) return this.handleBreakOath(oath.id);
+    this.triggerOathDemo();
+    const created = this.oathManager.getAllActiveOaths()[0];
+    if (created) this.handleBreakOath(created.id);
   }
 
   triggerLegacyDemo() {
@@ -2990,6 +3073,21 @@ class CreatorExam3D extends GameEngine {
   triggerSocialDemo() {
     const graph = this.npcManager?.socialGraph;
     const npcs = this.npcManager?.getNPCSummary?.() || [];
+    if (graph && npcs.length < 3 && Array.isArray(this.npcManager?.npcs)) {
+      const seeded = [
+        { id: 'social-demo-witness-a', name: '裂隙见证者', type: 'witness', mood: '好奇', attitude: '中立', dynamicTraits: { trustLevel: 45, fearLevel: 35, hopeLevel: 55 }, memories: [] },
+        { id: 'social-demo-witness-b', name: '回声记录员', type: 'scribe', mood: '专注', attitude: '友善', dynamicTraits: { trustLevel: 55, fearLevel: 25, hopeLevel: 60 }, memories: [] },
+        { id: 'social-demo-witness-c', name: '边境联络人', type: 'messenger', mood: '警觉', attitude: '谨慎', dynamicTraits: { trustLevel: 40, fearLevel: 45, hopeLevel: 45 }, memories: [] }
+      ];
+      for (const npc of seeded) {
+        if (npcs.length >= 3) break;
+        if (this.npcManager.npcs.some(existing => existing.id === npc.id)) continue;
+        this.npcManager.npcs.push(npc);
+        graph.addNode(npc.id, npc);
+        graph.joinFaction?.(npc.id, this.level?.id || 'demo');
+        npcs.push(npc);
+      }
+    }
     if (!graph || npcs.length < 3) {
       this.showToast('当前关卡 NPC 不足，无法形成社交图谱演示。');
       return;
@@ -3196,7 +3294,8 @@ class CreatorExam3D extends GameEngine {
         this.showToast(`${unit.name}：${reply}`);
 
         if (npc) {
-          this.npcManager.updateNPCMemory(npc.id, `造物者问："${input}"；回应："${reply}"`);
+          const memoryInput = hasFabricatedPremisePrompt(input) ? '未被证实的外来传闻' : input;
+          this.npcManager.updateNPCMemory(npc.id, `造物者问："${memoryInput}"；回应："${reply}"`);
           this.npcManager.playerBehavior.dialogues += 1;
           if (this.npcManager.playerBehavior.dialogues >= this.npcManager.attitudeThresholds.dialogue.threshold) {
             this.npcManager.updateNPCAttitude(npc.id, this.npcManager.attitudeThresholds.dialogue.delta);
@@ -3836,11 +3935,17 @@ class CreatorExam3D extends GameEngine {
       return;
     }
 
-    if (!this.currentAbyssRiddle) {
+    if (!this.currentAbyssRiddle && !this.suppressAbyssAutoRiddle) {
       this.currentAbyssRiddle = this.generateAbyssRiddle('instruction');
     }
 
     const riddle = this.currentAbyssRiddle;
+    if (!riddle) {
+      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">深渊静默，未生成谜题。</div>';
+      this.ui.abyssRiddleInput.classList.add('hidden');
+      this.ui.abyssDecodeBtn.classList.add('hidden');
+      return;
+    }
     const active = riddle && riddle.active !== false;
     const depth = riddle?.depth ?? 0;
     if (!active && depth < 0.8) {
@@ -4014,7 +4119,7 @@ class CreatorExam3D extends GameEngine {
   }
 
   handleDecodeAbyss() {
-    const input = this.ui.abyssRiddleInput?.value?.trim();
+    const input = this.ui.advancedDecodeInput?.value?.trim() || this.ui.abyssRiddleInput?.value?.trim();
     if (!input) {
       this.showToast('请输入解码答案。');
       return;
@@ -4032,7 +4137,9 @@ class CreatorExam3D extends GameEngine {
 
     if (result.success) {
       this.currentAbyssRiddle = null;
-      this.ui.abyssRiddleInput.value = '';
+      this.suppressAbyssAutoRiddle = true;
+      if (this.ui.advancedDecodeInput) this.ui.advancedDecodeInput.value = '';
+      if (this.ui.abyssRiddleInput) this.ui.abyssRiddleInput.value = '';
       if (result.reward) {
         if (result.reward.type === 'knowledge') {
           this.showToast(`获得知识：${result.reward.category}`);
@@ -4870,60 +4977,11 @@ class CreatorExam3D extends GameEngine {
   }
 
   moveCivilian(unit) {
-    if (this.isGoalReached(unit)) {
-      this.rescueUnit(unit);
-      return;
-    }
-
-    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['guide', 'memory_beacon', 'illuminate']);
-    let moved = 0;
-    if (this.level.memoryChaos && !guided && Math.random() < 0.45) {
-      const next = this.randomPassableNeighbor(unit);
-      if (next) {
-        unit.x = next.x;
-        unit.y = next.y;
-        moved = 1;
-        this.addLog(`${unit.name} is confused and wanders off path.`);
-      }
-    } else {
-      moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
-    }
-
-    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
-      this.addLog(`${unit.name} uses extra action to move ${moved} steps.`);
-    }
-    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
-    if (unit.revealedPath > 0) unit.revealedPath -= 1;
-    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
-    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
-    if (this.isGoalReached(unit)) this.rescueUnit(unit);
+    return super.moveCivilian(unit);
   }
 
   moveMessenger(unit) {
-    if (this.isGoalReached(unit)) {
-      unit.met = true;
-      return;
-    }
-    const terrain = this.getTerrain(unit.x, unit.y);
-    const guided = unit.guidedTurns > 0 || this.nearActiveAbility(unit.x, unit.y, ['calm', 'guide', 'memory_beacon']);
-    if ((terrain === TILE.FOG || terrain === TILE.DARK) && !guided) {
-      this.warMeter = Math.min(this.level.hazard?.warLimit || 9, this.warMeter + 1);
-      this.addLog(`${unit.name} misjudges the fog; war meter +1.`);
-      return;
-    }
-
-    const moved = this.moveUnitTowardGoal(unit, this.getUnitMoveSteps(unit));
-    if ((unit.revealedPath > 0 || unit.moveSpeed > 1 || unit.moveBonus > 0) && moved > 1) {
-      this.addLog(`${unit.name} uses extra action to move ${moved} steps.`);
-    }
-    if (unit.guidedTurns > 0) unit.guidedTurns -= 1;
-    if (unit.revealedPath > 0) unit.revealedPath -= 1;
-    if (unit.hasteTurns > 0) unit.hasteTurns -= 1;
-    if (unit.hasteTurns === 0) unit.moveSpeed = 1;
-    if (this.isGoalReached(unit)) {
-      unit.met = true;
-      this.addLog(`${unit.name} reaches the border meeting point.`, true);
-    }
+    return super.moveMessenger(unit);
   }
 
   calculateFullPath(unit) {
