@@ -528,6 +528,8 @@
     creationOverload: 0,
     painConverted: 0,
     pointDefenseCleared: 0,
+    livingArmorKills: 0,
+    livingArmorHpGained: 0,
     lastStandTriggered: false,
     jammedTime: 0,
     resultId: '',
@@ -565,6 +567,8 @@
       this.creationOverload = 0;
       this.painConverted = 0;
       this.pointDefenseCleared = 0;
+      this.livingArmorKills = 0;
+      this.livingArmorHpGained = 0;
       this.lastStandTriggered = false;
       this.jammedTime = 0;
       this.resultId = '';
@@ -862,6 +866,7 @@
       this.burst(enemy.x, enemy.y, enemy.color, 14);
       if (enemy.type === 'detonator') this.fireRing(enemy.x, enemy.y, enemy.ringCount || 14, enemy.ringSpeed || 210, enemy.ringDamage || 9);
       this.pointDefenseCleared += this.triggerPointDefense(enemy);
+      this.triggerLivingArmorGrowth();
       if (enemy.type === 'carrier') this.spawnCarrierChildren(enemy);
       if (enemy.type === 'splitter') {
         for (let i = 0; i < 2; i += 1) {
@@ -906,6 +911,22 @@
       const range = Number(this.resonance.pointDefenseRange) || 0;
       if (!enemy || range <= 0) return 0;
       return this.clearEnemyBulletsNear(enemy.x, enemy.y, range, '#74c0fc');
+    },
+
+    triggerLivingArmorGrowth() {
+      const every = Number(this.resonance.livingArmorEvery) || 0;
+      const hp = Number(this.resonance.livingArmorHp) || 0;
+      const maxHp = Number(this.resonance.livingArmorMaxHp) || 0;
+      if (!this.player || every <= 0 || hp <= 0 || maxHp <= 0) return 0;
+      this.livingArmorKills += 1;
+      if (this.livingArmorKills % every !== 0) return 0;
+      const gain = Math.min(hp, maxHp - this.livingArmorHpGained);
+      if (gain <= 0) return 0;
+      this.livingArmorHpGained += gain;
+      this.player.maxHp += gain;
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + gain);
+      this.burst(this.player.x, this.player.y, '#2f9e44', 10);
+      return gain;
     },
 
     repairNearbyEnemies(source) {
@@ -1076,6 +1097,7 @@
       if (this.creationOverload >= 3) tags.push('频繁脉冲');
       if (this.painConverted >= 2) tags.push('痛觉转译');
       if (this.pointDefenseCleared >= 4) tags.push('近防协议');
+      if (this.livingArmorHpGained > 0) tags.push(`活性装甲 +${this.livingArmorHpGained}HP`);
       if (this.lastStandTriggered) tags.push('黑匣子保险');
       if (this.cleanClears >= 2) tags.push('完美清算');
       if (this.route.some(boss => boss.affix?.attack === 'prism')) tags.push('棱镜航线');
@@ -1104,6 +1126,7 @@
         creationOverload: this.creationOverload,
         painConverted: Math.round(this.painConverted * 10) / 10,
         pointDefenseCleared: this.pointDefenseCleared,
+        livingArmorHpGained: this.livingArmorHpGained,
         jammedTime: Math.round(this.jammedTime),
         rescuedEchoes: victory ? this.difficulty.allyWings + this.clearedLayers : this.clearedLayers,
         endingModifier: victory ? 'airspace_cleansed' : 'airspace_scarred',
@@ -1164,7 +1187,7 @@
         const cd = active?.affix?.attack ? ` · ${Math.max(0, active.affixTimer || 0).toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${cd}` : '';
       }
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.shieldAmplifierStatus()}${this.bossHunterStatus()}${this.executionerStatus()}${this.missileVolleyStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.signalFilterStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
+      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.shieldAmplifierStatus()}${this.bossHunterStatus()}${this.executionerStatus()}${this.missileVolleyStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.livingArmorStatus()}${this.signalFilterStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
@@ -1218,6 +1241,11 @@
 
     pointDefenseStatus() {
       return (this.resonance.pointDefenseRange || 0) > 0 ? ' · 近防协议' : '';
+    },
+
+    livingArmorStatus() {
+      const maxHp = Number(this.resonance.livingArmorMaxHp) || 0;
+      return maxHp > 0 ? ` · 活性装甲+${this.livingArmorHpGained}/${maxHp}HP` : '';
     },
 
     signalFilterStatus() {

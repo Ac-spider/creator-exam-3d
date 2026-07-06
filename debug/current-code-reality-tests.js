@@ -239,6 +239,7 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('近防协议') && bridgeSource.includes('pointDefenseRange'), 'air bridge must adapt upstream point defense as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('抗干扰滤波') && bridgeSource.includes('signalFilterJamResist'), 'air bridge must adapt upstream anti-jam bonus as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('flowHpBonus') && bridgeSource.includes('机体构筑记录前置流程'), 'air bridge must adapt upstream HP build visibility into finite prior-flow resonance');
+  assert.ok(bridgeSource.includes('活性装甲') && bridgeSource.includes('livingArmorEvery'), 'air bridge must adapt upstream living armor as finite prior-flow resonance');
   assert.ok(bridgeSource.includes('splitPairs') && bridgeSource.includes('分束棱镜'), 'air bridge must adapt upstream split laser as beam resonance');
   assert.ok(bridgeSource.includes('sidePairs') && bridgeSource.includes('侧翼炮塔'), 'air bridge must adapt upstream side cannons as cannon resonance');
 
@@ -288,6 +289,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('clearEnemyBulletsNear') && airGameSource.includes('triggerPointDefense') && airGameSource.includes('pointDefenseStatus'), 'air combat slice must clear enemy bullets near kills for finite point-defense resonance');
   assert.ok(airGameSource.includes('signalFilterStatus') && airGameSource.includes('signalFilterJamResist') && airGameSource.includes('Math.max(0.35, 1 - resist)'), 'air combat slice must reduce jammer slow with finite anti-jam resonance');
   assert.ok(airGameSource.includes('机体构筑') && airGameSource.includes('flowHpBonus'), 'air combat finite review must show prior-flow HP build gains');
+  assert.ok(airGameSource.includes('triggerLivingArmorGrowth') && airGameSource.includes('livingArmorHpGained') && airGameSource.includes('livingArmorStatus'), 'air combat slice must grow max HP from finite living armor resonance');
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
   assert.ok(airGameSource.includes('sideDamage') && airGameSource.includes('#ffd43b'), 'air combat slice must fire finite side cannon shots for cannon resonance');
   assert.ok(airGameSource.includes('showClearanceCard') && airGameSource.includes('updateClearanceCard'), 'air combat must show a short boss clearance card after each boss defeat');
@@ -367,6 +369,8 @@ function assertAirCombatRouteBalance() {
   assert.ok(highPressure.routeResonance().pointDefenseRange > 0, 'rescued residents should unlock finite point-defense resonance');
   assert.ok(highPressure.routeResonance().signalFilterJamResist > 0, 'light/memory or stable defense flow should unlock finite anti-jam resonance');
   assert.ok(highPressure.routeResonance().signalFilterJamResist <= 0.28, 'anti-jam resonance must stay bounded');
+  assert.equal(highPressure.routeResonance().livingArmorEvery, 12, 'stable defense flow should unlock finite living armor growth');
+  assert.equal(highPressure.routeResonance().livingArmorMaxHp, 30, 'finite living armor growth must stay capped');
   for (const boss of highRoute) {
     assert.ok(['prism', 'ionStorm', 'ring', 'escort', 'repair', undefined].includes(boss.affix.attack), `unknown finite affix attack ${boss.affix.attack}`);
     assert.ok(boss.hp >= 300 && boss.hp <= 1100, `boss ${boss.title} hp is outside finite route bounds`);

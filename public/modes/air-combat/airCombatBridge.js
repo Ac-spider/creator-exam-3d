@@ -549,6 +549,9 @@
       pointDefenseRange: 0,
       signalFilterJamResist: 0,
       flowHpBonus: 0,
+      livingArmorEvery: 0,
+      livingArmorHp: 0,
+      livingArmorMaxHp: 0,
       sourceCreation: weapon.sourceCreation,
       ...base,
       towerDefenseRelief: !!defense.victory
@@ -613,6 +616,12 @@
     if (residentsCount() >= 2 || weapon.kind === 'spear') {
       resonance.pointDefenseRange = Math.min(190, 126 + residentsCount() * 12 + (weapon.kind === 'spear' ? 24 : 0));
       resonance.effect = `${resonance.effect} 近防协议会在击杀点清除附近敌弹。`;
+    }
+    if (weapon.kind === 'shield' || (defense.victory && residentsCount() >= 2)) {
+      resonance.livingArmorEvery = 12;
+      resonance.livingArmorHp = 3;
+      resonance.livingArmorMaxHp = 30;
+      resonance.effect = `${resonance.effect} 活性装甲会每 12 次清敌成长 +3HP，上限 +30HP。`;
     }
     const abilityText = creations().map(creationAbility).join(' ');
     const antiJamSeed = /illuminate|memory_beacon|dream_link|guide/.test(abilityText) || weapon.kind === 'spear' || weapon.kind === 'wing';
@@ -835,6 +844,7 @@
       creationOverload: result.creationOverload || 0,
       painConverted: Math.max(0, Math.round((result.painConverted || 0) * 10) / 10),
       pointDefenseCleared: Math.max(0, Math.round(result.pointDefenseCleared || 0)),
+      livingArmorHpGained: Math.max(0, Math.round(result.livingArmorHpGained || 0)),
       jammedTime: Math.max(0, Math.round(result.jammedTime || 0)),
       rescuedEchoes: result.rescuedEchoes || 0,
       endingModifier: result.endingModifier || (result.outcome === 'victory' ? 'airspace_cleansed' : 'airspace_scarred'),
