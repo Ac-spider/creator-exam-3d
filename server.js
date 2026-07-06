@@ -16,6 +16,7 @@ import {
   sanitizeNightWatchTowerPlan
 } from './server/nightWatchTowers.js';
 import { sanitizeResidentDialogueEnvelope } from './public/js/dialogueGrounding.js';
+import { ABILITY_SET as ABILITIES, RULE_DESCRIBED_ABILITIES } from './public/js/abilities.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,41 +58,7 @@ const aiGateway = new AIGateway({
   }
 });
 
-const ABILITIES = new Set([
-  'absorb_water',
-  'create_bridge',
-  'illuminate',
-  'gale',
-  'block',
-  'calm',
-  'guide',
-  'cleanse',
-  'slow_beast',
-  'memory_beacon',
-  'force_field',
-  'transform_land',
-  'freeze_water',
-  'reveal_path',
-  'sun_blessing',
-  'raise_earth',
-  'grow_forest',
-  'dig_channel',
-  'trap',
-  'dream_link',
-  'time_dilation',
-  'haste',
-  'teleport',
-  'shield_units',
-  'redirect_hazard'
-]);
-
-const RULE_DESCRIBED_ABILITIES = new Set([
-  'reveal_path',
-  'haste',
-  'teleport',
-  'shield_units',
-  'redirect_hazard'
-]);
+// ABILITIES and RULE_DESCRIBED_ABILITIES are imported from ./public/js/abilities.js
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -364,6 +331,12 @@ function buildResolvedDescription(ability, range) {
   if (ability === 'shield_units') return '给附近单位套上短暂护盾，抵消危险地形伤害。';
   if (ability === 'redirect_hazard') return '临时改道附近最多两格洪水、迷雾或污染，打开安全通路。';
   if (ability === 'reveal_path') return '显示附近单位的最优路径，并让其短时间更快移动。';
+  if (ability === 'steam_burst') return '蒸汽爆发，制造遮蔽迷雾并让附近单位短暂失去路径感。';
+  if (ability === 'nature_awakening') return '自然觉醒，将附近土地化为森林并增强单位行动力。';
+  if (ability === 'rift_sealing') return '封印裂隙3点，消耗范围内记忆信标。';
+  if (ability === 'beast_taming') return '驯服附近巨兽，使其安静且迟缓2回合。';
+  if (ability === 'time_weave') return '延长所有活跃造物2回合持续时间。';
+  if (ability === 'dig_channel') return '挖掘排水渠道，吸收附近水域并引走洪水。';
   return '由规则系统整理出的可执行造物效果。';
 }
 
@@ -373,6 +346,12 @@ function buildResolvedSideEffect(ability) {
   if (ability === 'shield_units') return '护盾会在抵消伤害后快速衰减。';
   if (ability === 'redirect_hazard') return '被改道的灾害可能在造物消失后回流。';
   if (ability === 'reveal_path') return '显示路径会消耗单位体力。';
+  if (ability === 'steam_burst') return '蒸汽会短暂阻挡视野。';
+  if (ability === 'nature_awakening') return '森林可能阻碍己方通行。';
+  if (ability === 'rift_sealing') return '消耗记忆信标不可逆。';
+  if (ability === 'beast_taming') return '驯服效果可能衰退。';
+  if (ability === 'time_weave') return '时间编织会进一步撕裂世界稳定性。';
+  if (ability === 'dig_channel') return '水渠需要持续维护，否则可能被回水淹没。';
   return '世界裂隙轻微上升。';
 }
 
@@ -414,6 +393,7 @@ function buildFallbackCreation(text, fallbackReason = 'no_key') {
     : wantsDreamLink(clean) ? 'dream_link'
     : wantsGale(clean) ? 'gale'
     : /redirect|改道|转向|引流|分洪|风向|吹走/.test(clean) ? 'redirect_hazard'
+    : /挖|渠|沟|排水|导流|疏洪|水道|水槽|渠道/.test(clean) ? 'dig_channel'
     : /water|flood|river|雨|水|洪/.test(clean) ? 'absorb_water'
     : /light|lamp|sun|光|灯|照/.test(clean) ? 'illuminate'
     : /gale|大风|吹散|驱散迷雾|迷雾|清风|狂风|暴风|岚/.test(clean) ? 'gale'
@@ -498,14 +478,21 @@ async function handleCompileCreation(req, res) {
 - sun_blessing：大范围光照+恢复单位体力
 - raise_earth：抬升地面形成临时高地
 - grow_forest：种植森林阻挡灾害扩散
-- dig_channel：挖掘水渠引导洪水流向
 - trap：设置陷阱迟缓巨兽
 - dream_link：连接两个单位共享视野
-- time_dilation：延缓时间增加1回合（高代价）
+- time_dilation：延缓时间增加2回合（高代价）
 - haste：增加行动力；加一行动力用range=1，加二行动力用range=2，单位每回合可多走
 - teleport：有限范围传送一名相邻/附近单位到目标点，高cost和高stabilityCost
 - shield_units：给附近单位短暂护盾，抵消一次危险地形伤害
 - redirect_hazard：临时改道洪水、迷雾、污染等灾害，打开通路
+- dig_channel：挖掘水渠引导洪水流向，将水域/沼泽转为可通行平地
+
+【融合能力】（由造物者工坊融合产生，玩家不能直接选择）
+- steam_burst：蒸汽爆发，制造遮蔽迷雾并让附近单位短暂失去路径感
+- nature_awakening：自然觉醒，将附近土地化为森林并增强单位
+- rift_sealing：封印裂隙3点，消耗范围内记忆信标
+- beast_taming：驯服附近巨兽使其安静迟缓
+- time_weave：延长所有活跃造物2回合持续时间
 
 【JSON Schema】
 {

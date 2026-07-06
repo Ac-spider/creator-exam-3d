@@ -108,7 +108,6 @@ class GameEngine {
       ...unit,
       residentId: unit.residentId || this.resolveUnitResidentId(unit, unitIndex)
     }))
-    this.applyLegacyUnitEffects();
     this.creations = []
     this.turn = 1
     this.rescued = 0
@@ -143,6 +142,7 @@ class GameEngine {
       }
     }
     this.legacyUnits = legacyNPCs;
+    this.applyLegacyUnitEffects(this.legacyUnits);
 
     // 加载会作为真实棋盘单位回归的传承角色，而不只是 NPC 面板展示。
     const legacyReturnUnits = legacySystem.getUnitsForNextLevel(this.level.id);
@@ -288,10 +288,10 @@ class GameEngine {
     };
   }
 
-  applyLegacyUnitEffects() {
+  applyLegacyUnitEffects(legacyNPCs = []) {
     const legacyByName = new Map();
-    for (const legacy of legacySystem.legacyUnits.values()) {
-      legacyByName.set(legacy.name, legacy);
+    for (const legacy of legacyNPCs) {
+      if (legacy && legacy.name) legacyByName.set(legacy.name, legacy);
     }
 
     for (const unit of this.units) {
@@ -315,6 +315,7 @@ class GameEngine {
       }
       if (legacy.tier === 'legend' || legacy.tier === 'ancestor') {
         unit.moveBonus = (unit.moveBonus || 0) + 1;
+        this.log(`【传承】${unit.name} 获得先祖移速加成，本关移动 +1 格。`);
       }
 
       // Apply trait effects
@@ -339,6 +340,7 @@ class GameEngine {
             break;
           case 'move_speed_plus':
             unit.moveBonus = (unit.moveBonus || 0) + 1;
+            this.log(`【传承】${unit.name} 获得移速特质加成，本关移动 +1 格。`);
             break;
           case 'guide_others':
             unit.guideOthers = true;
@@ -2027,7 +2029,14 @@ class GameEngine {
     const speed = Math.max(1, Math.floor(Number(unit.moveSpeed || 1)));
     const bonus = Math.max(0, Math.floor(Number(unit.moveBonus || 0)));
     const revealBonus = unit.revealedPath > 0 ? 1 : 0;
-    return Math.max(1, Math.min(3, Math.max(speed, 1 + bonus + revealBonus)));
+    const steps = Math.max(1, Math.min(3, Math.max(speed, 1 + bonus + revealBonus)));
+
+    // 防御性降级：若步数大于 1 但没有任何合法加成来源，则强制移动 1 格并记录警告
+    if (steps > 1 && speed <= 1 && bonus <= 0 && revealBonus <= 0) {
+      this.log(`【警告】${unit.name} 的移动步数被计算为 ${steps}，但没有任何合法加成来源（moveSpeed=${unit.moveSpeed}, moveBonus=${unit.moveBonus}, revealedPath=${unit.revealedPath}），已强制降级为 1。`);
+      return 1;
+    }
+    return steps;
   }
 
   moveUnitTowardGoal(unit, steps = 1) {
