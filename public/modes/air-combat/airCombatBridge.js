@@ -555,6 +555,17 @@
     };
   }
 
+  function isSustainWeaponOption(option) {
+    return option?.kind === 'shield';
+  }
+
+  function sustainWeaponOption() {
+    if (context.towerDefenseResult?.victory || residentsCount() > 0) {
+      return contextualWeaponOption('force_field', '守夜生命线', '因为空域检测到此前有人被守住或救下，给出更稳的护盾续航方案。', '生命续航');
+    }
+    return contextualWeaponOption('absorb_water', '空域续航兜底', '因为当前三选一缺少护盾载体，空域补入一套保命续航方案。', '生命续航');
+  }
+
   function weaponOptions() {
     const options = [];
     const seen = new Set();
@@ -586,6 +597,13 @@
     }
     if (options.length < 3) add(contextualWeaponOption('dream_link', '残留梦境轨迹', '因为前序流程仍有未闭合的行动轨迹，空域给出梦桥僚机方案。', '备选航线'));
     if (options.length < 3) add(contextualWeaponOption('absorb_water', '灾害清算记录', '因为早期灾害仍在高空回响，空域给出鲤潮护盾方案。', '备选航线'));
+    if (!options.some(isSustainWeaponOption)) {
+      const sustain = sustainWeaponOption();
+      if (sustain && !seen.has(sustain.ability)) {
+        if (options.length >= 3) options[options.length - 1] = sustain;
+        else add(sustain);
+      }
+    }
     return options.slice(0, 3);
   }
 

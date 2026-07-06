@@ -185,6 +185,7 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('weaponOptions') && bridgeSource.includes('selectWeaponOption'), 'air bridge must expose prior-flow weapon choices before combat');
   assert.ok(bridgeSource.includes('选择依据') && bridgeSource.includes('reason'), 'air bridge must explain why prior flow unlocked each air weapon');
   assert.ok(bridgeSource.includes('focusText') && bridgeSource.includes('路线续构'), 'air bridge must adapt upstream focused draft reason labels for weapon choices');
+  assert.ok(bridgeSource.includes('sustainWeaponOption') && bridgeSource.includes('生命续航'), 'air bridge must adapt upstream HP sustain draft guarantees into air weapon choices');
   assert.ok(bridgeSource.includes('publishResult'), 'air bridge must return a result to main game');
   assert.ok(bridgeSource.includes('requestAirCombatText'), 'air bridge must expose AI narrative requests');
   assert.ok(bridgeSource.includes('/api/narrative'), 'air bridge must use the shared narrative endpoint');
@@ -436,6 +437,7 @@ function assertAirCombatRouteBalance() {
     playerStyle: 'aggressive'
   });
   assert.ok(contextualChoiceRoute.weaponOptions().some(option => option.focusText === '路线续构'), 'contextual air weapon choices should show focused route reason tags');
+  assert.ok(contextualChoiceRoute.weaponOptions().some(option => option.kind === 'shield' && option.focusText === '生命续航'), 'air weapon choices should include one HP/sustain option when none was already present');
 
   const describedCreationRoute = loadAirBridgeForContext({
     entropy: 3,
