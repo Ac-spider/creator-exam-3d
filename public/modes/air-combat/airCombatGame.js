@@ -917,9 +917,13 @@
     movingWallGap(boss = null) {
       const step = Number(boss?.wallGapStep) || 0;
       const seed = Number(boss?.wallGapSeed) || 0;
-      const playerBias = this.player ? (this.player.x - W / 2) * 0.28 : 0;
-      const sweep = Math.sin(seed + step * 1.18) * (118 + (boss?.phase || 1) * 18);
-      return clamp(W / 2 + sweep + playerBias, 74, W - 74);
+      const phase = boss?.phase || 1;
+      const wallGapLanes = [-0.78, -0.42, 0, 0.42, 0.78, 0.42, 0, -0.42];
+      const lane = wallGapLanes[Math.abs(Math.round(step)) % wallGapLanes.length];
+      const sweep = lane * (W / 2 - 116);
+      const drift = Math.sin(seed + step * 0.7) * (18 + phase * 5);
+      const playerBias = this.player ? (this.player.x - W / 2) * 0.12 : 0;
+      return clamp(W / 2 + sweep + drift + playerBias, 78, W - 78);
     },
 
     fireWall(x, y, speed, boss = null) {
