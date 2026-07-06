@@ -1137,9 +1137,13 @@ button.small {
 }
 
 .test-jump-grid {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
+}
+
+.test-jump-panel[open] > .test-jump-grid {
+  display: grid;
 }
 
 .wide {
@@ -1535,6 +1539,7 @@ button.loading {
   }
 
   #game-root {
+    width: 100%;
     height: auto;
     min-height: 100vh;
     display: flex;

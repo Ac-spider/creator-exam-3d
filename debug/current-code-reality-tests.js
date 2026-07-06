@@ -555,6 +555,12 @@ function assertAirCombatRouteBalance() {
   }
 }
 
+function assertMainMobileLayoutContracts() {
+  const cssSource = readSource('public/styles.css');
+  assert.ok(cssSource.includes('.test-jump-panel[open] > .test-jump-grid'), 'closed test jump details must not leak its grid over later panels');
+  assert.ok(/@media \(max-width: 760px\)[\s\S]*#game-root\s*\{[\s\S]*width:\s*100%;/.test(cssSource), 'mobile root must use client width instead of 100vw to avoid horizontal overflow');
+}
+
 async function assertNoKeyServerFallbacks() {
   await withNoKeyServer(async baseUrl => {
     const creation = await postJson(baseUrl, '/api/compile-creation', { text: 'create a small guiding lantern' });
@@ -589,6 +595,7 @@ assertWorldTextAndResidents();
 assertRuleAlphabetMatchesGeneratedRegions();
 assertAirCombatIntegration();
 assertAirCombatRouteBalance();
+assertMainMobileLayoutContracts();
 await assertNoKeyServerFallbacks();
 
 console.log('Current-code reality tests passed');
