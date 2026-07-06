@@ -17,6 +17,7 @@ const gameSource = readFileSync(new URL('../public/js/game.js', import.meta.url)
 const presenterSource = readFileSync(new URL('../public/js/advancedMechanicsPresenter.js', import.meta.url), 'utf8');
 const socialDemoBlock = sourceBlock(gameSource, '  triggerSocialDemo() {', '  updateMissionDossier() {');
 const advancedActionBlock = sourceBlock(gameSource, '  handleAdvancedAction(actionId) {', '  demoCard(ability) {');
+const modifiableWorkshopBlock = sourceBlock(gameSource, '  ensureWorkshopModifiableInventory() {', '  triggerWorkshopDemo() {');
 const decodeBlock = sourceBlock(gameSource, '  handleDecodeAbyss() {', '  handleCreateCorruption() {');
 const abyssPanelBlock = sourceBlock(gameSource, '  renderAbyssPanel() {', '  renderCorruptionPanel() {');
 
@@ -34,6 +35,9 @@ assert(decodeBlock.includes('this.suppressAbyssAutoRiddle = true'), 'successful 
 assert(abyssPanelBlock.includes('!this.suppressAbyssAutoRiddle'), 'Abyss panel should respect the post-decode auto-generation guard');
 assert(advancedActionBlock.includes('this.currentAbyssRiddle || this.cognitiveAbyss?.currentRiddle'), 'Advanced submit should reuse the real pending Abyss riddle');
 assert(gameSource.includes('const created = this.oathManager.getAllActiveOaths()[0];'), 'break-oath demo should bootstrap and then break an oath in one click');
+assert(advancedActionBlock.includes('this.ensureWorkshopModifiableInventory()'), 'modify-workshop demo should seed a card compatible with range_boost');
+assert(advancedActionBlock.includes('this.selectWorkshopModifiableItem()'), 'modify-workshop demo should select the compatible seeded card');
+assert(modifiableWorkshopBlock.includes("entry.card?.ability === 'illuminate'"), 'modify-workshop demo should use an illuminate card because range_boost supports it');
 
 const emptyModel = buildAdvancedMechanicsViewModel({
   workshop: { inventory: [], materials: {}, workshopCreations: [] },

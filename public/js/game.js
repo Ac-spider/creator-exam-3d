@@ -2678,9 +2678,9 @@ class CreatorExam3D extends GameEngine {
         this.handleWorkshopDismantle();
         return;
       case 'modify-workshop':
-        this.ensureWorkshopInventory(1);
+        this.ensureWorkshopModifiableInventory();
         this.seedWorkshopMaterials(1);
-        this.selectWorkshopItems(1);
+        this.selectWorkshopModifiableItem();
         this.handleWorkshopModify();
         return;
       case 'fuse-workshop':
@@ -2984,6 +2984,19 @@ class CreatorExam3D extends GameEngine {
     this.ensureWorkshopInventory(count);
     const ids = (this.workshopGetInventory?.() || []).slice(0, count).map(item => item.id);
     this.selectedWorkshopItems = new Set(ids);
+  }
+
+  ensureWorkshopModifiableInventory() {
+    const inventory = this.workshopGetInventory?.() || [];
+    if (!inventory.some(item => item.card?.ability === 'illuminate')) {
+      this.workshopAddCreation(this.demoCard('illuminate'));
+    }
+  }
+
+  selectWorkshopModifiableItem() {
+    this.ensureWorkshopModifiableInventory();
+    const item = (this.workshopGetInventory?.() || []).find(entry => entry.card?.ability === 'illuminate');
+    this.selectedWorkshopItems = new Set(item ? [item.id] : []);
   }
 
   triggerWorkshopDemo() {
