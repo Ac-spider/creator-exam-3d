@@ -320,6 +320,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('advanceBriefing') && airGameSource.includes('renderBriefingStep'), 'air combat must gate combat start behind briefing steps');
   assert.ok(airGameSource.includes("finish('victory')"), 'air combat route must have a finite victory state');
   assert.ok(airGameSource.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'browser verification should have a readiness signal');
+  assert.ok(airGameSource.includes("dataset.airCombatReady = 'true'"), 'browser verification should have a DOM-visible readiness signal');
   assert.ok(airIndexSource.includes('id="hud-affix"'), 'air combat markup must expose an affix HUD line');
   assert.ok(airIndexSource.includes('id="airspace-choices"'), 'air combat markup must expose prior-flow weapon choices');
   assert.ok(airIndexSource.includes('id="airspace-hud" class="airspace-hud hidden"'), 'air combat battle HUD must start hidden during briefing');

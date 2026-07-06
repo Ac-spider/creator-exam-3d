@@ -4832,6 +4832,7 @@ runner.test('Air Combat integration - should keep finite airspace bridge and res
   runner.assert(airGame.includes('bossContactCd') && airGame.includes('this.player.takeDamage(28 + this.boss.def.stage * 2)'), 'air combat Boss body contact should damage the player with cooldown');
   runner.assert(airGame.includes("finish('victory')"), 'air combat should have a finite victory route');
   runner.assert(airGame.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'air combat should expose browser readiness');
+  runner.assert(airGame.includes("dataset.airCombatReady = 'true'"), 'air combat readiness should be visible to DOM smoke tests');
   for (const eventType of [
     'airspace_intro',
     'airspace_segment',
