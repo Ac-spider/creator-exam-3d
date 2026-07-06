@@ -857,16 +857,58 @@
     };
   }
 
+  function stripTrailingEllipsis(text) {
+    return String(text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/(?:\.\.\.|…|……)+$/g, '')
+      .replace(/[，,；;：:、-]+$/g, '')
+      .trim();
+  }
+
+  function softenRepeatedLead(text, word, replacements) {
+    let count = 0;
+    return String(text || '').replace(new RegExp(word, 'g'), () => {
+      count += 1;
+      if (count <= 2) return word;
+      return replacements[(count - 3) % replacements.length];
+    });
+  }
+
+  function polishNarrative(text) {
+    let clean = stripTrailingEllipsis(text);
+    clean = softenRepeatedLead(clean, '那些', ['这些', '余下的', '前面留下的']);
+    clean = softenRepeatedLead(clean, '未曾', ['还没', '没有']);
+    return stripTrailingEllipsis(clean);
+  }
+
   function cleanNarrative(text, max = 170) {
-    const clean = String(text || '').replace(/\s+/g, ' ').trim();
+    const clean = polishNarrative(text);
     if (clean.length <= max) return clean;
     const cut = clean.slice(0, max);
     const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('；'), cut.lastIndexOf('，'), cut.lastIndexOf(' '));
-    return `${cut.slice(0, end > max * 0.6 ? end + 1 : max).trim()}…`;
+    return polishNarrative(cut.slice(0, end > max * 0.6 ? end + 1 : max).replace(/[，,；;。！？.!?]+$/g, ''));
+  }
+
+  function airspaceStyleGuide(eventType) {
+    if (!String(eventType || '').startsWith('airspace_')) return '';
+    return '空战通讯要短促、具体、偏战术，40-90字；优先点名当前武器、来源造物、Boss航线或前序结果；避免连续排比，避免反复使用“那些/未曾/裂隙/清算”，不要用省略号收尾。';
+  }
+
+  function airspaceKeyFacts(weapon, extraContext = {}) {
+    return [
+      `武器「${weapon.name}」来自「${weapon.sourceCreation}」`,
+      weapon.focusText ? `武器定位：${weapon.focusText}` : '',
+      extraContext.boss?.title ? `当前Boss：${extraContext.boss.title}` : '',
+      extraContext.route ? `航线：${extraContext.route}` : '',
+      residentsCount() ? `已救下${residentsCount()}名居民` : '没有居民通讯员接入',
+      lostCount() ? `失去${lostCount()}名居民` : '',
+      creations().length ? `前序造物：${creations().map(creationName).filter(Boolean).slice(-3).join('、')}` : ''
+    ].filter(Boolean);
   }
 
   function worldState(extra = {}) {
     const comm = communicator();
+    const creationNames = creations().map(creationName).filter(Boolean).slice(-5);
     return {
       currentLevel: context.regionId || 'final-exam',
       currentLevelTitle: context.regionTitle || '第七天裂隙空域',
@@ -876,9 +918,11 @@
       lost: lostCount(),
       rescuedResidents: residentNames(context.rescuedResidents).slice(0, 5),
       lostResidents: residentNames(context.lostResidents).slice(0, 5),
+      creations: creationNames,
       recentCreations: creations().map(creationSummary).filter(item => item.name).slice(-5),
       discoveredLore: discoveredLore(),
       towerDefenseResult: context.towerDefenseResult || null,
+      playStyle: context.playerStyle || '未知',
       playerStyle: context.playerStyle || '未知',
       routeResonance: routeResonance().name,
       airspaceAffixes: route().map(boss => `${boss.affix.name}·${boss.title}`),
@@ -913,6 +957,8 @@
             weaponSource: weapon.sourceCreation,
             weaponSourceDescription: weapon.sourceDescription,
             weaponSourceTags: weapon.sourceTags,
+            styleGuide: airspaceStyleGuide(eventType),
+            keyFacts: airspaceKeyFacts(weapon, extraContext),
             ...extraContext
           },
           worldState: worldState(extraContext.worldState || {})
@@ -920,7 +966,8 @@
       });
       if (!response.ok) return '';
       const data = await response.json();
-      return cleanNarrative(data?.text || data?.narrative || '');
+      const max = eventType === 'airspace_brief' ? 340 : 130;
+      return cleanNarrative(data?.text || data?.narrative || '', max);
     } catch (_error) {
       return '';
     } finally {

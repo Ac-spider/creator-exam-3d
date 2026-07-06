@@ -63,6 +63,7 @@ button {
 }
 
 .hud-panel,
+.hud-score-chip,
 .airspace-comm,
 .airspace-clearance-card,
 .airspace-skill,
@@ -76,11 +77,12 @@ button {
 
 .hud-toggle-column {
   position: absolute;
-  left: 10px;
-  bottom: 150px;
+  top: 50%;
+  right: 10px;
   display: grid;
   gap: 6px;
   pointer-events: auto;
+  transform: translateY(-50%);
   z-index: 4;
 }
 
@@ -106,15 +108,16 @@ button {
 
 .hud-panel {
   position: absolute;
-  left: 62px;
-  bottom: 150px;
+  top: 50%;
+  right: 62px;
   display: none;
   min-width: 0;
-  width: min(258px, calc(100% - 78px));
-  max-height: 168px;
+  width: min(318px, calc(100% - 86px));
+  max-height: 132px;
   overflow: hidden auto;
   padding: 8px 10px;
   pointer-events: auto;
+  transform: translateY(-50%);
   z-index: 4;
 }
 
@@ -122,8 +125,14 @@ button {
   display: block;
 }
 
-.hud-panel[data-hud-panel="score"] {
-  width: 118px;
+.hud-score-chip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 82px;
+  padding: 6px 8px;
+  pointer-events: none;
+  z-index: 4;
 }
 
 .hud-label {
@@ -169,6 +178,8 @@ button {
   right: 12px;
   bottom: 84px;
   min-height: 44px;
+  max-height: 76px;
+  overflow: hidden;
   padding: 10px 12px;
   color: #dbe9df;
   font-size: 13px;
@@ -233,8 +244,8 @@ button {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: min(88%, 390px);
-  max-height: calc(100% - 32px);
+  width: min(92%, 430px);
+  max-height: calc(100% - 24px);
   display: grid;
   gap: 12px;
   overflow-y: auto;
@@ -358,8 +369,8 @@ button {
   }
 
   .hud-toggle-column {
-    left: 8px;
-    bottom: 142px;
+    top: 50%;
+    right: 8px;
   }
 
   .hud-toggle {
@@ -368,8 +379,13 @@ button {
   }
 
   .hud-panel {
-    left: 58px;
-    bottom: 142px;
-    width: min(252px, calc(100vw - 70px));
+    top: 50%;
+    right: 58px;
+    width: min(318px, calc(100vw - 82px));
+  }
+
+  .hud-score-chip {
+    top: 8px;
+    left: 8px;
   }
 }

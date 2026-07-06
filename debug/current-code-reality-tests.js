@@ -261,6 +261,8 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('syncUiState') && airGameSource.includes("this.state === 'playing'"), 'air combat opening must hide battle HUD until combat starts');
   assert.ok(airGameSource.includes('bridge.routeResonance()'), 'air combat slice must consume creation resonance locally');
   assert.ok(airGameSource.includes('firePrismLane'), 'air combat slice must apply prism boss affix locally');
+  assert.ok(airGameSource.includes('movingWallGap') && airGameSource.includes('wallGapStep') && airGameSource.includes('laneOffset'), 'wall-pattern Boss bullets must scan their safe gap left and right instead of keeping a static center');
+  assert.ok(airGameSource.includes('bossContactCd') && airGameSource.includes('this.player.takeDamage(28 + this.boss.def.stage * 2)'), 'Boss body contact must damage the player with a short collision cooldown');
   assert.ok(airGameSource.includes('bulletRateMult'), 'air combat slice must apply boss affix bullet-rate modifiers locally');
   assert.ok(airGameSource.includes('jamFactor'), 'air combat slice must apply jammer pressure locally');
   assert.ok(airGameSource.includes('jamStatus'), 'air combat HUD must show jammer weapon-slow feedback');

@@ -73,11 +73,45 @@
     });
   }
 
+  function showHudPanel(target, seconds = 5) {
+    setHudPanel(target);
+    if (target && seconds > 0) hudCloseTimer = window.setTimeout(() => setHudPanel(''), seconds * 1000);
+  }
+
   function toggleHudPanel(target) {
     const current = hudPanels.find(panel => panel.dataset.hudPanel === target && panel.classList.contains('is-open'));
     const next = current ? '' : target;
-    setHudPanel(next);
-    if (next) hudCloseTimer = window.setTimeout(() => setHudPanel(''), 5200);
+    showHudPanel(next, 5.2);
+  }
+
+  function finishNarrativeFragment(text) {
+    const clean = String(text || '').replace(/[，,；;：:、-]+$/g, '').trim();
+    if (!clean || /[。！？.!?]$/.test(clean)) return clean;
+    return `${clean}。`;
+  }
+
+  function compactNarrative(text, max = 88) {
+    const clean = String(text || '')
+      .replace(/\s+/g, ' ')
+      .replace(/(?:\.\.\.|…|……)+$/g, '')
+      .replace(/[，,；;：:、-]+$/g, '')
+      .trim();
+    if (clean.length <= max) return clean;
+    const cut = clean.slice(0, max);
+    const end = Math.max(
+      cut.lastIndexOf('。'),
+      cut.lastIndexOf('！'),
+      cut.lastIndexOf('？'),
+      cut.lastIndexOf('；'),
+      cut.lastIndexOf('，'),
+      cut.lastIndexOf('、'),
+      cut.lastIndexOf('.'),
+      cut.lastIndexOf('!'),
+      cut.lastIndexOf('?'),
+      cut.lastIndexOf(';'),
+      cut.lastIndexOf(',')
+    );
+    return finishNarrativeFragment(cut.slice(0, end > max * 0.45 ? end + 1 : max));
   }
 
   class Player {
@@ -405,6 +439,8 @@
       this.phase = 1;
       this.dead = false;
       this.spiral = 0;
+      this.wallGapStep = 0;
+      this.wallGapSeed = Math.random() * Math.PI * 2;
       this._weakTimer = 0;
     }
 
@@ -447,7 +483,10 @@
       const count = 5 + this.phase * 2 + Math.floor(this.def.stage / 2);
       if (this.def.pattern === 'fan') game.fireFan(this.x, this.y + this.r * 0.5, Math.PI / 2, 65 * DEG, count, 230, 8);
       else if (this.def.pattern === 'aimed') game.fireEnemyAt(this.x, this.y, 300, 10, count, 12 * DEG);
-      else if (this.def.pattern === 'wall') game.fireWall(this.x, this.y, 210 + this.phase * 16);
+      else if (this.def.pattern === 'wall') {
+        this.wallGapStep += 1;
+        game.fireWall(this.x, this.y, 210 + this.phase * 16, this);
+      }
       else if (this.def.pattern === 'spiral') this.fireSpiral(count, 205);
       else if (this.def.pattern === 'ring') game.fireRing(this.x, this.y, 14 + this.phase * 4, 205 + this.phase * 15, 9);
       else {
@@ -679,6 +718,7 @@
       this.livingArmorHpGained = 0;
       this.lastStandTriggered = false;
       this.jammedTime = 0;
+      this.bossContactCd = 0;
       this.resultId = '';
       this.noHitT = 0;
       this.fieldRepairT = 0;
@@ -739,6 +779,7 @@
         context: { stage: boss.stage }
       });
       this.updateHud();
+      showHudPanel('stage', 5);
     },
 
     currentAffix() {
@@ -805,6 +846,8 @@
         boss: def,
         context: { stage: def.stage, pattern: def.pattern }
       });
+      this.updateHud();
+      showHudPanel('stage', 5);
     },
 
     firePlayer() {
@@ -871,9 +914,18 @@
       this.say('环幕词缀展开整圈弹幕，先横移找空隙再反击。', 1.8);
     },
 
-    fireWall(x, y, speed) {
-      const gap = this.player?.x || W / 2;
-      for (let bx = 26; bx < W - 26; bx += 38) {
+    movingWallGap(boss = null) {
+      const step = Number(boss?.wallGapStep) || 0;
+      const seed = Number(boss?.wallGapSeed) || 0;
+      const playerBias = this.player ? (this.player.x - W / 2) * 0.28 : 0;
+      const sweep = Math.sin(seed + step * 1.18) * (118 + (boss?.phase || 1) * 18);
+      return clamp(W / 2 + sweep + playerBias, 74, W - 74);
+    },
+
+    fireWall(x, y, speed, boss = null) {
+      const gap = boss ? this.movingWallGap(boss) : this.player?.x || W / 2;
+      const laneOffset = boss ? (Math.round(boss.wallGapStep || 0) % 2) * 19 : 0;
+      for (let bx = 26 + laneOffset; bx < W - 26; bx += 38) {
         if (Math.abs(bx - gap) < 58) continue;
         this.enemyBullets.push({ x: bx, y: y + 20, vx: 0, vy: speed, r: 5, damage: 9, dead: false });
       }
@@ -1152,6 +1204,15 @@
         }
       }
 
+      if (this.boss && this.player && this.bossContactCd <= 0 && hit(this.boss, this.player)) {
+        this.bossContactCd = 0.75;
+        this.player.takeDamage(28 + this.boss.def.stage * 2);
+        this.player.targetY = Math.min(H - this.player.r - 18, this.player.y + 72);
+        this.player.targetX = clamp(this.player.x + (this.player.x < this.boss.x ? -42 : 42), this.player.r + 8, W - this.player.r - 8);
+        this.shake = Math.max(this.shake, 10);
+        this.burst(this.player.x, this.player.y, this.boss.color, 14);
+      }
+
       for (const p of this.powerups) {
         if (!p.dead && this.player && hit(p, this.player)) {
           p.dead = true;
@@ -1292,7 +1353,7 @@
 
     say(text, seconds = 2.5, narrative = null, onNarrative = null) {
       const requestId = ++this.commRequestId;
-      comm.textContent = text;
+      comm.textContent = compactNarrative(text);
       comm.dataset.until = String(this.time + seconds);
       if (!narrative || typeof bridge.requestAirCombatText !== 'function') return;
       bridge.requestAirCombatText(narrative.eventType, text, {
@@ -1308,8 +1369,8 @@
         } : null,
         ...narrative.context
       }).then(aiText => {
-        if (!aiText || this.commRequestId !== requestId || comm.textContent !== text) return;
-        comm.textContent = aiText;
+        if (!aiText || this.commRequestId !== requestId) return;
+        comm.textContent = compactNarrative(aiText);
         comm.dataset.until = String(this.time + seconds + 1.2);
         if (typeof onNarrative === 'function') onNarrative(aiText);
       });
@@ -1324,10 +1385,31 @@
         const weak = active?._weakTimer > 0 ? ` · 弱点${active._weakTimer.toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${weak}${cd}` : '';
       }
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.shieldAmplifierStatus()}${this.bossHunterStatus()}${this.executionerStatus()}${this.weakScannerStatus()}${this.missileVolleyStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.livingArmorStatus()}${this.repairLoopStatus()}${this.signalFilterStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
+      const weaponTags = this.weaponHudTags();
+      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${weaponTags.length ? ` · ${weaponTags.join(' · ')}` : ''}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
+    },
+
+    weaponHudTags() {
+      const tags = [];
+      const add = (condition, label) => {
+        if (condition && !tags.includes(label) && tags.length < 3) tags.push(label);
+      };
+      add(this.player?.shield > 0 && Number(this.resonance.shieldAmplifierDamageMult) > 0, `护盾增伤+${Math.round(this.resonance.shieldAmplifierDamageMult * 100)}%`);
+      add((this.resonance.missileVolleyBonus || 0) > 0, '齐射+1');
+      add(Number(this.resonance.executionerDamageMult) > 0, `处决+${Math.round(this.resonance.executionerDamageMult * 100)}%`);
+      add(Number(this.resonance.weakScannerDamageMult) > 0, `弱点+${Math.round(this.resonance.weakScannerDamageMult * 100)}%`);
+      add((this.resonance.pointDefenseRange || 0) > 0, '近防');
+      add(Number(this.resonance.repairLoopEvery) > 0, `维修${Math.max(0, Math.ceil(this.resonance.repairLoopEvery - this.repairLoopT))}s`);
+      add(Number(this.resonance.livingArmorMaxHp) > 0, `活甲${this.livingArmorHpGained}/${this.resonance.livingArmorMaxHp}`);
+      add(Number(this.resonance.signalFilterJamResist) > 0, `抗扰${Math.round(this.resonance.signalFilterJamResist * 100)}%`);
+      add(this.player?.lastStandShield, `黑匣${this.player?.lastStandReady ? '就绪' : '已触发'}`);
+      add(this.difficulty.fieldRepair, '纳米修复');
+      const jam = this.player ? this.jamFactor(this.player.x, this.player.y) : 1;
+      add(jam > 1, `干扰x${jam.toFixed(2)}`);
+      return tags;
     },
 
     lastStandStatus() {
@@ -1433,6 +1515,7 @@
 
       this.segmentTime += dt;
       this.nearLineCd = Math.max(0, this.nearLineCd - dt);
+      this.bossContactCd = Math.max(0, (this.bossContactCd || 0) - dt);
       this.updateFieldRepair(dt);
       this.updateRepairLoop(dt);
       this.updateJammerPressure(dt);
