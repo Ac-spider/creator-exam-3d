@@ -49,6 +49,18 @@
     return list[Math.floor(Math.random() * list.length)];
   }
 
+  const bossImageCache = new Map();
+  function bossImage(src) {
+    if (!src || typeof Image === 'undefined') return null;
+    if (!bossImageCache.has(src)) {
+      const img = new Image();
+      img.src = src;
+      bossImageCache.set(src, img);
+    }
+    const img = bossImageCache.get(src);
+    return img?.complete && img.naturalWidth > 0 ? img : null;
+  }
+
   function screenPoint(event) {
     const rect = canvas.getBoundingClientRect();
     const touch = event.touches?.[0] || event.changedTouches?.[0] || event;
@@ -137,6 +149,9 @@
     update(dt) {
       this.x += (this.targetX - this.x) * 0.24;
       this.y += (this.targetY - this.y) * 0.24;
+      const pull = game.gravityPullAt(this.x, this.y);
+      this.x += pull.x * dt;
+      this.y += pull.y * dt;
       this.x = clamp(this.x, this.r + 8, W - this.r - 8);
       this.y = clamp(this.y, 120, H - this.r - 18);
       this.fire -= dt;
@@ -442,10 +457,12 @@
       this.wallGapStep = 0;
       this.wallGapSeed = Math.random() * Math.PI * 2;
       this._weakTimer = 0;
+      this._hitFlash = 0;
     }
 
     update(dt) {
       this.t += dt;
+      if (this._hitFlash > 0) this._hitFlash = Math.max(0, this._hitFlash - dt);
       if (this.y < 128) this.y += 75 * dt;
       this.x = W / 2 + Math.sin(this.t * (0.85 + this.def.stage * 0.04)) * (120 + this.def.stage * 8);
       const nextPhase = this.hp / this.maxHp > 0.62 ? 1 : this.hp / this.maxHp > 0.28 ? 2 : 3;
@@ -472,11 +489,13 @@
       if (this.affixTimer > 0) return;
       this.affixTimer = this.affix.every || 5.6;
       if (this.affix.attack === 'prism') game.firePrismLane(this, this.affix);
+      else if (this.affix.attack === 'prismBurst') game.firePrismBurst(this, this.affix);
       else if (this.affix.attack === 'ionStorm') game.fireIonStormLane(this, this.affix);
       else if (this.affix.attack === 'ring') game.fireBarrageRing(this, this.affix);
       else if (this.affix.attack === 'escort') game.fireBossEscort(this, this.affix);
       else if (this.affix.attack === 'weak') game.openBossWeakPoint(this, this.affix);
       else if (this.affix.attack === 'repair') game.repairBoss(this, this.affix);
+      else if (this.affix.attack === 'gravity') game.fireGravityPulse(this, this.affix);
     }
 
     attack() {
@@ -507,7 +526,9 @@
     }
 
     damage(amount) {
-      this.hp -= amount;
+      const guard = this.affix?.guardDR && game.bossGuardCount(this) > 0 ? this.affix.guardDR : 0;
+      this.hp -= amount * (1 - guard);
+      this._hitFlash = 0.09;
       if (this.hp <= 0) {
         this.dead = true;
         return true;
@@ -517,6 +538,7 @@
 
     draw(ctx) {
       const r = this.r;
+      const hitFlash = clamp(this._hitFlash / 0.09, 0, 1);
       ctx.save();
       ctx.translate(this.x, this.y);
       if (this.phase === 3) {
@@ -539,11 +561,42 @@
         ctx.arc(0, -6, 24 + Math.sin(game.time * 12) * 4, 0, Math.PI * 2);
         ctx.stroke();
       }
+      const img = bossImage(this.affix?.image);
+      if (img) {
+        const size = r * 2.45;
+        ctx.globalAlpha = 0.96;
+        ctx.drawImage(img, -size / 2, -size * 0.58, size, size);
+        ctx.globalAlpha = 1;
+        if (hitFlash > 0) {
+          ctx.strokeStyle = `rgba(255, 212, 59, ${0.25 + hitFlash * 0.55})`;
+          ctx.lineWidth = 2 + hitFlash * 3;
+          ctx.shadowColor = '#ffd43b';
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.arc(0, 0, r * (1.18 + (1 - hitFlash) * 0.18), 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        }
+        if (this._weakTimer > 0) {
+          ctx.strokeStyle = '#ffd43b';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(0, -6, 24 + Math.sin(game.time * 12) * 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        ctx.fillStyle = 'rgba(0,0,0,.5)';
+        ctx.fillRect(74, 76, W - 148, 8);
+        ctx.fillStyle = this.def.color;
+        ctx.fillRect(74, 76, (W - 148) * clamp(this.hp / this.maxHp, 0, 1), 8);
+        return;
+      }
       const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 4, 0, 0, r);
       grad.addColorStop(0, '#eef3ec');
       grad.addColorStop(0.35, this.def.color);
       grad.addColorStop(1, '#151a1d');
-      ctx.fillStyle = grad;
+      ctx.fillStyle = hitFlash > 0 ? '#fff' : grad;
       ctx.beginPath();
       if (this.def.pattern === 'spiral') {
         for (let i = 0; i < 8; i += 1) {
@@ -565,7 +618,7 @@
       }
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = hitFlash > 0 ? '#fff' : '#f8fafc';
       ctx.beginPath();
       ctx.arc(0, -6, 10 + Math.sin(game.time * 4) * 2, 0, Math.PI * 2);
       ctx.fill();
@@ -590,6 +643,7 @@
     playerBullets: [],
     enemyBullets: [],
     lasers: [],
+    gravityPulses: [],
     powerups: [],
     particles: [],
     boss: null,
@@ -700,6 +754,7 @@
       this.playerBullets = [];
       this.enemyBullets = [];
       this.lasers = [];
+      this.gravityPulses = [];
       this.powerups = [];
       this.particles = [];
       this.boss = null;
@@ -944,6 +999,25 @@
       this.say('棱镜词缀折出竖直裂线，立刻离开当前航道。', 1.8);
     },
 
+    firePrismBurst(boss, affix) {
+      const x = clamp(this.player?.x || boss.x, 44, W - 44);
+      this.lasers.push({
+        x,
+        warn: affix.warn || 0.58,
+        dur: affix.dur || 0.52,
+        width: affix.width || 38,
+        damage: 8 * (affix.damageMult || 1),
+        color: affix.color || '#d8c58a',
+        burst: { boss, affix },
+        t: 0,
+        phase: 'warn',
+        hit: false,
+        dead: false
+      });
+      this.burst(x, boss.y + boss.r, affix.color, 10);
+      this.say('棱爆预警亮起，光束结束后会折出侧向慢弹。', 1.8);
+    },
+
     fireIonStormLane(boss, affix) {
       const baseX = this.player?.x || boss.x;
       const x = clamp(baseX + (Math.random() - 0.5) * (affix.jitter || 160), 36, W - 36);
@@ -963,6 +1037,49 @@
       this.say('离子风暴预警亮起，横移脱离紫色镭射航道。', 1.8);
     },
 
+    finishPrismBurst(laser) {
+      const burst = laser.burst;
+      if (!burst?.boss || !burst.affix) return;
+      const boss = burst.boss;
+      const affix = burst.affix;
+      const count = affix.count || 6;
+      for (let i = 0; i < count; i += 1) {
+        const side = i % 2 ? 1 : -1;
+        const row = Math.floor(i / 2);
+        this.enemyBullets.push({
+          x: boss.x + side * boss.r * 0.65,
+          y: boss.y + boss.r + row * 18,
+          vx: side * (affix.speed || 210),
+          vy: 70 + row * 20,
+          r: 5,
+          damage: 7 * (affix.damageMult || 1),
+          color: affix.color || '#d8c58a',
+          dead: false
+        });
+      }
+      this.burst(boss.x, boss.y + boss.r, affix.color, 12);
+    },
+
+    fireGravityPulse(boss, affix) {
+      this.gravityPulses.push({
+        x: boss.x,
+        y: boss.y + boss.r * 0.3,
+        warn: affix.warn || 0.82,
+        dur: affix.dur || 2.1,
+        radius: affix.radius || 230,
+        strength: affix.strength || 92,
+        color: affix.color || '#4dabf7',
+        t: 0,
+        phase: 'warn',
+        dead: false
+      });
+      this.say('引潮圆环正在成形，预警结束后会轻拉机体惯性。', 1.8);
+    },
+
+    bossGuardCount(boss) {
+      return this.enemies.filter(enemy => !enemy.dead && enemy.guardBoss === boss).length;
+    },
+
     fireBossEscort(boss, affix) {
       const activeAdds = this.enemies.filter(enemy => !enemy.dead).length;
       if (activeAdds >= (affix.maxAdds || 4)) return;
@@ -974,6 +1091,7 @@
       escort.hp += 4;
       escort.maxHp = escort.hp;
       escort.score += 140;
+      if (affix.key === 'ironCarrier') escort.guardBoss = boss;
       if (affix.elite === 'jammer') this.applyJammerElite(escort, affix);
       this.enemies.push(escort);
       this.burst(escort.x, escort.y, affix.color || escort.color, 10);
@@ -981,7 +1099,9 @@
         ? '幻影护航投放高速残影僚机，先截断侧翼追击。'
         : affix.elite === 'jammer'
           ? '电子战词缀投放扰频精英机，先脱离干扰圈再反击。'
-          : '护卫词缀投放重炮僚机，先清掉侧翼高威胁目标。';
+          : affix.key === 'ironCarrier'
+            ? '铁幕护卫正在替 Boss 承压，清空护卫会打开甲板弱点。'
+            : '护卫词缀投放重炮僚机，先清掉侧翼高威胁目标。';
       this.say(line, 1.8);
     },
 
@@ -1052,6 +1172,14 @@
       if (enemy.type === 'detonator') this.fireRing(enemy.x, enemy.y, enemy.ringCount || 14, enemy.ringSpeed || 210, enemy.ringDamage || 9);
       this.pointDefenseCleared += this.triggerPointDefense(enemy);
       this.triggerLivingArmorGrowth();
+      if (enemy.guardBoss && !enemy.guardBoss.dead && this.bossGuardCount(enemy.guardBoss) === 0) {
+        const affix = enemy.guardBoss.affix || {};
+        this.openBossWeakPoint(enemy.guardBoss, {
+          ...affix,
+          dur: affix.guardWeakDur || 2.4,
+          weakDamageMult: affix.guardWeakDamageMult || 0.28
+        });
+      }
       if (enemy.type === 'carrier') this.spawnCarrierChildren(enemy);
       if (enemy.type === 'splitter') {
         for (let i = 0; i < 2; i += 1) {
@@ -1299,7 +1427,10 @@
       if (this.lastStandTriggered) tags.push('黑匣子保险');
       if (this.cleanClears >= 2) tags.push('完美清算');
       if (this.route.some(boss => boss.affix?.attack === 'prism')) tags.push('棱镜航线');
+      if (this.route.some(boss => boss.affix?.attack === 'prismBurst')) tags.push('棱爆折射');
       if (this.route.some(boss => boss.affix?.attack === 'ionStorm')) tags.push('离子风暴');
+      if (this.route.some(boss => boss.affix?.attack === 'gravity')) tags.push('引潮重力');
+      if (this.route.some(boss => boss.affix?.key === 'ironCarrier')) tags.push('铁幕护卫');
       if (this.route.some(boss => boss.affix?.attack === 'weak')) tags.push('露核窗口');
       if (this.route.some(boss => boss.affix?.key === 'phantomEscort')) tags.push('幻影护航');
       if (this.route.some(boss => boss.affix?.attack === 'escort')) tags.push('护卫僚机');
@@ -1523,6 +1654,7 @@
       this.updateFieldRepair(dt);
       this.updateRepairLoop(dt);
       this.updateJammerPressure(dt);
+      this.updateGravityPulses(dt);
       this.player.update(dt);
       if (!this.boss && this.segmentTime > 8.5) this.spawnBoss();
       this.spawnTimer -= dt;
@@ -1556,6 +1688,7 @@
       this.playerBullets = this.playerBullets.filter(b => !b.dead);
       this.enemyBullets = this.enemyBullets.filter(b => !b.dead);
       this.lasers = this.lasers.filter(l => !l.dead);
+      this.gravityPulses = this.gravityPulses.filter(pulse => !pulse.dead);
       this.powerups = this.powerups.filter(p => !p.dead);
       if (this.player.hp <= 0) this.finish('defeat');
       if (Number(comm.dataset.until || 0) < this.time) comm.textContent = '';
@@ -1577,8 +1710,42 @@
           laser.hit = true;
           this.player.takeDamage(laser.damage);
         }
-        if (laser.t >= laser.dur) laser.dead = true;
+        if (laser.t >= laser.dur) {
+          if (laser.burst && !laser.burstDone) {
+            laser.burstDone = true;
+            this.finishPrismBurst(laser);
+          }
+          laser.dead = true;
+        }
       }
+    },
+
+    updateGravityPulses(dt) {
+      for (const pulse of this.gravityPulses) {
+        pulse.t += dt;
+        if (pulse.phase === 'warn' && pulse.t >= pulse.warn) {
+          pulse.phase = 'active';
+          pulse.t = 0;
+        } else if (pulse.phase === 'active' && pulse.t >= pulse.dur) {
+          pulse.dead = true;
+        }
+      }
+    },
+
+    gravityPullAt(x, y) {
+      let vx = 0;
+      let vy = 0;
+      for (const pulse of this.gravityPulses) {
+        if (pulse.dead || pulse.phase !== 'active') continue;
+        const dx = pulse.x - x;
+        const dy = pulse.y - y;
+        const d = Math.hypot(dx, dy);
+        if (d <= 1 || d >= pulse.radius) continue;
+        const k = (1 - d / pulse.radius) * pulse.strength;
+        vx += dx / d * k;
+        vy += dy / d * k * 0.45;
+      }
+      return { x: vx, y: vy };
     },
 
     updateFieldRepair(dt) {
@@ -1642,6 +1809,7 @@
       }
       for (const p of this.powerups) this.drawPowerup(p);
       this.drawLasers();
+      this.drawGravityPulses();
       for (const b of this.playerBullets) this.drawPlayerBullet(b);
       for (const b of this.enemyBullets) this.drawEnemyBullet(b);
       for (const e of this.enemies) e.draw(ctx);
@@ -1707,6 +1875,23 @@
         ctx.moveTo(laser.x + half, 0);
         ctx.lineTo(laser.x + half, H);
         ctx.stroke();
+      }
+    },
+
+    drawGravityPulses() {
+      for (const pulse of this.gravityPulses) {
+        const active = pulse.phase === 'active';
+        const t = active ? clamp(pulse.t / pulse.dur, 0, 1) : clamp(pulse.t / pulse.warn, 0, 1);
+        const radius = pulse.radius * (active ? 0.86 + t * 0.1 : 0.24 + t * 0.76);
+        ctx.save();
+        ctx.globalAlpha = active ? 0.34 + 0.16 * Math.sin(pulse.t * 12) ** 2 : 0.16 + 0.18 * t;
+        ctx.strokeStyle = pulse.color || '#4dabf7';
+        ctx.lineWidth = active ? 3 : 2;
+        ctx.setLineDash(active ? [] : [8, 8]);
+        ctx.beginPath();
+        ctx.arc(pulse.x, pulse.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
       }
     },
 

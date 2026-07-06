@@ -4977,7 +4977,7 @@ runner.test('Night Watch dynamic towers - should derive different tower plans fr
 });
 
 runner.test('Air Combat integration - should keep finite airspace bridge and result wiring', async () => {
-  const { readFileSync } = await import('node:fs');
+  const { existsSync, readFileSync } = await import('node:fs');
   const bridge = readFileSync(new URL('../public/modes/air-combat/airCombatBridge.js', import.meta.url), 'utf8');
   const airGame = readFileSync(new URL('../public/modes/air-combat/airCombatGame.js', import.meta.url), 'utf8');
   const airHtml = readFileSync(new URL('../public/modes/air-combat/index.html', import.meta.url), 'utf8');
@@ -4998,6 +4998,22 @@ runner.test('Air Combat integration - should keep finite airspace bridge and res
   runner.assert(airGame.includes("finish('victory')"), 'air combat should have a finite victory route');
   runner.assert(airGame.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'air combat should expose browser readiness');
   runner.assert(airGame.includes("dataset.airCombatReady = 'true'"), 'air combat readiness should be visible to DOM smoke tests');
+  runner.assert(bridge.includes('skywardBossSignals') && bridge.includes('Skyward更新回响'), 'air combat bridge should feed Skyward boss update signals into AI narrative context');
+  runner.assert(bridge.includes('prismBurst') && bridge.includes('boss-08-prism-judge.png'), 'air combat bridge should include copied prism judge boss art and prism burst affix');
+  runner.assert(bridge.includes('ironCarrier') && bridge.includes('boss-09-iron-carrier.png'), 'air combat bridge should include copied iron carrier boss art and guard affix');
+  runner.assert(bridge.includes('tideCore') && bridge.includes('boss-10-tide-core.png'), 'air combat bridge should include copied tide core boss art and gravity affix');
+  runner.assert(airGame.includes('bossImageCache') && airGame.includes('drawImage(img'), 'air combat should draw copied boss art with fallback');
+  runner.assert(airGame.includes('_hitFlash = 0.09') && airGame.includes('rgba(255, 212, 59'), 'air combat should keep copied boss art hit feedback');
+  runner.assert(airGame.includes('firePrismBurst') && airGame.includes('finishPrismBurst'), 'air combat should apply finite prism burst behavior');
+  runner.assert(airGame.includes('fireGravityPulse') && airGame.includes('gravityPullAt'), 'air combat should apply finite gravity pulse behavior');
+  runner.assert(airGame.includes('guardDR') && airGame.includes('bossGuardCount'), 'air combat should apply finite iron carrier guard behavior');
+  for (const asset of [
+    '../public/modes/air-combat/assets/bosses/boss-08-prism-judge.png',
+    '../public/modes/air-combat/assets/bosses/boss-09-iron-carrier.png',
+    '../public/modes/air-combat/assets/bosses/boss-10-tide-core.png'
+  ]) {
+    runner.assert(existsSync(new URL(asset, import.meta.url)), `${asset} should exist`);
+  }
   for (const eventType of [
     'airspace_intro',
     'airspace_segment',
