@@ -691,6 +691,7 @@
   function syncChrome() {
     document.title = '长夜守城 - 造物者考核3D';
     document.body.dataset.mode = 'night-watch';
+    document.documentElement.dataset.nightWatchReady = 'true';
     const selectionTitle = document.querySelector('#selection-screen h1');
     if (selectionTitle) selectionTitle.textContent = '长夜守城';
     const mapTitle = document.querySelector('#map-selection-screen h1');
