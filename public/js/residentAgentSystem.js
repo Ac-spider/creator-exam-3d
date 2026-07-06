@@ -58,7 +58,8 @@ export class ResidentAgentSystem {
     this.recentEventsByResident = new Map()
   }
 
-  observeEvent(event) {
+  observeEvent(event, options = {}) {
+    const recordMemory = options.recordMemory !== false
     const payload = event?.payload || {}
     const residentIds = new Set()
     if (payload.residentId) residentIds.add(payload.residentId)
@@ -67,12 +68,14 @@ export class ResidentAgentSystem {
     }
 
     for (const residentId of residentIds) {
-      this.residentRegistry.recordMemory(residentId, {
-        type: event.type,
-        text: eventText(event),
-        regionId: event.regionId,
-        importance: event.importance || 0.5
-      })
+      if (recordMemory) {
+        this.residentRegistry.recordMemory(residentId, {
+          type: event.type,
+          text: eventText(event),
+          regionId: event.regionId,
+          importance: event.importance || 0.5
+        })
+      }
 
       const events = this.recentEventsByResident.get(residentId) || []
       events.push(event)

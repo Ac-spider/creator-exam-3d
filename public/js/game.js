@@ -18,10 +18,13 @@ import { buildAdvancedMechanicsViewModel } from './advancedMechanicsPresenter.js
 import { buildExplorationChoiceViewModel } from './explorationPresenter.js';
 import { buildKnownWorldFacts, filterKnownNarrativeMemories, getKnownRegionIdsFromProgress } from './worldKnowledge.js';
 import { ResidentDialogueSystem } from './residentDialogueSystem.js';
+import { findUnsupportedDialogueFacts, hasFabricatedPremisePrompt } from './dialogueGrounding.js';
 import { DebugSnapshot } from './debugSnapshot.js';
 import { SaveSlotManager } from './saveSlotManager.js';
 import { MemoryStore } from './memoryStore.js';
 import { WorldSession } from './worldSession.js';
+import { RiftEchoSystem } from './riftEchoes.js';
+import { normalizeCreationDisplayText, normalizeCreationName } from './creationDisplay.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -68,7 +71,15 @@ const ABILITY_COLORS = {
   slow_beast: 0xff91a8,
   memory_beacon: 0x8cb5ff,
   force_field: 0x64f3ff,
-  transform_land: 0xb4e66e
+  transform_land: 0xb4e66e,
+  consume_light: 0xffd166,
+  steam_burst: 0x9ec8d8,
+  creation_burst: 0xff6b6b,
+  memory_loop: 0xa7f3d0,
+  cycle_life: 0x8bdc65,
+  temporal_rift: 0xb8a7ff,
+  paradox_barrier: 0x7de7ff,
+  chaos_guide: 0xffe07a
 };
 
 class CreatorExam3D extends GameEngine {
@@ -145,6 +156,7 @@ class CreatorExam3D extends GameEngine {
     this.memoryStore.loadWorld(this.worldSession.worldSimulation);
     this.saveSlotManager = new SaveSlotManager();
     this.residentDialogueSystem = new ResidentDialogueSystem();
+    this.riftEchoSystem = new RiftEchoSystem();
     this.particleSystem = null;
     this.screenEffects = null;
     this.npcManager = null;
@@ -157,6 +169,8 @@ class CreatorExam3D extends GameEngine {
     this.dialogueMessages = [];
     this.lastNightWatchResult = null;
     this.processedNightWatchResults = new Set();
+    this.lastAirCombatResult = null;
+    this.processedAirCombatResults = new Set();
 
     this.ui = this.collectUi();
     this.initScene();
@@ -193,6 +207,9 @@ class CreatorExam3D extends GameEngine {
     // Add legacy NPCs from previous rescues
     if (this.legacyUnits && this.legacyUnits.length > 0) {
       this.npcManager.addLegacyNPCs(this.legacyUnits);
+    }
+    if (this.returnedLegacyUnits && this.returnedLegacyUnits.length > 0) {
+      this.npcManager.addUnitNPCs?.(this.returnedLegacyUnits, { legacyReturn: true });
     }
 
     // Update memory system
@@ -242,6 +259,10 @@ class CreatorExam3D extends GameEngine {
       nightWatchTitle: document.getElementById('night-watch-title'),
       nightWatchSummary: document.getElementById('night-watch-summary'),
       nightWatchBtn: document.getElementById('night-watch-btn'),
+      airCombatPanel: document.getElementById('air-combat-panel'),
+      airCombatTitle: document.getElementById('air-combat-title'),
+      airCombatSummary: document.getElementById('air-combat-summary'),
+      airCombatBtn: document.getElementById('air-combat-btn'),
       logList: document.getElementById('log-list'),
       toast: document.getElementById('toast'),
       modal: document.getElementById('modal'),
@@ -270,6 +291,7 @@ class CreatorExam3D extends GameEngine {
       legendMyths: document.getElementById('legend-myths'),
       legendArtifacts: document.getElementById('legend-artifacts'),
       legendFigures: document.getElementById('legend-figures'),
+      legendButterfly: document.getElementById('legend-butterfly'),
       ritualCreationList: document.getElementById('ritual-creation-list'),
       performRitualBtn: document.getElementById('perform-ritual-btn'),
       ritualResult: document.getElementById('ritual-result'),
@@ -444,11 +466,12 @@ class CreatorExam3D extends GameEngine {
     this.ui.restartBtn.addEventListener('click', () => this.loadLevel(this.levelIndex));
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
     this.ui.nightWatchBtn?.addEventListener('click', () => this.openNightWatch());
+    this.ui.airCombatBtn?.addEventListener('click', () => this.openAirCombatMode());
     document.querySelectorAll('[data-test-level]').forEach(btn => {
       btn.addEventListener('click', () => this.jumpToTestLevel(Number(btn.dataset.testLevel)));
     });
     document.getElementById('test-night-watch-btn')?.addEventListener('click', () => this.openNightWatchTestMode());
-    document.getElementById('test-air-combat-btn')?.addEventListener('click', () => this.openAirCombatMode());
+    document.getElementById('test-air-combat-btn')?.addEventListener('click', () => this.openAirCombatMode({ testEntry: true }));
     this.ui.performRitualBtn?.addEventListener('click', () => this.handlePerformRitual());
 
     // Ritual creation checkbox delegation
@@ -566,15 +589,25 @@ class CreatorExam3D extends GameEngine {
     });
     this.ui.modalSecondary.addEventListener('click', () => this.loadLevel(this.levelIndex));
 
-    window.addEventListener('focus', () => this.consumeNightWatchResult());
-    window.addEventListener('pageshow', () => this.consumeNightWatchResult());
+    window.addEventListener('focus', () => {
+      this.consumeNightWatchResult();
+      this.consumeAirCombatResult();
+    });
+    window.addEventListener('pageshow', () => {
+      this.consumeNightWatchResult();
+      this.consumeAirCombatResult();
+    });
     window.addEventListener('storage', (event) => {
       if (event.key === 'creatorExamNightWatchResult') this.consumeNightWatchResult();
+      if (event.key === 'creatorExamAirCombatResult') this.consumeAirCombatResult();
     });
     window.addEventListener('message', (event) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === 'creator_exam_night_watch_result') {
         this.applyNightWatchResult(event.data.result);
+      }
+      if (event.data?.type === 'creator_exam_air_combat_result') {
+        this.applyAirCombatResult(event.data.result);
       }
     });
 
@@ -621,7 +654,8 @@ class CreatorExam3D extends GameEngine {
       const card = await compileCreation(text, this.getGameContext());
       this.activeCard = card;
       this.showCard(card);
-      this.addLog(`造物编译完成：${card.name}。${card.source === 'ai' ? 'AI 已生成结构化卡牌。' : '使用本地兜底编译器。'}`, true);
+      const displayName = this.getCreationDisplayName(card);
+      this.addLog(`造物编译完成：${displayName}。${card.source === 'ai' ? 'AI 已生成结构化卡牌。' : '使用本地兜底编译器。'}`, true);
       this.ui.aiMode.textContent = card.source === 'ai'
         ? '当前使用后端 AI 接口编译。'
         : '当前使用本地兜底编译器；配置 .env 后可切换为真实 AI。';
@@ -642,7 +676,7 @@ class CreatorExam3D extends GameEngine {
   showCard(card) {
     this.ui.cardPanel.classList.remove('hidden');
     this.ui.cardType.textContent = card.type;
-    this.ui.cardName.textContent = card.name;
+    this.ui.cardName.textContent = this.getCreationDisplayName(card);
     this.ui.cardCost.textContent = card.cost;
     this.ui.cardDesc.textContent = card.description;
     this.ui.cardAbility.textContent = abilityLabel(card.ability);
@@ -705,7 +739,8 @@ class CreatorExam3D extends GameEngine {
     this.ui.cardPanel.classList.add('hidden');
 
     this.applyImmediatePlacement(creation);
-    this.addLog(`你在 ${this.tileName(x, y)} 创造了「${card.name}」：${card.description}`, true);
+    const displayName = this.getCreationDisplayName(card);
+    this.addLog(`你在 ${this.tileName(x, y)} 创造了「${displayName}」：${card.description}`, true);
     if (card.stabilityCost > 0) {
       this.addLog(`副作用触发：${card.side_effect} 世界裂隙 +${card.stabilityCost}。`);
     }
@@ -725,7 +760,7 @@ class CreatorExam3D extends GameEngine {
     // Spawn particle effects
     const pos = this.tileToWorld(x, y);
     this.particleSystem.spawnAbilityParticles(pos.x, 0.5, pos.z, card.ability, card.range);
-    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, card.name, this.particleSystem.getAbilityColor(card.ability));
+    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, this.getCreationDisplayName(card), this.particleSystem.getAbilityColor(card.ability));
 
     // Screen flash for high-cost creations
     if (card.cost >= 3) {
@@ -760,6 +795,7 @@ class CreatorExam3D extends GameEngine {
     this.applyTileHazardsToUnits();
     this.enemyIntentSystem.generatePreviews(this.worldState, this);
     this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
+    this.processRiftEchoes();
     this.decrementCreationDurations();
     this.checkOathBetrayals();
     this.checkEndCondition(true);
@@ -823,7 +859,7 @@ class CreatorExam3D extends GameEngine {
         if (activeCreations.length >= 1) {
           const target = activeCreations[Math.floor(Math.random() * activeCreations.length)];
           target.remaining += 1;
-          this.addLog(`【事件】「${target.card.name}」的持续时间延长了`);
+          this.addLog(`【事件】「${this.getCreationDisplayName(target.card)}」的持续时间延长了`);
         }
         break;
       }
@@ -968,18 +1004,63 @@ class CreatorExam3D extends GameEngine {
     this.showToast(`已跳到第 ${index + 1} 关。`);
   }
 
-  async openAirCombatMode() {
+  buildAirCombatContext() {
+    const activeResidents = this.units
+      .filter(unit => this.isCivilian(unit) && unit.status !== 'lost')
+      .map(unit => unit.name);
+    const lostResidents = this.units
+      .filter(unit => this.isCivilian(unit) && unit.status === 'lost')
+      .map(unit => unit.name);
+    const recentCreations = this.creations
+      .map(creation => ({
+        name: this.getCreationDisplayName(creation.card),
+        ability: creation.card?.ability || 'unknown',
+        type: creation.card?.type || '奇迹',
+        remaining: creation.remaining || 0
+      }))
+      .slice(-8);
+
+    return {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      mode: 'rift_airspace',
+      day: 7,
+      regionId: this.level?.id || 'final-exam',
+      regionTitle: this.level?.title || '第七天裂隙空域',
+      endingPressure: this.entropy / (this.level?.entropyLimit || 7),
+      entropy: this.entropy || 0,
+      rescuedResidents: activeResidents,
+      lostResidents,
+      recentCreations,
+      towerDefenseResult: this.lastNightWatchResult,
+      discoveredLore: this.worldState?.discoveredLore || [],
+      playerStyle: this.memorySystem?.getProfileSummary?.() || this.worldState?.playStyle || '未知'
+    };
+  }
+
+  async openAirCombatMode(options = {}) {
+    const context = this.buildAirCombatContext();
+    try {
+      localStorage.setItem('creatorExamAirCombatContext', JSON.stringify(context));
+    } catch (_error) {
+      this.showToast('无法写入空域上下文。');
+      return;
+    }
+
     const url = new URL('./modes/air-combat/index.html', window.location.href);
+    url.searchParams.set('from', 'creator-exam');
+    if (options.testEntry) url.searchParams.set('testEntry', '1');
     try {
       const response = await fetch(url.toString(), { method: 'HEAD' });
       if (response.ok) {
         const tab = window.open(url.toString(), 'creator_exam_air_combat');
+        this.addLog(`【第七天裂隙空域】已压缩 ${context.recentCreations.length || 1} 件造物为空域载体。`, true);
+        this.showToast(tab ? '第七天裂隙空域已打开。' : '浏览器拦截了新窗口，正在当前页打开。');
         if (!tab) window.location.href = url.toString();
         return;
       }
     } catch (_error) {}
 
-    this.showToast('空战模式还没迁入；构思文档在 docs/superpowers/specs/2026-07-05-air-combat-integration-concept.md');
+    this.showToast('空战模式文件未找到。');
   }
 
   isFinalExam() {
@@ -995,12 +1076,26 @@ class CreatorExam3D extends GameEngine {
       .map(unit => unit.name);
     const recentCreations = this.creations
       .map(creation => ({
-        name: creation.card?.name || '未命名造物',
+        name: this.getCreationDisplayName(creation.card),
         ability: creation.card?.ability || 'unknown',
         type: creation.card?.type || '奇迹',
+        description: creation.card?.description || '',
+        tags: creation.card?.tags || [],
         remaining: creation.remaining || 0
       }))
-      .slice(-7);
+      .slice(-18);
+    const experiences = (this.worldSession?.worldSimulation?.eventBus?.events || [])
+      .slice(-12)
+      .map(event => {
+        const payload = event.payload || {};
+        if (event.type === 'creation_placed') return `在${event.regionId}放置了「${normalizeCreationName({ name: payload.creationName, ability: payload.ability })}」，能力${payload.ability || 'unknown'}。`;
+        if (event.type === 'unit_rescued') return `${payload.unitName || '居民'}在${event.regionId}被救下。`;
+        if (event.type === 'unit_lost') return `${payload.unitName || '居民'}在${event.regionId}失踪或遇难。`;
+        if (event.type === 'region_resolved') return `${event.regionId}危机被解决。`;
+        if (event.type === 'region_lost') return `${event.regionId}危机留下伤痕。`;
+        if (event.type === 'defense_resolved') return `长夜守城守住${payload.survivedWaves || 0}波，裂隙变化${payload.entropyDelta || 0}。`;
+        return `${event.regionId}发生${event.type}。`;
+      });
 
     return {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -1012,6 +1107,7 @@ class CreatorExam3D extends GameEngine {
       rescuedResidents: activeResidents,
       lostResidents,
       recentCreations,
+      experiences,
       discoveredLore: this.worldState?.discoveredLore || [],
       playerStyle: this.memorySystem?.getProfileSummary?.() || this.worldState?.playStyle || '未知'
     };
@@ -1117,6 +1213,79 @@ class CreatorExam3D extends GameEngine {
       ? `<strong>${result.victory ? '防线守住' : '防线破损'} · ${result.survivedWaves || 0} 波</strong><span>居民保护 ${result.residentsProtected || 0}，裂隙变化 ${Number(result.entropyDelta || 0) >= 0 ? '+' : ''}${result.entropyDelta || 0}</span>`
       : `<strong>熵值 ${this.entropy || 0} · 居民 ${this.rescued || 0}/${this.units.filter(unit => this.isCivilian(unit)).length}</strong><span>${creations.length ? `最近造物：${creations.join('、')}` : '最近造物会映射成守夜塔。'}</span>`;
     this.ui.nightWatchBtn.textContent = result ? '再次守夜' : (this.gameState === 'won' ? '开启最终防线' : '预演守夜');
+  }
+
+  consumeAirCombatResult() {
+    let result = null;
+    try {
+      const raw = localStorage.getItem('creatorExamAirCombatResult');
+      if (raw) result = JSON.parse(raw);
+    } catch (_error) {
+      result = null;
+    }
+    if (!result) return;
+    this.applyAirCombatResult(result);
+    try { localStorage.removeItem('creatorExamAirCombatResult'); } catch (_error) {}
+  }
+
+  applyAirCombatResult(result) {
+    if (!result?.id) return;
+    if (this.processedAirCombatResults.has(result.id)) {
+      const previousMoment = this.lastAirCombatResult?.notableMoment || '';
+      this.lastAirCombatResult = { ...this.lastAirCombatResult, ...result };
+      const events = this.worldSession?.worldSimulation?.eventBus?.events || [];
+      const event = events.find(entry => entry.type === 'airspace_resolved' && entry.payload?.id === result.id);
+      if (event) event.payload = { ...event.payload, ...result };
+      if (result.notableMoment && result.notableMoment !== previousMoment) {
+        this.addLog(`【空域关键时刻】${result.notableMoment}`);
+      }
+      this.memoryStore?.saveWorld?.(this.worldSession.worldSimulation);
+      this.renderContinuity();
+      this.updateUi();
+      return;
+    }
+
+    this.processedAirCombatResults.add(result.id);
+    this.lastAirCombatResult = result;
+    const victory = result.outcome === 'victory';
+    const delta = victory ? -1 : 1;
+    if (this.level?.entropyLimit) {
+      this.entropy = Math.max(0, Math.min(this.level.entropyLimit, this.entropy + delta));
+    }
+
+    this.recordGameEvent({
+      type: 'airspace_resolved',
+      levelId: result.regionId || this.level?.id || 'final-exam',
+      regionId: result.regionId || this.level?.id || 'final-exam',
+      turn: this.turn,
+      payload: result,
+      importance: 1,
+      tags: ['airspace', 'air_combat', victory ? 'victory' : 'loss', result.endingModifier || 'ending_modifier']
+    });
+
+    this.addLog(`【第七天裂隙空域】${victory ? '清算完成' : '清算失败'}，分数 ${result.score || 0}，裂隙变化 ${delta >= 0 ? '+' : ''}${delta}。`, true);
+    if (result.notableMoment) this.addLog(`【空域裁决】${result.notableMoment}`);
+    this.memoryStore?.saveWorld?.(this.worldSession.worldSimulation);
+    this.renderContinuity();
+    this.updateUi();
+  }
+
+  renderAirCombatPanel() {
+    if (!this.ui.airCombatPanel) return;
+    const available = this.isFinalExam();
+    this.ui.airCombatPanel.classList.toggle('hidden', !available);
+    if (!available) return;
+
+    const creations = this.creations.map(c => c.card?.name).filter(Boolean).slice(-3);
+    const result = this.lastAirCombatResult;
+    const watchText = this.lastNightWatchResult
+      ? `守夜${this.lastNightWatchResult.victory ? '已守住' : '留下裂隙伤口'}，空域难度会随之调整。`
+      : '可先预演；正式节奏建议在长夜守城后进入。';
+    this.ui.airCombatTitle.textContent = result ? '第七天裂隙空域已结算' : '第七天裂隙空域';
+    this.ui.airCombatSummary.innerHTML = result
+      ? `<strong>${result.outcome === 'victory' ? '空域清算' : '载体坠落'} · ${result.clearedLayers || 0}/6 段</strong><span>分数 ${result.score || 0}，结局修饰 ${result.endingModifier || '未记录'}</span>`
+      : `<strong>熵值 ${this.entropy || 0} · ${watchText}</strong><span>${creations.length ? `造物武器来源：${creations.join('、')}` : '最近造物会压缩成空域武器。'}</span>`;
+    this.ui.airCombatBtn.textContent = result ? '再次进入空域' : (this.lastNightWatchResult ? '进入第七天空域' : '预演空域');
   }
 
   loadNextRegion(regionData) {
@@ -1487,7 +1656,7 @@ class CreatorExam3D extends GameEngine {
     // Spawn particle effects
     const pos = this.tileToWorld(x, y);
     this.particleSystem.spawnAbilityParticles(pos.x, 0.5, pos.z, creation.card.ability, creation.card.range);
-    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, creation.card.name, this.particleSystem.getAbilityColor(creation.card.ability));
+    this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, this.getCreationDisplayName(creation.card), this.particleSystem.getAbilityColor(creation.card.ability));
 
     // Screen flash for high-cost creations
     if (creation.card.cost >= 3) {
@@ -2019,30 +2188,93 @@ class CreatorExam3D extends GameEngine {
     return group;
   }
 
+  getCreationDisplayName(card) {
+    return normalizeCreationName(card);
+  }
+
+  getCreationVisualStyle(card) {
+    const baseColor = ABILITY_COLORS[card?.ability] || 0xffffff;
+    if (card?.ability === 'consume_light') {
+      return {
+        coreColor: 0x4b275d,
+        ringColor: 0xffd166,
+        coreEmissive: 0x14051d,
+        ringEmissive: 0xffa64d,
+        coreEmissiveIntensity: 0.08,
+        ringEmissiveIntensity: 0.95,
+        accentColor: 0xfff0a8,
+        shadowColor: 0x09040d,
+        absorption: true
+      };
+    }
+    return {
+      coreColor: baseColor,
+      ringColor: baseColor,
+      coreEmissive: baseColor,
+      ringEmissive: baseColor,
+      coreEmissiveIntensity: 0.18,
+      ringEmissiveIntensity: 0.25
+    };
+  }
+
   createCreationMesh(creation) {
     const { card, x, y, remaining } = creation;
     const group = new THREE.Group();
     const pos = this.tileToWorld(x, y);
     group.position.set(pos.x, 0.45, pos.z);
 
-    const color = ABILITY_COLORS[card.ability] || 0xffffff;
+    const visual = this.getCreationVisualStyle(card);
+    const range = Math.max(0, card.range || 0);
     const core = new THREE.Mesh(
       new THREE.IcosahedronGeometry(0.25, 1),
-      this.material(color, { emissive: color, emissiveIntensity: 0.18, roughness: 0.45 })
+      this.material(visual.coreColor, { emissive: visual.coreEmissive, emissiveIntensity: visual.coreEmissiveIntensity, roughness: 0.45 })
     );
     core.castShadow = true;
     core.rotation.y = remaining * 0.5;
     group.add(core);
 
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.38 + card.range * 0.08, 0.025, 8, 32),
-      this.material(color, { transparent: true, opacity: 0.72, emissive: color, emissiveIntensity: 0.25 })
+      new THREE.TorusGeometry(0.38 + range * 0.08, 0.025, 8, 32),
+      this.material(visual.ringColor, { transparent: true, opacity: 0.72, emissive: visual.ringEmissive, emissiveIntensity: visual.ringEmissiveIntensity })
     );
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.02;
     group.add(ring);
 
-    const timer = this.createLabel(`${card.name} · ${remaining}`);
+    if (visual.absorption) {
+      const warningRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.48 + range * 0.08, 0.018, 8, 40),
+        this.material(visual.accentColor, { transparent: true, opacity: 0.86, emissive: visual.accentColor, emissiveIntensity: 0.75, roughness: 0.35 })
+      );
+      warningRing.rotation.x = Math.PI / 2;
+      warningRing.position.y = 0.16;
+      group.add(warningRing);
+
+      const shadowPool = new THREE.Mesh(
+        new THREE.CircleGeometry(0.32 + range * 0.04, 32),
+        this.material(visual.shadowColor, { transparent: true, opacity: 0.5, depthWrite: false, roughness: 1, side: THREE.DoubleSide })
+      );
+      shadowPool.rotation.x = -Math.PI / 2;
+      shadowPool.position.y = -0.04;
+      group.add(shadowPool);
+
+      for (let i = 0; i < 3; i += 1) {
+        const angle = (Math.PI * 2 * i) / 3 + 0.4;
+        group.add(this.createVoxelBlock(
+          `anti-light-spark-${i}`,
+          0.05,
+          0.11,
+          0.05,
+          visual.accentColor,
+          Math.cos(angle) * 0.32,
+          0.28,
+          Math.sin(angle) * 0.32,
+          { emissive: visual.accentColor, emissiveIntensity: 0.7 }
+        ));
+      }
+    }
+
+    const timer = this.createLabel(`${this.getCreationDisplayName(card)} · ${remaining}`);
     timer.position.y = 0.62;
     group.add(timer);
     return group;
@@ -2212,6 +2444,7 @@ class CreatorExam3D extends GameEngine {
     this.renderAdvancedMechanicsPanel();
     this.renderStorytellerPanel();
     this.renderNightWatchPanel();
+    this.renderAirCombatPanel();
     this.renderIntentArrows();
   }
 
@@ -2241,7 +2474,7 @@ class CreatorExam3D extends GameEngine {
       },
       rift: {
         entropyRatio: this.entropy / (this.level.entropyLimit || 7),
-        activeEchoes: []
+        activeEchoes: this.riftEchoSystem?.getActiveEchoes?.() || []
       },
       abyss: {
         state: this.getAbyssState?.() || { level: 'dormant', description: '深渊沉睡' },
@@ -2254,6 +2487,12 @@ class CreatorExam3D extends GameEngine {
       resident: {
         actions: this.worldSession?.worldSimulation?.residentAgentSystem?.recentActions || []
       },
+      legacy: {
+        total: legacySystem.legacyUnits.size,
+        returned: this.returnedLegacyUnits || [],
+        canAdvance: this.levelIndex >= 0 && this.levelIndex < LEVELS.length - 1
+      },
+      social: this.getSocialDemoState(),
       logs: this.logs
     };
   }
@@ -2333,6 +2572,15 @@ class CreatorExam3D extends GameEngine {
       case 'record-legacy':
         this.triggerLegacyDemo();
         break;
+      case 'return-legacy':
+        this.triggerLegacyReturnDemo();
+        return;
+      case 'trigger-social':
+        this.triggerSocialDemo();
+        break;
+      case 'manifest-echo':
+        this.triggerRiftEchoDemo();
+        break;
       case 'generate-riddle':
         this.triggerAbyssDemo();
         break;
@@ -2405,14 +2653,37 @@ class CreatorExam3D extends GameEngine {
 
   triggerLegendDemo() {
     const card = this.creations.find(c => c.placed)?.card || this.demoCard('illuminate');
-    const cause = this.recordLegendaryEvent('creation', '造物者', card.name, 'major');
-    const effect = this.recordLegendaryEvent('miracle', '造物者', this.level.title, 'world-shaking');
-    worldLegendSystem.causalGraph.linkCauseEffect(cause.id, effect.id, 'caused');
+    const creationName = this.getCreationDisplayName(card);
+    const currentLevel = this.level?.title || this.level?.id || '当前关卡';
+    const previousLevel = this.levelIndex > 0
+      ? LEVELS[this.levelIndex - 1]?.title
+      : '序章：裂隙前夜';
+    const source = worldLegendSystem.recordLegendaryEvent({
+      type: 'creation',
+      actor: '造物者',
+      target: creationName,
+      level: previousLevel,
+      turn: Math.max(1, this.turn - 1),
+      description: `造物者在${previousLevel}用${creationName}留下光与记忆的微小选择`,
+      impact: 'major'
+    });
+    const effect = worldLegendSystem.recordLegendaryEvent({
+      type: 'miracle',
+      actor: '造物者',
+      target: currentLevel,
+      level: currentLevel,
+      turn: this.turn,
+      description: `${creationName}的光与记忆在${currentLevel}再次改变道路`,
+      impact: 'world-shaking',
+      causeId: source.id
+    });
+    worldLegendSystem.causalGraph.linkCauseEffect(source.id, effect.id, 'echoed');
     this.createArtifact(card, 'major');
     const npc = this.npcManager?.getNPCSummary?.()[0];
     if (npc) worldLegendSystem.enshrineNPC(npc, 'legendary_deed');
-    this.memorySystem?.addNarrativeMemory?.('lore', `传说记住了${card.name}与${this.level.title}的因果。`, ['造物者', card.name]);
-    this.addLog('【传说演示】世界传说、神器、封神者与因果链已写入。', true);
+    const butterflyCount = worldLegendSystem.causalGraph.getButterflyEffectsForLevel(currentLevel).length;
+    this.memorySystem?.addNarrativeMemory?.('lore', `传说记住了${creationName}与${currentLevel}的因果。`, ['造物者', creationName]);
+    this.addLog(`【传说演示】世界传说、神器、封神者与因果链已写入；蝴蝶效应 ${butterflyCount} 条。`, true);
   }
 
   triggerAbyssDemo() {
@@ -2425,15 +2696,142 @@ class CreatorExam3D extends GameEngine {
     }
   }
 
+  triggerRiftEchoDemo() {
+    if (!this.riftEchoSystem) return;
+    const limit = this.level.entropyLimit || 7;
+    this.entropy = Math.max(this.entropy, Math.ceil(limit * 0.75));
+    this.cognitiveAbyss.update(this.entropy, limit);
+
+    const card = this.demoCard('memory_beacon');
+    const creationName = this.getCreationDisplayName(card);
+    const memory = this.memorySystem?.vectorMemory?.addMemory?.(`${creationName}：${card.description}`, {
+      type: 'creation',
+      level: this.level.id,
+      turn: this.turn,
+      ability: card.ability,
+      demo: true
+    }) || {
+      id: `echo-memory-${Date.now()}`,
+      text: card.description,
+      metadata: { type: 'creation', level: this.level.id, turn: this.turn, ability: card.ability }
+    };
+    memory.name = creationName;
+    memory.ability = card.ability;
+    memory.card = card;
+
+    const position = this.findOpenEchoTile();
+    const result = this.riftEchoSystem.manifestEcho(memory, {
+      entropy: this.entropy,
+      entropyLimit: limit,
+      turn: this.turn,
+      abyssDepth: this.cognitiveAbyss?.depth || this.entropy / limit,
+      corruptionLevel: this.verificationCorruption?.corruptionLevel || 0
+    }, position);
+
+    if (result.success) {
+      this.addLog(`【裂隙回响】${result.narrative}`, true);
+      this.addLog(`【回响状态】${creationName} 在 (${result.echo.x + 1}, ${result.echo.y + 1}) 显现，剩余 ${result.echo.remainingTurns} 回合。`);
+      this.showToast(`裂隙回响显现：${creationName}`);
+    } else {
+      this.addLog(`【裂隙回响】${result.error || result.reason || '显现失败'}`, true);
+      this.showToast(result.error || result.reason || '回响显现失败');
+    }
+  }
+
+  findOpenEchoTile() {
+    const candidates = [
+      { x: 3, y: 3 },
+      { x: 2, y: 3 },
+      { x: 4, y: 3 },
+      { x: 3, y: 2 },
+      { x: 3, y: 4 }
+    ];
+    return candidates.find(pos => this.inBounds(pos.x, pos.y) && !this.unitAt(pos.x, pos.y)) || { x: 3, y: 3 };
+  }
+
+  processRiftEchoes() {
+    if (!this.riftEchoSystem) return;
+    const limit = this.level.entropyLimit || 7;
+    const results = this.riftEchoSystem.processTurn({
+      entropy: this.entropy,
+      entropyLimit: limit,
+      turn: this.turn,
+      abyssDepth: this.cognitiveAbyss?.depth || this.entropy / limit,
+      corruptionLevel: this.verificationCorruption?.corruptionLevel || 0
+    });
+    for (const result of results) {
+      if (result.type === 'triggered') {
+        const source = result.echo.originalCreation?.card || result.echo.originalCreation || {};
+        const ability = result.ability || source.ability;
+        if (ability) {
+          applyAbility(this, {
+            id: result.echo.id,
+            card: {
+              ...source,
+              name: source.name || result.echo.originalCreation?.name || '裂隙回响',
+              ability,
+              range: source.range || 1,
+              duration: result.echo.remainingTurns || 1
+            },
+            x: result.echo.x,
+            y: result.echo.y,
+            remaining: result.echo.remainingTurns || 1,
+            placed: true,
+            restores: []
+          }, 'active');
+        }
+        this.addLog(`【回响触发】${result.description}`);
+      } else if (result.type === 'expired') {
+        this.addLog(`【回响消散】${result.narrative}`);
+      }
+    }
+  }
+
   triggerCorruptionDemo() {
     const result = this.createParadoxCard('light_dark');
     if (result.success && result.card) {
       this.activeCard = result.card;
       this.showCard(result.card);
-      this.addLog(`【腐化演示】${result.card.name} 已生成，腐化 +${result.corruption}。`, true);
+      const target = this.findCorruptionDemoTile(result.card.ability);
+      if (target) {
+        this.creationCharges = Math.max(this.creationCharges, 1);
+        this.miraclePoints = Math.max(this.miraclePoints, result.card.cost || 0);
+        this.placeCreation(target.x, target.y);
+        const effect = this.creations.find(c => c.id === result.card.id)?.corruptionEffect || {};
+        this.addLog(`【腐化演示】${this.getCreationDisplayName(result.card)} 已在 (${target.x + 1}, ${target.y + 1}) 触发，腐化 +${result.corruption}，棋盘效果 ${JSON.stringify(effect)}。`, true);
+      } else {
+        this.addLog(`【腐化演示】${this.getCreationDisplayName(result.card)} 已生成，腐化 +${result.corruption}。`, true);
+      }
     } else {
       this.addLog(`【腐化演示】${result.warnings?.join('；') || '生成失败'}`, true);
     }
+  }
+
+  findCorruptionDemoTile(ability) {
+    const preferredByAbility = {
+      consume_light: [TILE.LAND, TILE.FOG, TILE.FOREST, TILE.VILLAGE, TILE.HIGH],
+      steam_burst: [TILE.WATER, TILE.LAND, TILE.SWAMP, TILE.BRIDGE],
+      creation_burst: [TILE.WATER, TILE.SWAMP, TILE.DARK, TILE.FOG, TILE.POISON],
+      memory_loop: [TILE.FOG, TILE.DARK],
+      cycle_life: [TILE.LAND, TILE.FOREST, TILE.VILLAGE, TILE.HIGH],
+      temporal_rift: [TILE.LAND, TILE.FOG, TILE.DARK, TILE.SWAMP, TILE.WATER],
+      paradox_barrier: [TILE.LAND, TILE.FOG, TILE.DARK, TILE.SWAMP, TILE.WATER, TILE.BRIDGE],
+      chaos_guide: [TILE.LAND, TILE.FOREST, TILE.FOG, TILE.DARK]
+    };
+    const preferred = preferredByAbility[ability] || [TILE.LAND, TILE.FOG, TILE.WATER, TILE.SWAMP, TILE.DARK];
+    const candidates = [
+      { x: 2, y: 2 }, { x: 2, y: 3 }, { x: 4, y: 2 }, { x: 3, y: 1 },
+      { x: 1, y: 2 }, { x: 4, y: 4 }, { x: 5, y: 2 }, { x: 1, y: 4 }
+    ];
+    const allCells = [];
+    for (let y = 0; y < BOARD_SIZE; y++) {
+      for (let x = 0; x < BOARD_SIZE; x++) allCells.push({ x, y });
+    }
+    const ordered = [...candidates, ...allCells];
+    return ordered.find(cell => {
+      if (!this.inBounds(cell.x, cell.y) || this.unitAt(cell.x, cell.y)) return false;
+      return preferred.includes(this.getTerrain(cell.x, cell.y));
+    }) || ordered.find(cell => this.inBounds(cell.x, cell.y) && !this.unitAt(cell.x, cell.y));
   }
 
   ensureWorkshopInventory(count = 1) {
@@ -2494,6 +2892,100 @@ class CreatorExam3D extends GameEngine {
       lost: this.lost
     });
     this.addLog(`【传承演示】${legacy.name} 已写入传承，等级 ${legacy.tier}。`, true);
+  }
+
+  triggerLegacyReturnDemo() {
+    if (legacySystem.legacyUnits.size === 0) {
+      this.triggerLegacyDemo();
+    }
+
+    if (this.levelIndex >= 0 && this.levelIndex < LEVELS.length - 1) {
+      const nextIndex = this.levelIndex + 1;
+      this.loadLevel(nextIndex);
+      let returned = this.returnedLegacyUnits || [];
+      if (!returned.length) {
+        const forced = legacySystem.getUnitsForNextLevel(this.level.id, { force: true });
+        returned = this.integrateLegacyReturnUnits(forced);
+        this.npcManager?.addUnitNPCs?.(returned, { legacyReturn: true });
+        if (returned.length) {
+          this.addLog('【传承回归演示】自然概率未触发，演示已强制召回传承单位。', true);
+        }
+      }
+      if (returned.length) {
+        this.showToast(`传承回归：${returned.map(unit => unit.name).join('、')} 已加入下一关`);
+        this.addLog(`【传承回归演示】已进入${this.level.shortTitle}，${returned.length} 名被救援者作为真实单位重现。`, true);
+      } else {
+        this.showToast('已进入下一关，但没有符合条件的传承单位');
+        this.addLog('【传承回归演示】未找到可在下一关重现的传承单位。', true);
+      }
+      this.renderWorld();
+      this.updateUi();
+      return;
+    }
+
+    const forced = Array.from(legacySystem.legacyUnits.values())
+      .filter(legacy => !legacy.levels.includes(this.level.id))
+      .map(legacy => legacySystem.createLegacyUnit(legacy, this.level.id));
+    const returned = this.integrateLegacyReturnUnits(forced);
+    this.npcManager?.addUnitNPCs?.(returned, { legacyReturn: true });
+    this.showToast(returned.length ? `传承回归：${returned.map(unit => unit.name).join('、')}` : '没有可召回的传承单位');
+    this.renderWorld();
+    this.updateUi();
+  }
+
+  getSocialDemoState() {
+    const graph = this.npcManager?.socialGraph;
+    if (!graph) return { edgeCount: 0, cliqueCount: 0, sampleDistance: '无图谱' };
+    const stats = graph.getNetworkStats?.() || {};
+    const npcs = this.npcManager?.getNPCSummary?.() || [];
+    const first = npcs[0]?.id;
+    const last = npcs[npcs.length - 1]?.id;
+    const distance = first && last ? graph.getSocialDistance(first, last, { minStrength: -50 }) : null;
+    const cliques = graph.detectCliques?.({ minStrength: 8, minSize: 3 }) || [];
+    const summary = cliques.length
+      ? `社交团体：${cliques[0].names.join('、')}；${npcs[0]?.name || '角色'} 到 ${npcs[npcs.length - 1]?.name || '角色'} 距离 ${distance?.distance ?? '不可达'}。`
+      : '社交图谱尚未形成三人以上小团体。';
+    return {
+      edgeCount: stats.totalEdges || 0,
+      cliqueCount: cliques.length,
+      sampleDistance: Number.isFinite(distance?.distance) ? distance.distance : '不可达',
+      summary
+    };
+  }
+
+  triggerSocialDemo() {
+    const graph = this.npcManager?.socialGraph;
+    const npcs = this.npcManager?.getNPCSummary?.() || [];
+    if (!graph || npcs.length < 3) {
+      this.showToast('当前关卡 NPC 不足，无法形成社交图谱演示。');
+      return;
+    }
+
+    const ids = npcs.map(n => n.id);
+    const relationTypes = ['family', 'friend', 'mentor', 'debtor', 'witness', 'rival'];
+    for (let i = 0; i < ids.length - 1; i++) {
+      const type = relationTypes[i % relationTypes.length];
+      graph.addEdge(ids[i], ids[i + 1], type, type === 'rival' ? -18 : 22);
+    }
+    if (ids.length >= 4) {
+      graph.addEdge(ids[0], ids[2], 'friend', 18);
+      graph.addEdge(ids[1], ids[3], 'witness', 12);
+    }
+    graph.recordSocialEvent({
+      type: 'rescue',
+      actor: ids[0],
+      target: ids[1],
+      witnesses: ids.slice(2, 5),
+      impact: 'positive'
+    });
+    graph.spreadMood(ids[0], '希望', 80);
+
+    const cliques = graph.detectCliques({ minStrength: 8, minSize: 3 });
+    const distance = graph.getSocialDistance(ids[0], ids[ids.length - 1], { minStrength: -50 });
+    const distanceText = Number.isFinite(distance.distance) ? `${distance.distance} 跳` : '不可达';
+    const groupText = cliques[0]?.names.join('、') || '尚未形成';
+    this.addLog(`【社交演示】关系类型已播种，小团体：${groupText}；${npcs[0].name} 到 ${npcs[npcs.length - 1].name} 的社交距离：${distanceText}。`, true);
+    this.showToast(`社交图谱：${cliques.length} 个小团体，距离 ${distanceText}`);
   }
 
   updateMissionDossier() {
@@ -2631,6 +3123,7 @@ class CreatorExam3D extends GameEngine {
   }
 
   async submitNpcDialogue(prompt = null, options = {}) {
+    if (this.npcDialoguePending) return;
     const input = (prompt ?? this.ui.npcDialogueInput?.value ?? '').trim();
     if (!input) return;
     const dialogueAction = options.action || this.classifyDialogueAction(input);
@@ -2650,27 +3143,45 @@ class CreatorExam3D extends GameEngine {
 
     this.addNpcDialogueLine('player', '造物者', input);
     this.renderNpcDialoguePanel();
+    this.setNpcDialoguePending(true);
 
-    for (const responder of responders) {
-      const { unit, npc } = responder;
-      const reply = await this.generateNpcReply(unit, npc, input, {
-        groupMode: this.selectedDialogueGroup,
-        action: dialogueAction
-      });
-      this.addNpcDialogueLine('npc', unit.name, reply);
-      this.addLog(`【交流】你：${input} / ${unit.name}：${reply}`, true);
-      this.showToast(`${unit.name}：${reply}`);
+    try {
+      for (const responder of responders) {
+        const { unit, npc } = responder;
+        let reply;
+        try {
+          reply = await this.generateNpcReply(unit, npc, input, {
+            groupMode: this.selectedDialogueGroup,
+            action: dialogueAction
+          });
+        } catch (_error) {
+          reply = this.buildGroundedNpcReply(unit, input, npc, dialogueAction);
+        }
+        this.addNpcDialogueLine('npc', unit.name, reply);
+        this.addLog(`【交流】你：${input} / ${unit.name}：${reply}`, true);
+        this.showToast(`${unit.name}：${reply}`);
 
-      if (npc) {
-        this.npcManager.updateNPCMemory(npc.id, `造物者问："${input}"；回应："${reply}"`);
-        this.npcManager.playerBehavior.dialogues += 1;
-        if (this.npcManager.playerBehavior.dialogues >= this.npcManager.attitudeThresholds.dialogue.threshold) {
-          this.npcManager.updateNPCAttitude(npc.id, this.npcManager.attitudeThresholds.dialogue.delta);
+        if (npc) {
+          this.npcManager.updateNPCMemory(npc.id, `造物者问："${input}"；回应："${reply}"`);
+          this.npcManager.playerBehavior.dialogues += 1;
+          if (this.npcManager.playerBehavior.dialogues >= this.npcManager.attitudeThresholds.dialogue.threshold) {
+            this.npcManager.updateNPCAttitude(npc.id, this.npcManager.attitudeThresholds.dialogue.delta);
+          }
         }
       }
+    } finally {
+      this.setNpcDialoguePending(false);
+      this.renderNpcDialoguePanel();
     }
+  }
 
-    this.renderNpcDialoguePanel();
+  setNpcDialoguePending(pending) {
+    this.npcDialoguePending = Boolean(pending);
+    if (this.ui?.npcDialogueInput) this.ui.npcDialogueInput.disabled = this.npcDialoguePending;
+    if (this.ui?.npcDialogueSend) {
+      this.ui.npcDialogueSend.disabled = this.npcDialoguePending;
+      this.ui.npcDialogueSend.textContent = this.npcDialoguePending ? '回应中...' : '发送回应';
+    }
   }
 
   handleNpcDialogueSend() {
@@ -2776,6 +3287,10 @@ class CreatorExam3D extends GameEngine {
       currentNeed: this.describeUnitNeed(unit)
     };
 
+    if (hasFabricatedPremisePrompt(playerInput)) {
+      return this.buildGroundedNpcReply(unit, playerInput, npc, dialogueAction);
+    }
+
     if (npc) {
       const dialogueContext = this.npcManager.buildDialogueContext(npc.id, playerInput);
       const aiText = await this.fetchNarrative('dialogue', {
@@ -2784,7 +3299,7 @@ class CreatorExam3D extends GameEngine {
         npcId: npc.id,
         npcName: npc.name || unit.name
       });
-      const validated = this.validateNpcReply(unit, playerInput, aiText, { npc, action: dialogueAction });
+      const validated = this.validateNpcReply(unit, playerInput, aiText, { npc, action: dialogueAction, groundingContext: baseContext });
       if (validated) return validated;
 
       if (dialogueAction !== 'free') {
@@ -2796,7 +3311,7 @@ class CreatorExam3D extends GameEngine {
     }
 
     const aiText = await this.fetchNarrative('dialogue', baseContext);
-    const validated = this.validateNpcReply(unit, playerInput, aiText, { npc, action: dialogueAction });
+    const validated = this.validateNpcReply(unit, playerInput, aiText, { npc, action: dialogueAction, groundingContext: baseContext });
     if (validated) return validated;
 
     return this.buildGroundedNpcReply(unit, playerInput, npc, dialogueAction) || this.buildResidentDialogue(unit, npc);
@@ -2936,9 +3451,15 @@ class CreatorExam3D extends GameEngine {
     const looksLikeAtmosphereOnly = (text.length > 160 || needsDirectAnswer)
       && !hasDirectSignal
       && /涟漪|未完成|故事|青苔|鱼群|堂屋|水底|回响|七个雨季|指尖|被水吞没/.test(text);
+    const unsupportedFacts = findUnsupportedDialogueFacts(text, {
+      ...(options.groundingContext || {}),
+      unitName: unit.name,
+      residentName: unit.name
+    });
 
     if (this.hasUnsupportedActionTarget(text)) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
     if (this.hasUnsupportedIdentityClaim(unit, playerInput, text)) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
+    if (unsupportedFacts.length) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
     if (asksIdentity && !hasName) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
     if (asksRoute && !hasRouteSignal) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
     if (asksNeed && !hasNeedSignal) return this.buildGroundedNpcReply(unit, playerInput, options.npc, action);
@@ -3136,6 +3657,29 @@ class CreatorExam3D extends GameEngine {
     this.ui.legendFigures.innerHTML = figures.length
       ? figures.map(f => `<div class="continuity-item"><strong>${escapeHtml(f.name)}</strong> — ${escapeHtml(f.reason)}</div>`).join('')
       : '<div class="continuity-item">尚无封神者</div>';
+
+    if (this.ui.legendButterfly) {
+      const currentKeys = [this.level?.title, this.level?.id].filter(Boolean);
+      const seenEffects = new Set();
+      const effects = currentKeys
+        .flatMap(key => worldLegendSystem.causalGraph.getButterflyEffectsForLevel(key))
+        .filter(effect => {
+          const key = `${effect.sourceLevel}|${effect.targetLevel}|${effect.description}`;
+          if (seenEffects.has(key)) return false;
+          seenEffects.add(key);
+          return true;
+        })
+        .sort((a, b) => (b.strength || 0) - (a.strength || 0))
+        .slice(0, 3);
+      this.ui.legendButterfly.innerHTML = effects.length
+        ? effects.map(effect => `
+          <div class="continuity-item">
+            <strong>${escapeHtml(effect.sourceLevel)} → ${escapeHtml(effect.targetLevel)}</strong>
+            <div>${escapeHtml(effect.description)}</div>
+          </div>
+        `).join('')
+        : '<div class="continuity-item">尚无跨关蝴蝶效应</div>';
+    }
   }
 
   renderRitualPanel() {
@@ -3153,7 +3697,7 @@ class CreatorExam3D extends GameEngine {
       return `
         <label class="ritual-creation-item">
           <input type="checkbox" class="ritual-creation-checkbox" data-creation-id="${escapeHtml(c.id)}" ${checked}>
-          <span><strong>${escapeHtml(c.card.name)}</strong> · ${escapeHtml(c.card.ability)}</span>
+          <span><strong>${escapeHtml(this.getCreationDisplayName(c.card))}</strong> · ${escapeHtml(c.card.ability)}</span>
         </label>
       `;
     }).join('');
@@ -3304,7 +3848,7 @@ class CreatorExam3D extends GameEngine {
     const engineState = stats?.engineOverloaded ? '已崩溃' : '稳定';
 
     const paradoxTypes = [
-      { key: 'light_dark', name: '噬光之灯' },
+      { key: 'light_dark', name: '噬光黑核' },
       { key: 'life_death', name: '生死之种' },
       { key: 'creation_destruction', name: '创灭之锤' },
       { key: 'time_stillness', name: '静时之沙' },
@@ -3352,7 +3896,7 @@ class CreatorExam3D extends GameEngine {
       this.ui.workshopInventoryList.innerHTML = inventory.map(item => `
         <label class="continuity-item workshop-item">
           <input type="checkbox" class="workshop-select" data-inv-id="${escapeHtml(item.id)}">
-          <span><strong>${escapeHtml(item.card.name)}</strong> · ${escapeHtml(item.card.ability)}</span>
+          <span><strong>${escapeHtml(this.getCreationDisplayName(item.card))}</strong> · ${escapeHtml(item.card.ability)}</span>
         </label>
       `).join('');
       // 保持重新渲染后的选中状态
@@ -3366,7 +3910,10 @@ class CreatorExam3D extends GameEngine {
       this.ui.workshopMaterialsList.innerHTML = '<div class="continuity-item">没有可用材料</div>';
     } else {
       this.ui.workshopMaterialsList.innerHTML = materialEntries.map(m => {
-        const [name, count] = Array.isArray(m) ? m : [m.name || m.type, m.count];
+        const [key, value] = Array.isArray(m) ? m : [m.name || m.type, m.count];
+        const material = value && typeof value === 'object' ? value : null;
+        const name = material?.name || key;
+        const count = material?.count ?? value ?? 0;
         return `<div class="continuity-item"><strong>${escapeHtml(name)}</strong> × ${escapeHtml(String(count))}</div>`;
       }).join('');
     }
@@ -3381,6 +3928,7 @@ class CreatorExam3D extends GameEngine {
     if (!this.ui.legacyUnitList) return;
 
     const legacyUnits = Array.from(legacySystem.legacyUnits.values());
+    const returnedUnits = this.returnedLegacyUnits || [];
     if (legacyUnits.length === 0) {
       this.ui.legacyUnitList.innerHTML = '<div class="continuity-item">尚未有单位被传承。</div>';
     } else {
@@ -3391,7 +3939,12 @@ class CreatorExam3D extends GameEngine {
           <strong>${escapeHtml(l.name)}</strong> · ${escapeHtml(tierNames[l.tier] || l.tier)}
           <div class="legacy-meta">救援 ${l.rescueCount} 次 · 特质：${escapeHtml(traits)}</div>
         </div>`;
-      }).join('');
+      }).join('') + (returnedUnits.length ? returnedUnits.map(unit => `
+        <div class="continuity-item">
+          <strong>回归单位：${escapeHtml(unit.name)}</strong>
+          <div class="legacy-meta">当前位置 (${unit.x + 1}, ${unit.y + 1}) · 目标 (${unit.goal.x + 1}, ${unit.goal.y + 1}) · 身份 ${escapeHtml(unit.residentId || unit.legacyId || unit.id)}</div>
+        </div>
+      `).join('') : '');
     }
 
     if (this.ui.legacyWorldStats) {
@@ -3474,7 +4027,7 @@ class CreatorExam3D extends GameEngine {
     if (result.success && result.card) {
       this.activeCard = result.card;
       this.showCard(result.card);
-      this.addLog(`【腐化】生成悖论造物「${result.card.name}」，腐化值 +${result.corruption}。`, true);
+      this.addLog(`【腐化】生成悖论造物「${this.getCreationDisplayName(result.card)}」，腐化值 +${result.corruption}。`, true);
       if (result.narrative) this.addLog(result.narrative);
     } else {
       const warning = result.warnings?.join('；') || result.narrative || '腐化造物生成失败';
@@ -3522,7 +4075,7 @@ class CreatorExam3D extends GameEngine {
 
     const result = this.workshopModify(ids[0], 'range_boost');
     if (result.success) {
-      const cardName = result.finalCard?.name || result.workshopItem?.baseCard?.name || '造物';
+      const cardName = normalizeCreationName(result.finalCard || result.workshopItem?.baseCard, '造物');
       this.showToast(`改造成功：${cardName}`);
     } else {
       this.showToast(result.error || '改造失败');
@@ -3545,7 +4098,7 @@ class CreatorExam3D extends GameEngine {
 
     const result = this.workshopFuse(ids[0], ids[1]);
     if (result.success) {
-      const cardName = result.finalCard?.name || result.workshopItem?.baseCard?.name || '融合造物';
+      const cardName = normalizeCreationName(result.finalCard || result.workshopItem?.baseCard, '融合造物');
       this.showToast(`融合成功：${cardName}`);
     } else {
       this.showToast(result.error || '融合失败');
@@ -3676,7 +4229,7 @@ class CreatorExam3D extends GameEngine {
       let cls = 'log-item';
       if (entry.important) cls += ' important';
       if (entry.text.includes('共鸣')) cls += ' resonance';
-      let text = entry.text;
+      let text = this.normalizeLegacyDisplayText(entry.text);
       if (distortionLevel > 0.5) {
         text = this.cognitiveEffects.distortText(text, distortionLevel * 0.5);
       }
@@ -3685,9 +4238,13 @@ class CreatorExam3D extends GameEngine {
   }
 
   addLog(text, important = false) {
-    this.logs.unshift({ text, important });
+    this.logs.unshift({ text: this.normalizeLegacyDisplayText(text), important });
     this.logs = this.logs.slice(0, MAX_LOGS);
     if (this.ui?.logList) this.updateLogs();
+  }
+
+  normalizeLegacyDisplayText(text) {
+    return normalizeCreationDisplayText(text);
   }
 
   showToast(text) {
@@ -4073,21 +4630,26 @@ class CreatorExam3D extends GameEngine {
   renderResidentDialogueList() {
     if (!this.ui.residentDialogueList) return;
     const residents = this.worldSimulation?.residentRegistry?.getResidentsForRegion(this.level?.id) || [];
+    if (residents.length && !residents.some(resident => resident.residentId === this.selectedResidentId)) {
+      this.selectedResidentId = residents[0].residentId;
+    }
     this.ui.residentDialogueList.innerHTML = residents.map(resident => `
-      <div class="resident-card" data-resident-id="${resident.residentId}">
-        <strong>${resident.name}</strong> · ${resident.mood}
-        <br><em>${resident.currentGoal || 'No current goal'}</em>
-      </div>
+      <button class="resident-card ${resident.residentId === this.selectedResidentId ? 'active' : ''}" type="button" data-resident-id="${resident.residentId}" aria-pressed="${resident.residentId === this.selectedResidentId}">
+        <strong>${escapeHtml(resident.name)}</strong> · ${escapeHtml(resident.mood)}
+        <br><em>${escapeHtml(resident.currentGoal || resident.longTermGoal || '当前没有明确目标')}</em>
+      </button>
     `).join('');
     this.ui.residentDialogueList.querySelectorAll('.resident-card').forEach(card => {
       card.addEventListener('click', () => {
         this.selectedResidentId = card.dataset.residentId;
+        this.renderResidentDialogueList();
         this.addLog?.(`Selected resident: ${card.querySelector('strong')?.textContent || ''}`);
       });
     });
   }
 
   async sendResidentDialogue() {
+    if (this.residentDialoguePending) return;
     const text = this.ui.residentDialogueInput?.value?.trim();
     if (!text || !this.selectedResidentId) {
       this.addLog?.('Select a resident and type a message first.');
@@ -4099,55 +4661,76 @@ class CreatorExam3D extends GameEngine {
       return;
     }
 
+    this.setResidentDialoguePending(true);
+    const dialogueRegionLabel = this.level?.title || this.level?.id || '';
     const localResponse = this.residentDialogueSystem.generateLocalDialogue({
       resident,
       playerText: text,
-      regionId: this.level?.id
+      regionId: dialogueRegionLabel
     });
 
     let response = localResponse;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const fetchResponse = await fetch('/api/resident-dialogue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          residentId: resident.residentId,
-          residentName: resident.name,
-          playerText: text,
-          memoryText: resident.memories?.slice(-1)?.[0]?.text || ''
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (fetchResponse.ok) {
-        const data = await fetchResponse.json();
-        if (data?.dialogue) {
-          response = this.residentDialogueSystem.sanitizeCandidate(data, { resident, playerText: text });
+      if (!hasFabricatedPremisePrompt(text)) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        try {
+          const fetchResponse = await fetch('/api/resident-dialogue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              residentId: resident.residentId,
+              residentName: resident.name,
+              playerText: text,
+              memoryText: resident.memories?.slice(-1)?.[0]?.text || '',
+              currentGoal: resident.currentGoal || resident.longTermGoal || '',
+              regionId: dialogueRegionLabel
+            }),
+            signal: controller.signal
+          });
+          if (fetchResponse.ok) {
+            const data = await fetchResponse.json();
+            if (data?.dialogue) {
+              response = this.residentDialogueSystem.sanitizeCandidate(data, { resident, playerText: text, regionId: dialogueRegionLabel });
+            }
+          }
+        } catch (_error) {
+          // Use local fallback
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
-    } catch (_error) {
-      // Use local fallback
-    }
 
-    this.worldSimulation?.recordResidentDialogue?.({
-      residentId: resident.residentId,
-      residentName: resident.name,
-      regionId: this.level?.id,
-      playerText: text,
-      residentText: response.text,
-      intent: response.intent,
-      turn: this.turn || 0
-    });
+      this.worldSimulation?.recordResidentDialogue?.({
+        residentId: resident.residentId,
+        residentName: resident.name,
+        regionId: this.level?.id,
+        playerText: text,
+        residentText: response.text,
+        intent: response.intent,
+        turn: this.turn || 0,
+        grounded: response.grounded === true
+      });
 
-    this.addLog?.(`${resident.name}: ${response.text}`);
-    if (this.ui.residentDialogueLog) {
-      const entry = document.createElement('li');
-      entry.textContent = `${resident.name}: ${response.text}`;
-      this.ui.residentDialogueLog.appendChild(entry);
+      this.addLog?.(`${resident.name}: ${response.text}`);
+      if (this.ui.residentDialogueLog) {
+        const entry = document.createElement('li');
+        entry.textContent = `${resident.name}: ${response.text}`;
+        this.ui.residentDialogueLog.appendChild(entry);
+      }
+      this.ui.residentDialogueInput.value = '';
+    } finally {
+      this.setResidentDialoguePending(false);
     }
-    this.ui.residentDialogueInput.value = '';
+  }
+
+  setResidentDialoguePending(pending) {
+    this.residentDialoguePending = Boolean(pending);
+    if (this.ui?.residentDialogueInput) this.ui.residentDialogueInput.disabled = this.residentDialoguePending;
+    if (this.ui?.residentDialogueSend) {
+      this.ui.residentDialogueSend.disabled = this.residentDialoguePending;
+      this.ui.residentDialogueSend.textContent = this.residentDialoguePending ? '回应中...' : '发送';
+    }
   }
 
   animate(now) {
@@ -4217,7 +4800,11 @@ class CreatorExam3D extends GameEngine {
     this.moveUnits();
     this.spreadHazards();
     this.applyTileHazardsToUnits();
+    this.enemyIntentSystem.generatePreviews(this.worldState, this);
+    this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
+    this.processRiftEchoes();
     this.decrementCreationDurations();
+    this.checkOathBetrayals();
     this.checkEndCondition(true);
     if (this.gameState === 'playing') {
       this.turn += 1;

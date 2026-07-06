@@ -320,6 +320,78 @@ export class SocialGraph {
     return result.sort((a, b) => Math.abs(b.strength) - Math.abs(a.strength));
   }
 
+  getSocialDistance(fromNpcId, toNpcId, options = {}) {
+    if (fromNpcId === toNpcId) return { distance: 0, path: [fromNpcId] };
+    if (!this.nodes.has(fromNpcId) || !this.nodes.has(toNpcId)) {
+      return { distance: Infinity, path: [] };
+    }
+
+    const minStrength = options.minStrength ?? -50;
+    const maxDepth = options.maxDepth ?? 8;
+    const visited = new Set([fromNpcId]);
+    const queue = [{ id: fromNpcId, path: [fromNpcId] }];
+
+    while (queue.length) {
+      const current = queue.shift();
+      if (current.path.length - 1 >= maxDepth) continue;
+
+      for (const rel of this.getRelationships(current.id)) {
+        if (rel.strength < minStrength || visited.has(rel.otherId)) continue;
+        const path = [...current.path, rel.otherId];
+        if (rel.otherId === toNpcId) {
+          return { distance: path.length - 1, path };
+        }
+        visited.add(rel.otherId);
+        queue.push({ id: rel.otherId, path });
+      }
+    }
+
+    return { distance: Infinity, path: [] };
+  }
+
+  detectCliques(options = {}) {
+    const minStrength = options.minStrength ?? 10;
+    const minSize = options.minSize ?? 3;
+    const visited = new Set();
+    const groups = [];
+
+    for (const npcId of this.nodes.keys()) {
+      if (visited.has(npcId)) continue;
+      const members = [];
+      const queue = [npcId];
+      visited.add(npcId);
+
+      while (queue.length) {
+        const current = queue.shift();
+        members.push(current);
+        for (const rel of this.getRelationships(current)) {
+          if (rel.strength < minStrength || visited.has(rel.otherId)) continue;
+          visited.add(rel.otherId);
+          queue.push(rel.otherId);
+        }
+      }
+
+      if (members.length >= minSize) {
+        const names = members.map(id => this.nodes.get(id)?.name || id);
+        const internalEdges = Array.from(this.edges.values()).filter(edge =>
+          members.includes(edge.a) && members.includes(edge.b) && edge.strength >= minStrength
+        );
+        const cohesion = internalEdges.length
+          ? internalEdges.reduce((sum, edge) => sum + edge.strength, 0) / internalEdges.length
+          : 0;
+        groups.push({
+          id: `clique-${groups.length + 1}`,
+          members,
+          names,
+          size: members.length,
+          cohesion
+        });
+      }
+    }
+
+    return groups.sort((a, b) => b.cohesion - a.cohesion || b.size - a.size);
+  }
+
   // Faction management
   joinFaction(npcId, factionId) {
     if (!this.factions.has(factionId)) {
@@ -491,6 +563,7 @@ export class SocialGraph {
   getNetworkStats() {
     const totalNodes = this.nodes.size;
     const totalEdges = this.edges.size;
+    const cliques = this.detectCliques({ minStrength: 10, minSize: 3 });
     const factions = Array.from(this.factions.values()).map(f => ({
       name: f.name,
       memberCount: f.members.size,
@@ -506,6 +579,8 @@ export class SocialGraph {
       totalNodes,
       totalEdges,
       averageRelationshipStrength: totalEdges > 0 ? totalStrength / totalEdges : 0,
+      cliqueCount: cliques.length,
+      largestCliqueSize: cliques[0]?.size || 0,
       factions,
       isolatedNodes: Array.from(this.nodes.values()).filter(n =>
         !Array.from(this.edges.values()).some(e => e.a === n.id || e.b === n.id)

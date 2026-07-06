@@ -733,6 +733,40 @@ export class NPCManager {
       }
 
       this.npcs.push(npc);
+      this.socialGraph.addNode(npc.id, npc);
+      this.socialGraph.joinFaction(npc.id, this.level?.id || 'default');
+    }
+  }
+
+  addUnitNPCs(units = [], options = {}) {
+    for (const unit of units) {
+      if (!unit?.name) continue;
+      const npc = {
+        ...this.buildUnitPersona(unit, this.npcs.length),
+        isLegacy: !!unit.isLegacy,
+        isLegacyReturn: !!unit.isLegacyReturn,
+        legacyId: unit.legacyId,
+        memories: unit.isLegacyReturn
+          ? [`我记得上一次被救下，也记得这一次要自己走到${unit.goal ? `(${unit.goal.x + 1}, ${unit.goal.y + 1})` : '目标'}。`]
+          : []
+      };
+      const existing = this.npcs.find(n => (
+        n.id === npc.id ||
+        n.name === npc.name ||
+        (npc.residentId && n.residentId === npc.residentId)
+      ));
+      if (existing) {
+        Object.assign(existing, npc, {
+          dynamicTraits: { ...(existing.dynamicTraits || {}), ...(npc.dynamicTraits || {}) },
+          memories: [...(existing.memories || []), ...(npc.memories || [])]
+        });
+        this.socialGraph.addNode(existing.id, existing);
+        this.socialGraph.joinFaction(existing.id, this.level?.id || 'default');
+        continue;
+      }
+      this.npcs.push(npc);
+      this.socialGraph.addNode(npc.id, npc);
+      this.socialGraph.joinFaction(npc.id, this.level?.id || 'default');
     }
   }
 

@@ -10,10 +10,14 @@ import { CognitiveAbyss } from './cognitiveAbyss.js';
 import { VerificationCorruption } from './verificationCorruption.js';
 import { CreatorWorkshop, WorkshopCreation } from './creatorWorkshop.js';
 import { EnemyIntentSystem } from './enemyIntent.js';
-import { applyAbility } from './abilityHandlers.js';
+import { applyAbility, hasAbilityHandler } from './abilityHandlers.js';
+import { normalizeCreationDisplayText, normalizeCreationName } from './creationDisplay.js';
 
 const BOARD_SIZE = 7;
 const MAX_LOGS = 100;
+const KNOWN_UNIT_RESIDENT_IDS = Object.freeze({
+  '小烛': 'resident-xiaozhu'
+});
 
 const TERRAIN_LABELS = {
   [TILE.LAND]: '平地',
@@ -101,7 +105,8 @@ class GameEngine {
       stunnedTurns: 0,
       guidedTurns: 0,
       met: false,
-      ...unit
+      ...unit,
+      residentId: unit.residentId || this.resolveUnitResidentId(unit, unitIndex)
     }))
     this.applyLegacyUnitEffects();
     this.creations = []
@@ -120,6 +125,7 @@ class GameEngine {
     this.resonanceCodex.reset()
     this.npcManager = null
     this.legacyUnits = []
+    this.returnedLegacyUnits = []
   }
 
   loadLevel(index) {
@@ -137,6 +143,10 @@ class GameEngine {
       }
     }
     this.legacyUnits = legacyNPCs;
+
+    // 加载会作为真实棋盘单位回归的传承角色，而不只是 NPC 面板展示。
+    const legacyReturnUnits = legacySystem.getUnitsForNextLevel(this.level.id);
+    this.integrateLegacyReturnUnits(legacyReturnUnits);
 
     this.hooks.onStateChange();
   }
@@ -156,6 +166,100 @@ class GameEngine {
     this.levelIndex = -1
     this.reset()
     return this.level
+  }
+
+  integrateLegacyReturnUnits(legacyReturnUnits = []) {
+    this.returnedLegacyUnits = []
+    for (const legacyUnit of legacyReturnUnits) {
+      const unit = this.prepareLegacyReturnUnit(legacyUnit)
+      if (!unit) continue
+      this.units.push(unit)
+      this.returnedLegacyUnits.push(unit)
+      this.log(`【传承回归】${unit.name} 作为${unit.tier || 'survivor'}单位加入本关，目标 ${this.tileName(unit.goal.x, unit.goal.y)}。`, true)
+    }
+    return this.returnedLegacyUnits
+  }
+
+  prepareLegacyReturnUnit(legacyUnit) {
+    if (!legacyUnit) return null
+    const goal = this.resolveLegacyReturnGoal(legacyUnit)
+    if (!goal) return null
+    const position = this.findLegacyReturnSpawn(legacyUnit, goal)
+    if (!position) return null
+    return {
+      ...legacyUnit,
+      id: this.uniqueLegacyReturnId(legacyUnit),
+      residentId: legacyUnit.residentId || `legacy-resident-${legacyUnit.legacyId || legacyUnit.id}`,
+      x: position.x,
+      y: position.y,
+      goal,
+      status: 'active',
+      rescued: false,
+      lost: false,
+      stunned: false,
+      guidedTurns: Math.max(legacyUnit.guidedTurns || 0, legacyUnit.guideOthers ? 1 : 0),
+      met: false,
+      isLegacy: true,
+      isLegacyReturn: true
+    }
+  }
+
+  uniqueLegacyReturnId(legacyUnit) {
+    const baseId = legacyUnit.legacyId || legacyUnit.id || legacyUnit.name || 'unit'
+    let index = 1
+    let id = `legacy-return-${baseId}`
+    while (this.units.some(unit => unit.id === id)) {
+      index += 1
+      id = `legacy-return-${baseId}-${index}`
+    }
+    return id
+  }
+
+  resolveLegacyReturnGoal(legacyUnit) {
+    const sameType = this.level.units.find(unit => unit.type === legacyUnit.type && unit.goal)
+    const guidedUnit = this.level.units.find(unit => (this.isCivilian(unit) || this.isMessenger(unit)) && unit.goal)
+    const anyGoal = this.level.units.find(unit => unit.goal)
+    const source = sameType || guidedUnit || anyGoal
+    if (source?.goal) return { ...source.goal }
+
+    for (let y = 0; y < BOARD_SIZE; y++) {
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        const terrain = this.getTerrain(x, y)
+        if (terrain === TILE.EXIT || terrain === TILE.SACRED || terrain === TILE.HIGH || terrain === TILE.CITY) {
+          return { x, y }
+        }
+      }
+    }
+    return null
+  }
+
+  resolveUnitResidentId(unit, unitIndex) {
+    if (!unit?.name) return null
+    if (KNOWN_UNIT_RESIDENT_IDS[unit.name]) return KNOWN_UNIT_RESIDENT_IDS[unit.name]
+    return `resident-${this.level?.id || 'region'}-${unitIndex}`
+  }
+
+  findLegacyReturnSpawn(legacyUnit, goal) {
+    const probe = { ...legacyUnit, goal }
+    const preferredTerrains = new Set([TILE.VILLAGE, TILE.LAND, TILE.BORDER, TILE.BRIDGE])
+    const candidates = []
+    for (let y = 0; y < BOARD_SIZE; y++) {
+      for (let x = 0; x < BOARD_SIZE; x++) {
+        if (this.unitAt(x, y)) continue
+        if (!this.isPassable(x, y, probe)) continue
+        const terrain = this.getTerrain(x, y)
+        const pathProbe = { ...probe, x, y }
+        const canMove = x === goal.x && y === goal.y ? true : !!this.nextStepToward(pathProbe, goal)
+        if (!canMove) continue
+        candidates.push({
+          x,
+          y,
+          score: (preferredTerrains.has(terrain) ? 100 : 0) + this.distance(x, y, goal.x, goal.y)
+        })
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score)
+    return candidates[0] || null
   }
 
   initWorldState() {
@@ -250,16 +354,20 @@ class GameEngine {
   // ========== World State Management ==========
 
   updateWorldState(action) {
+    const detail = normalizeCreationDisplayText(action.detail);
+    const creationName = action.creationName
+      ? normalizeCreationName({ name: action.creationName, ability: action.ability })
+      : '';
     this.worldState.actions.push({
       turn: this.turn,
       type: action.type,
-      detail: action.detail,
+      detail,
       timestamp: Date.now()
     });
     this.analyzePlayStyle();
     if (action.type === 'creation_placed') {
-      this.worldState.storySeeds.creationsUsed.push(action.creationName);
-      this.worldState.creations.push(action.creationName);
+      this.worldState.storySeeds.creationsUsed.push(creationName);
+      this.worldState.creations.push(creationName);
     }
     if (action.type === 'unit_rescued') {
       this.worldState.storySeeds.livesSaved += 1;
@@ -314,18 +422,19 @@ class GameEngine {
 
   recordCreationPlacement(creation, x, y) {
     const card = creation.card;
-    this.updateWorldState({ type: 'creation_placed', detail: card.name, creationName: card.name });
+    const creationName = normalizeCreationName(card);
+    this.updateWorldState({ type: 'creation_placed', detail: creationName, creationName, ability: card.ability });
 
     // Record legendary event for high-impact or rare creations
     const isRare = card.tags?.some(tag => ['legendary', 'epic', 'sacred', 'forbidden'].includes(tag));
     const isHighCost = (card.cost || 0) >= 3 || (card.stabilityCost || 0) >= 2;
     if (isRare || isHighCost) {
-      this.recordLegendaryEvent('creation', '造物者', card.name, isHighCost ? 'major' : 'minor');
+      this.recordLegendaryEvent('creation', '造物者', creationName, isHighCost ? 'major' : 'minor');
     }
 
     return this.emitWorldEvent('creation_placed', {
       creationId: creation.id,
-      creationName: card.name,
+      creationName,
       ability: card.ability,
       x,
       y,
@@ -635,7 +744,8 @@ class GameEngine {
       placed: false
     };
     this.creations.push(creation);
-    this.log(`造物编译完成：${card.name} (${card.type})`, true);
+    const creationName = normalizeCreationName(card);
+    this.log(`造物编译完成：${creationName} (${card.type})`, true);
     this.log(`  能力: ${card.ability} | 范围: ${card.range} | 持续: ${card.duration} | 消耗: ${card.cost} | 裂隙: ${card.stabilityCost}`);
     this.log(`  ${card.description}`);
     this.log(`  副作用: ${card.side_effect}`);
@@ -659,7 +769,7 @@ class GameEngine {
     creation.placed = true;
 
     this.applyImmediatePlacement(creation);
-    this.log(`你在 ${this.tileName(x, y)} 放置了「${card.name}」`, true);
+    this.log(`你在 ${this.tileName(x, y)} 放置了「${normalizeCreationName(card)}」`, true);
     if (card.stabilityCost > 0) {
       this.log(`副作用触发：世界裂隙 +${card.stabilityCost}`);
     }
@@ -723,6 +833,11 @@ class GameEngine {
 
   applyImmediatePlacement(creation) {
     const { card, x, y } = creation;
+    const immediateAbilities = ['create_bridge', 'block', 'force_field', 'transform_land', 'freeze_water', 'raise_earth', 'grow_forest', 'dig_channel', 'trap', 'time_dilation', 'reveal_path', 'sun_blessing', 'dream_link'];
+    if (!immediateAbilities.includes(card.ability) && hasAbilityHandler(card.ability, 'immediate')) {
+      applyAbility(this, creation, 'immediate');
+      return;
+    }
     if (card.ability === 'create_bridge') {
       const cells = this.tilesWithin(x, y, Math.max(1, card.range));
       let changed = 0;
@@ -841,9 +956,194 @@ class GameEngine {
     }
 
     // 回合持续能力在放置时立即生效（仅对没有上方硬编码即时逻辑的能力）
-    const immediateAbilities = ['create_bridge', 'block', 'force_field', 'transform_land', 'freeze_water', 'raise_earth', 'grow_forest', 'trap', 'time_dilation', 'reveal_path', 'sun_blessing', 'dream_link'];
     if (!immediateAbilities.includes(card.ability)) {
       applyAbility(this, creation, 'active');
+    }
+  }
+
+
+
+  applyActiveCreationEffects() {
+    for (const creation of this.creations) {
+      if (creation.remaining <= 0 || !creation.placed) continue;
+      const { card, x, y } = creation;
+
+      if (card.specialEffect?.type === 'mobile' || card.specialEffect?.type === 'movement') {
+        this.moveCreationMobile(creation);
+      }
+      if (card.specialEffect?.type === 'environmental') {
+        this.applyEnvironmentalEffect(creation);
+      }
+      if (card.specialEffect?.type === 'sacrifice') {
+        this.applySacrificeEffect(creation);
+      }
+
+      if (card.ability === 'absorb_water') {
+        let changed = 0;
+        const effectiveRange = this.getEffectiveRange(creation);
+        for (const cell of this.tilesWithin(x, y, effectiveRange)) {
+          if (changed >= 3) break;
+          if (this.getTerrain(cell.x, cell.y) === TILE.WATER) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+            changed += 1;
+          }
+        }
+        if (changed) this.log(`「${card.name}」吸收了 ${changed} 格水域`);
+      }
+
+      if (card.ability === 'illuminate') {
+        let changed = 0;
+        const effectiveRange = this.getEffectiveRange(creation);
+        for (const cell of this.tilesWithin(x, y, effectiveRange)) {
+          const terrain = this.getTerrain(cell.x, cell.y);
+          if (terrain === TILE.DARK || terrain === TILE.FOG) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+            changed += 1;
+          }
+        }
+        if (changed) this.log(`「${card.name}」照亮了 ${changed} 格黑暗或迷雾`);
+      }
+
+      if (card.ability === 'cleanse') {
+        let changed = 0;
+        const effectiveRange = this.getEffectiveRange(creation);
+        for (const cell of this.tilesWithin(x, y, effectiveRange)) {
+          if ([TILE.DARK, TILE.FOG, TILE.SWAMP, TILE.POISON].includes(this.getTerrain(cell.x, cell.y))) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+            changed += 1;
+          }
+        }
+        if (changed) this.log(`「${card.name}」净化了 ${changed} 格污染地形`);
+      }
+
+      if (card.ability === 'calm') {
+        if (this.isWarLevel()) {
+          const before = this.warMeter;
+          this.warMeter = Math.max(0, this.warMeter - 2);
+          if (before !== this.warMeter) this.log(`「${card.name}」降低战争值：${before} → ${this.warMeter}`);
+        }
+        for (const unit of this.units.filter((u) => u.type === 'beast' && u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+            unit.anger = Math.max(0, (unit.anger || 0) - 1);
+            unit.stunned = true;
+            this.log(`「${card.name}」安抚了 ${unit.name}，怒气降至 ${unit.anger}`);
+          }
+        }
+      }
+
+      if (card.ability === 'guide') {
+        let guided = 0;
+        const effectiveRange = this.getEffectiveRange(creation);
+        for (const unit of this.units.filter((u) => this.isCivilian(u) || this.isMessenger(u))) {
+          if (unit.status === 'active' && this.distance(unit.x, unit.y, x, y) <= effectiveRange + 1) {
+            unit.guidedTurns = 2;
+            guided += 1;
+          }
+        }
+        if (guided) this.log(`「${card.name}」正在引导 ${guided} 个单位`);
+      }
+
+      if (card.ability === 'slow_beast') {
+        for (const unit of this.units.filter((u) => u.type === 'beast' && u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, x, y) <= card.range + 1) {
+            unit.stunned = true;
+            this.log(`「${card.name}」牵制了 ${unit.name}`);
+          }
+        }
+      }
+
+      if (card.ability === 'memory_beacon') {
+        let changed = 0;
+        const effectiveRange = this.getEffectiveRange(creation);
+        for (const cell of this.tilesWithin(x, y, effectiveRange)) {
+          if (this.getTerrain(cell.x, cell.y) === TILE.FOG || this.getTerrain(cell.x, cell.y) === TILE.DARK) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+            changed += 1;
+          }
+        }
+        for (const unit of this.units.filter((u) => this.isCivilian(u) && u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, x, y) <= effectiveRange + 2) {
+            unit.guidedTurns = 2;
+          }
+        }
+        if (changed) this.log(`「${card.name}」唤回记忆，驱散 ${changed} 格迷雾`);
+      }
+
+      if (card.ability === 'freeze_water') {
+        if (creation.remaining === 1) {
+          this.log(`「${card.name}」冻结的水域即将融化`);
+        }
+      }
+
+      if (card.ability === 'reveal_path') {
+        let revealed = 0;
+        const effectiveRange = this.getEffectiveRange(creation);
+        for (const unit of this.units.filter((u) => (this.isCivilian(u) || this.isMessenger(u)) && u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, x, y) <= effectiveRange + 1) {
+            unit.revealedPath = 3;
+            revealed += 1;
+          }
+        }
+        if (revealed) this.log(`「${card.name}」为 ${revealed} 个单位显示了最优路径`);
+      }
+
+      if (card.ability === 'sun_blessing') {
+        let changed = 0;
+        const effectiveRange = this.getEffectiveRange(creation);
+        for (const cell of this.tilesWithin(x, y, effectiveRange + 1)) {
+          const terrain = this.getTerrain(cell.x, cell.y);
+          if (terrain === TILE.DARK || terrain === TILE.FOG) {
+            this.setTerrain(cell.x, cell.y, TILE.LAND);
+            changed += 1;
+          }
+        }
+        for (const unit of this.units.filter((u) => u.status === 'active')) {
+          if (this.distance(unit.x, unit.y, x, y) <= effectiveRange + 1) {
+            unit.immuneChaos = 2;
+            unit.guidedTurns = Math.max(unit.guidedTurns, 1);
+          }
+        }
+        if (changed) this.log(`「${card.name}」的大范围光照驱散了 ${changed} 格黑暗，并恢复了单位体力`);
+      }
+
+      if (card.ability === 'raise_earth') {
+        for (const unit of this.units.filter((u) => u.status === 'active')) {
+          if (this.getTerrain(unit.x, unit.y) === TILE.HIGH && this.distance(unit.x, unit.y, x, y) <= card.range) {
+            unit.onHighGround = true;
+          }
+        }
+      }
+
+      if (card.ability === 'grow_forest') {
+        // Forest effects handled in spreadHazards
+      }
+
+      if (card.ability === 'dig_channel') {
+        const channelNeighbors = this.neighbors(x, y).filter(n => {
+          const t = this.getTerrain(n.x, n.y);
+          return t === TILE.LAND || t === TILE.FOG || t === TILE.DARK;
+        });
+        if (channelNeighbors.length > 0) {
+          const target = channelNeighbors[Math.floor(Math.random() * channelNeighbors.length)];
+          this.setTerrain(target.x, target.y, TILE.WATER);
+          this.log(`「${card.name}」的水渠将水流导向 ${this.tileName(target.x, target.y)}`);
+        }
+      }
+
+      if (card.ability === 'dream_link') {
+        const targets = this.units.filter((u) => (this.isCivilian(u) || this.isMessenger(u)) && u.status === 'active' && this.distance(u.x, u.y, x, y) <= card.range + 1);
+        if (targets.length >= 2) {
+          for (let i = 0; i + 1 < targets.length; i += 2) {
+            const a = targets[i];
+            const b = targets[i + 1];
+            a.dreamLinked = b.id;
+            b.dreamLinked = a.id;
+            a.guidedTurns = Math.max(a.guidedTurns, 2);
+            b.guidedTurns = Math.max(b.guidedTurns, 2);
+          }
+          this.log(`?${card.name}???? ${targets.length} ??????????????`);
+        }
+      }
     }
   }
 
@@ -1492,7 +1792,7 @@ class GameEngine {
         if (activeCreations.length >= 2) {
           const target = activeCreations[Math.floor(Math.random() * activeCreations.length)];
           target.remaining += 1;
-          this.log(`【随机事件】${event.name}！「${target.card.name}」的持续时间意外延长了`, true);
+          this.log(`【随机事件】${event.name}！「${normalizeCreationName(target.card)}」的持续时间意外延长了`, true);
         }
         break;
       }
@@ -1847,11 +2147,12 @@ class GameEngine {
   // ========== Logging ==========
 
   log(text, important = false) {
-    this.logs.unshift({ text, important, turn: this.turn });
+    const displayText = normalizeCreationDisplayText(text);
+    this.logs.unshift({ text: displayText, important, turn: this.turn });
     if (this.logs.length > MAX_LOGS) {
       this.logs = this.logs.slice(0, MAX_LOGS);
     }
-    this.hooks.onLog(text, important, this.turn);
+    this.hooks.onLog(displayText, important, this.turn);
   }
 
   addLog(text, important = false) {
@@ -1931,7 +2232,7 @@ class GameEngine {
     this.log(`【仪式】${result.narrative}`, true);
     this.emitWorldEvent('ritual_performed', {
       recipeId: result.ritual?.id || 'emergent',
-      creationNames: creations.map(c => c.card.name)
+      creationNames: creations.map(c => normalizeCreationName(c.card))
     }, { importance: 0.8, tags: ['ritual'] });
 
     return result;
@@ -2119,6 +2420,7 @@ class GameEngine {
       for (const consequence of result.consequences) {
         this.log(`  ${consequence.description}`);
       }
+      this.oathManager.applyBetrayalConsequences(result.consequences, this.worldState || {});
       this.emitWorldEvent('oath_broken', {
         oathId,
         npcId: result.oath.npcId,
@@ -2138,6 +2440,7 @@ class GameEngine {
       for (const consequence of betrayal.consequences) {
         this.log(`  ${consequence.description}`);
       }
+      this.oathManager.applyBetrayalConsequences(betrayal.consequences, this.worldState || {});
       this.emitWorldEvent('oath_betrayed', {
         oathId: betrayal.oath.id,
         npcId: betrayal.oath.npcId,

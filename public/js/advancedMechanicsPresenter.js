@@ -50,6 +50,8 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
   const abyss = state.abyss || {}
   const story = state.story || {}
   const resident = state.resident || {}
+  const social = state.social || {}
+  const legacy = state.legacy || {}
 
   const inventory = workshop.inventory || []
   const workshopCreations = workshop.workshopCreations || []
@@ -111,10 +113,52 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
         ? `最近行动 ${residentActions.length} · ${residentActions[residentActions.length - 1]?.type || '观察'}`
         : '等待世界事件',
       tone: residentActions.some(action => action.type !== 'idle') ? 'active' : 'idle'
+    },
+    {
+      id: 'social-graph',
+      title: '社交图谱',
+      status: `关系 ${social.edgeCount || 0} · 小团体 ${social.cliqueCount || 0} · 距离 ${social.sampleDistance ?? '未计算'}`,
+      tone: (social.cliqueCount || 0) > 0 ? 'active' : (social.edgeCount || 0) > 0 ? 'ready' : 'idle'
     }
   ]
 
   const actions = [
+    {
+      id: 'trigger-story',
+      label: '触发叙事',
+      enabled: true,
+      hint: '立即让当前 Storyteller 生成一次事件'
+    },
+    {
+      id: 'trigger-legend',
+      label: '生成传说',
+      enabled: true,
+      hint: '写入神话、神器和因果链'
+    },
+    {
+      id: 'prepare-chain',
+      label: '触发连锁',
+      enabled: true,
+      hint: '放置光+水造物并触发共鸣'
+    },
+    {
+      id: 'prepare-ritual',
+      label: '准备仪式',
+      enabled: true,
+      hint: '放置可执行仪式的两张造物'
+    },
+    {
+      id: 'trigger-corruption',
+      label: '制造悖论',
+      enabled: true,
+      hint: '生成一张腐化造物卡'
+    },
+    {
+      id: 'showcase-workshop',
+      label: '演示工坊',
+      enabled: true,
+      hint: '自动拆解、改造并融合造物'
+    },
     {
       id: 'dismantle-workshop',
       label: '拆解库存',
@@ -147,16 +191,42 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
       oathType: availableOaths.find(o => o.canForm !== false)?.type || 'protection'
     },
     {
+      id: 'break-oath',
+      label: '背弃誓约',
+      enabled: activeOaths.length > 0,
+      hint: activeOaths.length ? '触发怨恨链与关系恶化' : '需要活跃誓约'
+    },
+    {
+      id: 'record-legacy',
+      label: '记录传承',
+      enabled: true,
+      hint: '把一名单位写入跨关传承'
+    },
+    {
+      id: 'return-legacy',
+      label: '召回传承',
+      enabled: (legacy.total || 0) > 0 || legacy.canAdvance !== false,
+      hint: (legacy.returned || []).length
+        ? `已回归 ${(legacy.returned || []).map(unit => unit.name).join('、')}`
+        : '写入传承并进入下一关验证真实单位重现'
+    },
+    {
+      id: 'trigger-social',
+      label: '演示社交',
+      enabled: true,
+      hint: '生成多种关系、小团体和社交距离'
+    },
+    {
       id: 'manifest-echo',
       label: '召出回响',
-      enabled: entropyRatio >= 0.6 && (workshop.lastCreation || inventory.length > 0),
-      hint: entropyRatio >= 0.6 ? '从旧造物记忆中显现' : '裂隙至少需要 60%'
+      enabled: true,
+      hint: activeEchoes.length ? `当前活跃 ${activeEchoes.length} 个回响` : '自动提升裂隙并从旧造物记忆中显现'
     },
     {
       id: 'generate-riddle',
       label: '生成谜题',
-      enabled: !!abyssState.riddlesAvailable,
-      hint: abyss.currentRiddle ? '已有谜题，可重新扰动' : '认知深渊会给出一段待解码文本'
+      enabled: true,
+      hint: abyss.currentRiddle ? '已有谜题，可重新扰动' : '自动提升裂隙并生成谜题'
     },
     {
       id: 'submit-riddle',
@@ -177,6 +247,7 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
     ritualSuggestions.length ? `推荐仪式：${ritualSuggestions[0].recipe?.name || '未知仪式'}，风险 ${ritualSuggestions[0].risk || 'low'}` : '场上有 2 个以上造物时可尝试仪式。',
     activeEchoes.length ? `回响：${activeEchoes.slice(0, 2).map(echoName).join('；')}` : '裂隙升高后可以召出旧造物回响。',
     residentActions.length ? `居民代理：${residentActions.slice(-2).map(action => action.payload?.text || action.type).join('；')}` : '居民代理会根据救援、失败和造物记忆调整行动。',
+    social.summary || '社交图谱会计算情绪传染、小团体和两名角色之间的社交距离。',
     abyss.currentRiddle ? `谜题：${abyss.currentRiddle.displayed}` : (abyssState.description || '深渊尚未干涉现实。')
   ].join('\n')
 

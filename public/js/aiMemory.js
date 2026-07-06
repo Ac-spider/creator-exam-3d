@@ -70,6 +70,14 @@ export class AIMemorySystem {
     // Update play style based on ability choice
     this.updatePlayStyle();
 
+    this.vectorMemory.addMemory(`${card.name}：${card.description || card.ability || '造物'}`, {
+      type: 'creation',
+      level: levelId,
+      turn,
+      ability: card.ability,
+      demo: !!context?.demo
+    });
+
     // Save to storage
     this.saveToStorage();
 

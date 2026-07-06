@@ -771,6 +771,85 @@ runner.test('传承系统 - 应记录救援历史', () => {
   }
 });
 
+runner.test('传承系统 - 后续关卡应把传承者作为真实单位加入', () => {
+  const snapshot = JSON.parse(JSON.stringify(legacySystem.serialize()));
+  try {
+    legacySystem.deserialize({ legacyUnits: [], globalTraits: [], rescueHistory: [], levelCompletions: 0 });
+
+    const game = new DebugGame();
+    game.levelIndex = 0;
+    game.reset();
+
+    const villager = game.units.find(u => u.type === 'villager' && u.status === 'active');
+    runner.assert(villager, '需要一名可记录的村民');
+
+    const legacy = legacySystem.recordRescue(villager, game.level.id, {
+      turn: 1,
+      maxTurns: game.level.maxTurns,
+      lost: 0
+    });
+    legacy.tier = 'legend';
+
+    game.loadLevel(1);
+
+    const returned = game.units.find(u => u.isLegacyReturn && u.legacyId === legacy.id);
+    runner.assert(returned, '传承者应作为真实棋盘单位进入下一关');
+    runner.assert(game.returnedLegacyUnits.some(u => u.id === returned.id), '回归单位应记录在 returnedLegacyUnits');
+    runner.assert(returned.goal, '回归单位应继承当前关卡目标');
+    runner.assert(returned.residentId === `legacy-resident-${legacy.id}`, '回归单位应保留稳定居民身份');
+    runner.assert(game.isGoalReached(returned) || game.nextStepToward(returned, returned.goal), '回归单位应能参与寻路移动');
+  } finally {
+    legacySystem.deserialize(snapshot);
+  }
+});
+
+runner.test('传承系统 - 演示模式应能强制召回低概率传承单位', () => {
+  const snapshot = JSON.parse(JSON.stringify(legacySystem.serialize()));
+  try {
+    legacySystem.deserialize({ legacyUnits: [], globalTraits: [], rescueHistory: [], levelCompletions: 0 });
+
+    const game = new DebugGame();
+    game.levelIndex = 0;
+    game.reset();
+
+    const villager = game.units.find(u => u.type === 'villager' && u.status === 'active');
+    runner.assert(villager, '需要一名可记录的村民');
+
+    const legacy = legacySystem.recordRescue(villager, game.level.id, {
+      turn: 1,
+      maxTurns: game.level.maxTurns,
+      lost: 1
+    });
+    legacy.tier = 'survivor';
+
+    const forced = legacySystem.getUnitsForNextLevel('night-mine', { force: true });
+    runner.assert(forced.some(unit => unit.legacyId === legacy.id), 'force模式应跳过概率并召回传承单位');
+  } finally {
+    legacySystem.deserialize(snapshot);
+  }
+});
+
+runner.test('NPC社交 - 传承回归单位应进入对话与社交图谱', async () => {
+  const { NPCManager } = await import('../public/js/npcManager.js');
+  const manager = new NPCManager(LEVELS[1]);
+  const unit = {
+    name: '阿粟',
+    type: 'villager',
+    residentId: 'legacy-resident-flood-village-0',
+    isLegacy: true,
+    isLegacyReturn: true,
+    legacyId: 'flood-village-0',
+    goal: { x: 0, y: 0 }
+  };
+
+  manager.addUnitNPCs([unit], { legacyReturn: true });
+
+  const npc = manager.getNPC(unit.residentId);
+  runner.assert(npc, '传承回归单位应能作为 NPC 被查询');
+  runner.assert(npc.isLegacyReturn === true, 'NPC 应标记为传承回归');
+  runner.assert(manager.socialGraph.nodes.has(npc.id), '传承回归 NPC 应进入社交图谱');
+});
+
 // 测试连锁反应图鉴 - 统计功能
 runner.test('连锁反应图鉴 - 统计应正确计算', () => {
   const game = new DebugGame();
@@ -874,7 +953,9 @@ runner.test('能力策略模式 - 所有能力应有处理器', async () => {
     'raise_earth', 'grow_forest', 'trap', 'sun_blessing',
     'absorb_water', 'illuminate', 'cleanse', 'calm', 'guide', 'slow_beast',
     'dream_link', 'time_dilation', 'reveal_path', 'memory_beacon',
-    'haste', 'teleport', 'shield_units', 'redirect_hazard'
+    'haste', 'teleport', 'shield_units', 'redirect_hazard',
+    'consume_light', 'steam_burst', 'creation_burst', 'memory_loop',
+    'cycle_life', 'temporal_rift', 'paradox_barrier', 'chaos_guide'
   ];
 
   for (const ability of abilities) {
@@ -882,6 +963,243 @@ runner.test('能力策略模式 - 所有能力应有处理器', async () => {
     const hasActive = AbilityHandlers.active.has(ability);
     runner.assert(hasImmediate || hasActive, `能力 ${ability} 应至少有一个处理器`);
   }
+});
+
+runner.test('验证腐化能力 - 悖论卡放置后应真实改变棋盘', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.setTerrain(2, 2, TILE.WATER);
+  game.setTerrain(3, 2, TILE.LAND);
+  game.setTerrain(2, 3, TILE.LAND);
+
+  const card = {
+    id: 'paradox-steam-test',
+    name: '测试蒸腾之焰',
+    ability: 'steam_burst',
+    range: 1,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    description: '水与火同时存在',
+    side_effect: '产生蒸汽迷雾',
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: 'paradox-steam-test', card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  const placed = game.place('paradox-steam-test', 2, 2);
+  const fogged = game.tilesWithin(2, 2, 2).filter(cell => game.getTerrain(cell.x, cell.y) === TILE.FOG).length;
+  runner.assert(placed.success === true, '悖论卡应能被放置');
+  runner.assert(fogged > 0, '蒸腾之焰应把棋盘格变成迷雾');
+});
+
+runner.test('验证腐化能力 - 噬光之灯应熄灭光源并制造黑暗', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+
+  const light = {
+    id: 'existing-light',
+    card: { id: 'existing-light', name: '既有星灯', ability: 'illuminate', range: 1, duration: 3, cost: 0, stabilityCost: 0 },
+    x: 3,
+    y: 2,
+    remaining: 3,
+    restores: [],
+    placed: true
+  };
+  const card = {
+    id: 'paradox-light-test',
+    name: '测试噬光之灯',
+    ability: 'consume_light',
+    range: 1,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    description: '吞噬光源',
+    side_effect: '熄灭照明',
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push(light, { id: 'paradox-light-test', card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  game.place('paradox-light-test', 2, 2);
+  const darkened = game.tilesWithin(2, 2, 2).filter(cell => game.getTerrain(cell.x, cell.y) === TILE.DARK).length;
+  runner.assert(darkened > 0, '噬光之灯应制造黑暗地形');
+  runner.assert(light.remaining === 1, '噬光之灯应削短附近光源持续时间');
+});
+
+runner.test('验证腐化能力 - 噬光悖论应避免伪装成普通光源视觉', async () => {
+  const { readFileSync } = await import('node:fs');
+  const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+  const engine = readFileSync(new URL('../public/js/gameEngine.js', import.meta.url), 'utf8');
+  const display = readFileSync(new URL('../public/js/creationDisplay.js', import.meta.url), 'utf8');
+  const particles = readFileSync(new URL('../public/js/particles.js', import.meta.url), 'utf8');
+  const corruption = readFileSync(new URL('../public/js/verificationCorruption.js', import.meta.url), 'utf8');
+  const { normalizeCreationName, normalizeCreationDisplayText } = await import('../public/js/creationDisplay.js');
+
+  runner.assert(game.includes('normalizeCreationName(card)'), '旧存档里的噬光能力也应使用反光源显示名');
+  runner.assert(engine.includes('const creationName = normalizeCreationName(card)'), '世界事件里的噬光造物名也应归一化');
+  runner.assert(game.includes('噬光黑核'), '噬光悖论在棋盘上应显示为反光源而不是普通灯');
+  runner.assert(display.includes("replace(/噬光之灯/g, CONSUME_LIGHT_DISPLAY_NAME)"), '旧日志中的噬光之灯也应在展示时兼容成噬光黑核');
+  runner.assertEqual(normalizeCreationName({ name: '噬光之灯', ability: 'consume_light' }), '噬光黑核', 'consume_light 应始终显示为噬光黑核');
+  runner.assertEqual(normalizeCreationDisplayText('旧档：噬光之灯'), '旧档：噬光黑核', '旧文本应归一化为噬光黑核');
+  runner.assert(game.includes('ringColor: 0xffd166'), '噬光悖论应有可见的琥珀警示环');
+  runner.assert(game.includes('absorption: true'), '噬光悖论应渲染为吸光暗核，而不是黑色灯光');
+  runner.assert(game.includes('anti-light-spark'), '噬光悖论应带有可见的警示火花');
+  runner.assert(particles.includes('consume_light: 0xffd166'), '噬光悖论粒子应使用可见警示色');
+  runner.assert(corruption.includes("name: '噬光黑核'"), '悖论模板名应避免继续叫普通灯');
+  runner.assert(game.includes('illuminate: 0xfff39a'), '普通照明仍应保持暖黄色光源视觉');
+});
+
+runner.test('验证腐化能力 - 创灭之锤应同时修复和破坏地形', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.setTerrain(2, 2, TILE.WATER);
+  game.setTerrain(3, 2, TILE.LAND);
+  game.setTerrain(2, 3, TILE.LAND);
+
+  const card = {
+    id: 'paradox-burst-test',
+    name: '测试创灭之锤',
+    ability: 'creation_burst',
+    range: 1,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    description: '创造与毁灭同时发生',
+    side_effect: '地形震裂',
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: 'paradox-burst-test', card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  game.place('paradox-burst-test', 2, 2);
+  const fractured = game.tilesWithin(2, 2, 2)
+    .filter(cell => [TILE.SWAMP, TILE.POISON, TILE.DARK].includes(game.getTerrain(cell.x, cell.y))).length;
+  runner.assert(game.getTerrain(2, 2) === TILE.LAND, '创灭之锤应先把目标危险地形修复为平地');
+  runner.assert(fractured > 0, '创灭之锤应破坏周边地形');
+});
+
+runner.test('验证腐化能力 - 所有可见悖论卡都应有真实触发效果', async () => {
+  const { AbilityHandlers } = await import('../public/js/abilityHandlers.js');
+  const { verificationCorruption } = await import('../public/js/verificationCorruption.js');
+  const paradoxes = verificationCorruption.getAvailableParadoxes();
+
+  for (const paradox of paradoxes) {
+    const ability = paradox.illegalAbility;
+    runner.assert(
+      AbilityHandlers.immediate.has(ability) || AbilityHandlers.active.has(ability),
+      `可见悖论 ${paradox.type} 的能力 ${ability} 应有真实处理器`
+    );
+  }
+});
+
+runner.test('验证腐化能力 - 生死之种应同时生长与凋零', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.units[0].x = 3;
+  game.units[0].y = 4;
+
+  const card = {
+    id: 'paradox-cycle-life-test',
+    name: '测试生死之种',
+    ability: 'cycle_life',
+    range: 2,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: card.id, card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  const placed = game.place(card.id, 3, 3);
+  const changed = game.tilesWithin(3, 3, 2).filter(cell => [TILE.FOREST, TILE.SWAMP].includes(game.getTerrain(cell.x, cell.y))).length;
+  const effect = game.creations.find(c => c.id === card.id).corruptionEffect;
+  runner.assert(placed.success === true, '生死之种应能被放置');
+  runner.assert(changed > 0, '生死之种应真实改变地形');
+  runner.assert(effect.type === 'cycle_life', '生死之种应记录腐化效果');
+  runner.assert((game.units[0].shieldTurns || 0) > 0 || (game.units[0].witherTurns || 0) > 0, '生死之种应影响附近单位');
+});
+
+runner.test('验证腐化能力 - 静时之沙应制造时间裂隙', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.units[0].x = 3;
+  game.units[0].y = 4;
+  const previousMaxTurns = game.level.maxTurns;
+
+  const card = {
+    id: 'paradox-temporal-test',
+    name: '测试静时之沙',
+    ability: 'temporal_rift',
+    range: 2,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: card.id, card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  game.place(card.id, 3, 3);
+  const fields = game.tilesWithin(3, 3, 2).filter(cell => game.getTerrain(cell.x, cell.y) === TILE.FIELD).length;
+  runner.assert(fields > 0, '静时之沙应制造凝固力场地形');
+  runner.assert((game.units[0].stasisTurns || 0) > 0, '静时之沙应定格附近单位');
+  runner.assert((game.temporalDebt || 0) > 0, '静时之沙应写入时间债');
+  runner.assert(game.level.maxTurns === previousMaxTurns + 1, '静时之沙应延展回合上限');
+});
+
+runner.test('验证腐化能力 - 矛盾之盾应保护并牵制单位', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.units[0].x = 3;
+  game.units[0].y = 4;
+
+  const card = {
+    id: 'paradox-barrier-test',
+    name: '测试矛盾之盾',
+    ability: 'paradox_barrier',
+    range: 2,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: card.id, card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  game.place(card.id, 3, 3);
+  const fields = game.tilesWithin(3, 3, 2).filter(cell => game.getTerrain(cell.x, cell.y) === TILE.FIELD).length;
+  runner.assert(fields > 0, '矛盾之盾应制造屏障地形');
+  runner.assert((game.units[0].shieldTurns || 0) > 0, '矛盾之盾应保护附近单位');
+  runner.assert(game.units[0].stunned === true, '矛盾之盾也应牵制附近单位');
+});
+
+runner.test('验证腐化能力 - 迷途之灯应引导并误导单位', () => {
+  const game = new DebugGame();
+  game.reset();
+  game.terrain = Array.from({ length: 7 }, () => Array.from({ length: 7 }, () => TILE.LAND));
+  game.setTerrain(2, 3, TILE.FOG);
+  game.units[0].x = 3;
+  game.units[0].y = 4;
+
+  const card = {
+    id: 'paradox-guide-test',
+    name: '测试迷途之灯',
+    ability: 'chaos_guide',
+    range: 2,
+    duration: 2,
+    cost: 0,
+    stabilityCost: 0,
+    tags: ['illegal', 'paradox']
+  };
+  game.creations.push({ id: card.id, card, x: -1, y: -1, remaining: 2, restores: [], placed: false });
+
+  game.place(card.id, 3, 3);
+  const effect = game.creations.find(c => c.id === card.id).corruptionEffect;
+  runner.assert(effect.type === 'chaos_guide', '迷途之灯应记录腐化效果');
+  runner.assert(effect.guideLights > 0, '迷途之灯应真实改变引导地形');
+  runner.assert((game.units[0].guidedTurns || 0) > 0 || (game.units[0].chaosGuideTurns || 0) > 0, '迷途之灯应影响附近单位');
 });
 
 runner.test('movement - haste should grant real extra steps', () => {
@@ -1189,6 +1507,33 @@ runner.test('SocialGraph - 应构建关系网并传播情绪', async () => {
   runner.assert(stats.totalEdges >= 2, '应有至少2条边');
 });
 
+runner.test('SocialGraph - 应计算社交距离并检测小团体', async () => {
+  const { SocialGraph } = await import('../public/js/socialGraph.js');
+  const graph = new SocialGraph();
+
+  graph.addNode('npc1', { name: '老渔夫', dynamicTraits: { trustLevel: 50, fearLevel: 30, hopeLevel: 40 } });
+  graph.addNode('npc2', { name: '小烛', dynamicTraits: { trustLevel: 70, fearLevel: 20, hopeLevel: 80 } });
+  graph.addNode('npc3', { name: '守忆人', dynamicTraits: { trustLevel: 45, fearLevel: 55, hopeLevel: 35 } });
+  graph.addNode('npc4', { name: '边境诗人', dynamicTraits: { trustLevel: 60, fearLevel: 40, hopeLevel: 55 } });
+
+  graph.addEdge('npc1', 'npc2', 'friend', 25);
+  graph.addEdge('npc2', 'npc3', 'mentor', 20);
+  graph.addEdge('npc1', 'npc3', 'family', 18);
+  graph.addEdge('npc3', 'npc4', 'witness', 12);
+
+  const distance = graph.getSocialDistance('npc1', 'npc4', { minStrength: 0 });
+  runner.assert(distance.distance === 2, 'npc1 到 npc4 应为2跳社交距离');
+  runner.assert(distance.path.join('>') === 'npc1>npc3>npc4', '应返回最短社交路径');
+
+  const cliques = graph.detectCliques({ minStrength: 10, minSize: 3 });
+  runner.assert(cliques.length === 1, '应检测到一个小团体');
+  runner.assert(cliques[0].members.includes('npc1') && cliques[0].members.includes('npc3'), '小团体应包含强关系成员');
+
+  const stats = graph.getNetworkStats();
+  runner.assert(stats.cliqueCount === 1, '网络统计应包含小团体数量');
+  runner.assert(stats.largestCliqueSize >= 3, '网络统计应包含最大团体规模');
+});
+
 // 测试 PersistentWorld 系统
 runner.test('PersistentWorld - 应记录关卡并更新遗产轨迹', async () => {
   const { PersistentWorld, LEGACY_TRACKS } = await import('../public/js/persistentWorld.js');
@@ -1403,6 +1748,47 @@ runner.test('因果引擎 - 应检测跨关卡蝴蝶效应', async () => {
   // 测试叙事生成
   const narrative = graph.generateCausalNarrative(event2.id);
   runner.assert(narrative.includes('night-mine') || narrative.includes('洪水'), '叙事应包含跨关卡关联');
+});
+
+runner.test('因果引擎 - 浏览器传说演示应产生跨关蝴蝶效应', async () => {
+  const { WorldLegendSystem } = await import('../public/js/worldLegend.js');
+  const world = new WorldLegendSystem();
+  const source = world.recordLegendaryEvent({
+    type: 'creation',
+    actor: '造物者',
+    target: '演示星灯',
+    level: '第 1 关：洪水村庄',
+    turn: 1,
+    description: '造物者在第 1 关：洪水村庄用演示星灯留下光与记忆的微小选择',
+    impact: 'major'
+  });
+  world.recordLegendaryEvent({
+    type: 'miracle',
+    actor: '造物者',
+    target: '第 2 关：永夜矿井',
+    level: '第 2 关：永夜矿井',
+    turn: 2,
+    description: '演示星灯的光与记忆在第 2 关：永夜矿井再次改变道路',
+    impact: 'world-shaking',
+    causeId: source.id
+  });
+
+  const effects = world.causalGraph.getButterflyEffectsForLevel('第 2 关：永夜矿井');
+  runner.assert(effects.length > 0, '演示事件应产生当前关卡可查询的蝴蝶效应');
+  runner.assert(effects[0].sourceLevel.includes('洪水村庄'), '蝴蝶效应应记录来源关卡');
+  runner.assert(effects[0].targetLevel.includes('永夜矿井'), '蝴蝶效应应记录目标关卡');
+});
+
+runner.test('世界传说面板 - 应渲染浏览器可见的蝴蝶效应区域', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+
+  runner.assert(html.includes('id="legend-butterfly"'), 'index.html 应提供蝴蝶效应挂载点');
+  runner.assert(game.includes('legendButterfly: document.getElementById'), 'game.js 应收集蝴蝶效应 DOM');
+  runner.assert(game.includes('getButterflyEffectsForLevel'), 'game.js 应从因果图读取蝴蝶效应');
+  runner.assert(game.includes('蝴蝶效应'), '传说演示应记录或显示蝴蝶效应');
+  runner.assert(game.includes('序章：裂隙前夜'), '首关传说演示应使用跨关来源，不能与当前关卡相同');
 });
 
 runner.test('因果引擎 - 序列化与统计', async () => {
@@ -1828,6 +2214,32 @@ runner.test('仪式熔炉 - 应匹配已知仪式并执行', async () => {
   runner.assert(result.entropyChange === 1, '应消耗1点熵值');
   runner.assert(result.miracleCost === 1, '应消耗1点奇迹点');
   runner.assert(result.narrative.length > 0, '应生成仪式叙事');
+});
+
+runner.test('仪式熔炉 - 已知仪式不应被随机失败打断', async () => {
+  const { RitualForge } = await import('../public/js/ritualForge.js');
+  const forge = new RitualForge();
+  const originalRandom = Math.random;
+  Math.random = () => 1;
+
+  try {
+    const creations = [
+      { id: 'c1', card: { name: '吸水蘑菇', ability: 'absorb_water', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } },
+      { id: 'c2', card: { name: '净化圣水', ability: 'cleanse', range: 1, duration: 3, cost: 1, stabilityCost: 0, description: '测试', side_effect: '测试', tags: [] } }
+    ];
+    const result = forge.performRitual(creations, {
+      targetTerrain: 'water',
+      miraclePoints: 5,
+      entropy: 2,
+      entropyLimit: 7,
+      turn: 1
+    });
+
+    runner.assert(result.success === true, '已知配方通过验证和资源检查后应稳定成功');
+    runner.assert(result.ritual?.id === 'water_purification', '应仍然匹配净水圣仪');
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 runner.test('仪式熔炉 - 涌现式仪式（无匹配配方）', async () => {
@@ -2343,6 +2755,44 @@ runner.test('裂隙回响 - 序列化与统计', async () => {
   runner.assert(system2.totalManifested === 1, '反序列化后统计应一致');
 });
 
+runner.test('高级机制面板 - 裂隙回响应可从浏览器入口触发', async () => {
+  const { buildAdvancedMechanicsViewModel } = await import('../public/js/advancedMechanicsPresenter.js');
+  const model = buildAdvancedMechanicsViewModel({
+    rift: { entropyRatio: 0.75, activeEchoes: [] },
+    workshop: { inventory: [], materials: {}, workshopCreations: [] },
+    ritual: { suggestions: [], placedCreationCount: 0 },
+    oath: { selectedNpc: null, available: [], activeOaths: [] },
+    abyss: { state: { level: 'approaching', description: '裂隙升高' }, currentRiddle: null },
+    story: { summary: {}, availableBeats: 0 },
+    resident: { actions: [] },
+    social: {}
+  });
+
+  const action = model.actions.find(item => item.id === 'manifest-echo');
+  runner.assert(action, '应包含裂隙回响动作');
+  runner.assert(action.enabled === true, '裂隙回响浏览器入口应可触发');
+});
+
+runner.test('高级机制面板 - 传承回归应可从浏览器入口触发', async () => {
+  const { buildAdvancedMechanicsViewModel } = await import('../public/js/advancedMechanicsPresenter.js');
+  const model = buildAdvancedMechanicsViewModel({
+    rift: { entropyRatio: 0, activeEchoes: [] },
+    workshop: { inventory: [], materials: {}, workshopCreations: [] },
+    ritual: { suggestions: [], placedCreationCount: 0 },
+    oath: { selectedNpc: null, available: [], activeOaths: [] },
+    abyss: { state: { level: 'dormant', description: '沉睡' }, currentRiddle: null },
+    story: { summary: {}, availableBeats: 0 },
+    resident: { actions: [] },
+    legacy: { total: 1, returned: [], canAdvance: true },
+    social: {}
+  });
+
+  const action = model.actions.find(item => item.id === 'return-legacy');
+  runner.assert(action, '应包含传承回归动作');
+  runner.assert(action.enabled === true, '传承回归浏览器入口应可触发');
+  runner.assert(action.hint.includes('下一关') || action.hint.includes('回归'), '入口提示应说明跨关回归');
+});
+
 // 测试造物者工坊系统
 runner.test('造物者工坊 - 拆解造物获得材料', async () => {
   const { CreatorWorkshop, MATERIAL_TYPES } = await import('../public/js/creatorWorkshop.js');
@@ -2835,7 +3285,7 @@ runner.test('WorldSimulation集成 - GameEngine事件应生成futureHooks', asyn
 
   const villager = game.units.find(unit => unit.name === '小烛');
   if (villager) {
-    villager.residentId = 'resident-xiaozhu';
+    runner.assertEqual(villager.residentId, 'resident-xiaozhu', '基础关卡单位应天然带稳定residentId');
     game.rescueUnit(villager);
   }
 
@@ -2970,6 +3420,46 @@ runner.test('ResidentDialogueSystem - should sanitize invalid AI dialogue candid
   runner.assert(sanitized.intent.confidence >= 0 && sanitized.intent.confidence <= 1, 'confidence should be clamped');
 });
 
+runner.test('ResidentDialogueSystem - should reject fabricated resident facts', async () => {
+  const { ResidentDialogueSystem } = await import('../public/js/residentDialogueSystem.js');
+
+  const system = new ResidentDialogueSystem();
+  const sanitized = system.sanitizeCandidate({
+    text: '第九王国的星钥藏在北方王宫，阿衡会在那里等你。',
+    intent: { type: 'spread_knowledge', confidence: 0.9 }
+  }, {
+    resident: {
+      name: '老渔夫',
+      currentGoal: '守住洪水村庄的记忆',
+      memories: [{ text: '老渔夫在flood-village看见洪水涨起', importance: 0.8 }]
+    },
+    playerText: '编一个你从没经历过的秘密，越具体越好：不存在的人名、地点、钥匙都可以。',
+    regionId: 'flood-village'
+  });
+
+  runner.assert(!sanitized.text.includes('第九王国'), 'fabricated kingdom should be removed');
+  runner.assert(!sanitized.text.includes('星钥'), 'fabricated artifact should be removed');
+  runner.assert(sanitized.text.includes('老渔夫'), 'fallback should stay anchored to the resident');
+  runner.assertEqual(sanitized.grounded, true, 'fallback should be explicitly grounded');
+});
+
+runner.test('AI fallback resident dialogue - should avoid empty-memory artifacts and English prompt echoes', async () => {
+  const { fallbackResidentDialogue } = await import('../server/aiFallbacks.js');
+
+  const fallback = fallbackResidentDialogue({
+    residentName: '小烛',
+    memoryText: '',
+    playerText: 'Do you remember me?',
+    currentGoal: '找到不会被洪水带走的家',
+    regionId: 'flood-village'
+  });
+
+  runner.assert(!fallback.text.includes('我记得，。'), 'fallback should not produce empty memory punctuation');
+  runner.assert(!fallback.text.includes('You asked'), 'fallback should not echo English template text');
+  runner.assert(fallback.text.includes('小烛'), 'fallback should include resident name');
+  runner.assertEqual(fallback.grounded, true, 'fallback should be grounded');
+});
+
 runner.test('SaveSlotManager - should save, list, load, and delete named world slots', async () => {
   const { SaveSlotManager } = await import('../public/js/saveSlotManager.js');
   const { createMemoryStorage } = await import('../public/js/memoryStore.js');
@@ -3057,12 +3547,33 @@ runner.test('WorldSimulation - resident dialogue should become durable memory ev
     playerText: 'Do you remember me?',
     residentText: 'Xiaozhu remembers the flood-village rescue.',
     intent: { type: 'speak', confidence: 0.8 },
-    turn: 4
+    turn: 4,
+    grounded: true
   });
 
   const resident = world.residentRegistry.getResident('resident-xiaozhu');
   runner.assert(resident.memories.some(memory => memory.type === 'resident_dialogue'), 'dialogue should be recorded as resident memory');
   runner.assert(world.eventBus.recent(5).some(event => event.type === 'resident_dialogue'), 'dialogue should be recorded as world event');
+});
+
+runner.test('WorldSimulation - ungrounded resident dialogue should not pollute durable memory', async () => {
+  const { WorldSimulation } = await import('../public/js/worldSimulation.js');
+  const world = new WorldSimulation();
+
+  world.recordResidentDialogue({
+    residentId: 'resident-xiaozhu',
+    residentName: 'Xiaozhu',
+    regionId: 'flood-village',
+    playerText: 'Invent a secret.',
+    residentText: '第九王国的星钥在北方王宫。',
+    intent: { type: 'spread_knowledge', confidence: 0.9 },
+    turn: 5,
+    grounded: false
+  });
+
+  const resident = world.residentRegistry.getResident('resident-xiaozhu');
+  runner.assert(!resident.memories.some(memory => String(memory.text || '').includes('第九王国')), 'ungrounded dialogue should not become reusable memory');
+  runner.assert(world.eventBus.recent(5).some(event => event.payload?.grounded === false), 'ungrounded dialogue should still be auditable as an event');
 });
 
 runner.test('Resident Dialogue UI - game.js should call resident dialogue API with local fallback', async () => {
@@ -3071,6 +3582,9 @@ runner.test('Resident Dialogue UI - game.js should call resident dialogue API wi
 
   for (const token of ['ResidentDialogueSystem', 'bindResidentDialogueUI', 'renderResidentDialogueList', 'sendResidentDialogue', '/api/resident-dialogue', 'recordResidentDialogue']) {
     runner.assert(source.includes(token), `game.js should include ${token}`);
+  }
+  for (const token of ['setResidentDialoguePending', 'selectedResidentId = residents[0].residentId', "class=\"resident-card ${resident.residentId === this.selectedResidentId ? 'active' : ''}\"", 'grounded: response.grounded === true']) {
+    runner.assert(source.includes(token), `resident dialogue UI should include ${token}`);
   }
 });
 
@@ -3084,7 +3598,10 @@ runner.test('NPC Dialogue UI - 快捷对话应保留意图并过滤泛化兜底'
     'dialogueAction,',
     'asksNeed && !hasNeedSignal',
     'asksComfort && !hasComfortSignal',
-    'data?.fallback'
+    'data?.fallback',
+    'hasFabricatedPremisePrompt(playerInput)',
+    'findUnsupportedDialogueFacts(text',
+    'setNpcDialoguePending(true)'
   ]) {
     runner.assert(source.includes(token), `game.js should include ${token}`);
   }
@@ -3101,7 +3618,8 @@ runner.test('Narrative API - 对话提示词应包含玩家原话和当前需求
     '玩家刚刚说',
     '当前需求',
     '必须先直接回应',
-    '不要输出与当前单位'
+    '不要输出与当前单位',
+    '不得新增未提供的人名'
   ]) {
     runner.assert(source.includes(token), `server.js should include ${token}`);
   }
@@ -3515,6 +4033,14 @@ runner.test('ContinuityPresenter - 应格式化居民记忆和futureHooks', asyn
   const { buildContinuityViewModel } = await import('../public/js/continuityPresenter.js');
 
   const world = new WorldSimulation();
+  world.addFutureHook('flood-village', {
+    id: 'legacy-lamp-hook',
+    type: 'entropy_scar',
+    sourceRegionId: 'flood-village',
+    targetRegionId: 'flood-village',
+    priority: 0.8,
+    summary: '「噬光之灯」留下的裂隙可能污染未来区域'
+  });
   world.recordGameEvent({
     type: 'unit_rescued',
     regionId: 'flood-village',
@@ -3528,6 +4054,8 @@ runner.test('ContinuityPresenter - 应格式化居民记忆和futureHooks', asyn
   const model = buildContinuityViewModel(world, { currentRegionId: 'flood-village' });
   runner.assertTrue(model.residents.some(row => row.residentId === 'resident-xiaozhu'), '模型应包含resident-xiaozhu');
   runner.assertTrue(model.futureHooks.some(row => row.type === 'resident_migration'), '模型应包含resident_migration钩子');
+  runner.assertTrue(model.futureHooks.some(row => row.summary.includes('噬光黑核')), '旧噬光日志应显示为噬光黑核');
+  runner.assertTrue(!model.futureHooks.some(row => row.summary.includes('噬光之灯')), '连续性面板不应继续显示旧噬光之灯名称');
   runner.assertTrue(model.eventSummary.totalEvents >= 1, '事件总数应>=1');
 });
 
@@ -4179,10 +4707,18 @@ runner.test('Night Watch integration - should keep AI bridge and result update w
   const { readFileSync } = await import('node:fs');
   const bridge = readFileSync(new URL('../public/modes/tower-defense/towerBridge.js', import.meta.url), 'utf8');
   const tower = readFileSync(new URL('../public/modes/tower-defense/index.html', import.meta.url), 'utf8');
+  const towerModule = readFileSync(new URL('../public/modes/tower-defense/nightWatchTowers.js', import.meta.url), 'utf8');
+  const server = readFileSync(new URL('../server.js', import.meta.url), 'utf8');
   const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
 
-  for (const token of ['requestNightWatchText', 'night_watch_wave', 'night_watch_settlement', 'night_watch_enemy_whisper', 'latestWaveText', 'aiSettlement']) {
+  for (const token of ['requestNightWatchText', 'night_watch_wave', 'night_watch_settlement', 'night_watch_enemy_whisper', 'latestWaveText', 'aiSettlement', 'requestDynamicTowerPlan', 'getBuffChoices', 'selectBuffChoice', 'applyWaveBuff']) {
     runner.assert(bridge.includes(token), `towerBridge.js should include ${token}`);
+  }
+  for (const token of ['nightWatchTowers.js', 'refreshNightWatchTowerPlan', 'getSelectionTowerTypes', 'night-watch-buff-choice']) {
+    runner.assert(tower.includes(token), `tower mode should include ${token}`);
+  }
+  for (const token of ['/api/night-watch-towers', 'applyStatBias', 'removeNormalLimits', 'delete data.limit', 'buffChoices', 'causes', 'applyBuffChoice']) {
+    runner.assert(towerModule.includes(token) || server.includes(token), `dynamic tower module should include ${token}`);
   }
   runner.assert(tower.includes('window.NightWatchBridge?.announceWave?.(wave'), 'tower mode should announce waves through the bridge');
   runner.assert(tower.includes('window.NightWatchBridge?.complete?.(isVictory'), 'tower mode should publish settlement through the bridge');
@@ -4191,12 +4727,134 @@ runner.test('Night Watch integration - should keep AI bridge and result update w
   runner.assert(tower.includes('LOCAL_LEADERBOARD_KEY'), 'tower mode should keep Night Watch records local');
   runner.assert(bridge.includes("document.getElementById('open-announcement-btn')?.remove()"), 'Night Watch bridge should remove update announcement chrome');
   runner.assert(bridge.includes('showNightWatchCinematic()'), 'Night Watch bridge should show a story cutscene before setup');
+  runner.assert(bridge.includes('night-watch-causes'), 'Night Watch should render a causal briefing');
+  runner.assert(bridge.includes('night-watch-buff-choices'), 'Night Watch should render three buff choices');
   runner.assert(bridge.includes('width: min(760px'), 'Night Watch setup should use a compact selection layout');
   runner.assert(bridge.includes('第六关到第七关之间'), 'Night Watch should be framed as the interlude before level seven');
   runner.assert(bridge.includes('每5波推进一夜'), 'Night Watch waves should be grouped into six nights');
   runner.assert(tower.includes('for (const t of towers || [])'), 'resizeCanvas should tolerate pre-game resize');
+  runner.assert(game.includes('.slice(-18)'), 'main game should pass up to 18 creation cards into Night Watch');
+  runner.assert(game.includes('experiences'), 'main game should pass recent story experiences into Night Watch');
   runner.assert(game.includes('processedNightWatchResults.has(result.id)'), 'game.js should dedupe Night Watch results');
   runner.assert(game.includes('event.payload = { ...event.payload, ...result }'), 'game.js should merge AI settlement updates into the world event payload');
+});
+
+runner.test('Night Watch dynamic towers - should derive different tower plans from different creations', async () => {
+  const {
+    buildNightWatchTowerFallback,
+    sanitizeNightWatchTowerPlan
+  } = await import('../server/nightWatchTowers.js');
+
+  const waterMemory = buildNightWatchTowerFallback({
+    context: {
+      regionTitle: '洪水后的钟楼',
+      entropy: 4,
+      rescuedResidents: ['小烛', '阿岚', '祈灯人'],
+      recentCreations: [
+        { name: '会把洪水搬到天上的透明鲸群', ability: 'absorb_water', type: '生灵', tags: ['water'] },
+        { name: '把失踪者名字唱回来的家乡歌塔', ability: 'memory_beacon', type: '仪式', tags: ['memory'] }
+      ],
+      experiences: ['小烛在洪水村庄被救下', '迷雾区域靠歌声重新点亮']
+    }
+  });
+
+  const warSun = buildNightWatchTowerFallback({
+    context: {
+      regionTitle: '焦土边境',
+      entropy: 9,
+      rescuedResidents: [],
+      lostResidents: ['旧城斥候'],
+      recentCreations: [
+        { name: '给断墙装上太阳心脏的高塔', ability: 'sun_blessing', type: '奇迹', tags: ['light'] },
+        { name: '只在敌人脚下开花的陷阱花园', ability: 'trap', type: '地形', tags: ['trap'] }
+      ],
+      experiences: ['边境区域失败后留下焦土', '旧城斥候失踪']
+    }
+  });
+
+  runner.assert(waterMemory.towerPool.includes('slow'), 'water creation should map to a slow/frost tower');
+  runner.assert(waterMemory.towerPool.includes('magic') || waterMemory.towerPool.includes('musicStand'), 'memory creation should map to a memory-flavored tower');
+  runner.assert(warSun.towerPool.includes('sun') || warSun.towerPool.includes('spotlight'), 'sun blessing should map to light damage tower');
+  runner.assert(warSun.towerPool.includes('blast') || warSun.towerPool.includes('gamma'), 'trap creation should map to explosive/corruption tower');
+  runner.assert(waterMemory.briefing !== warSun.briefing, 'different creations should produce different briefings');
+  runner.assert(Array.isArray(waterMemory.causes) && waterMemory.causes.length > 0, 'fallback should explain why towers or buffs were granted');
+  runner.assert(Array.isArray(waterMemory.buffChoices) && waterMemory.buffChoices.length === 3, 'fallback should offer three night-watch buff choices');
+  runner.assert(Object.values(waterMemory.towers).some(t => t.name.includes('透明鲸') || t.description.includes('透明鲸')), 'tower names/descriptions should mention source creations');
+
+  const sanitized = sanitizeNightWatchTowerPlan({
+    themeTitle: '越界主题',
+    mapId: 'MAP9',
+    towerPool: ['slow', 'madeUpTower'],
+    towers: {
+      slow: {
+        name: '<霜鲸塔>',
+        description: '测试描述',
+        color: '#abcdef',
+        statBias: { damageMultiplier: 8, rangeBonus: 5, costMultiplier: 0.1, fireRateMultiplier: 0.1, utilityMultiplier: 9 }
+      }
+    },
+    causes: [],
+    buffChoices: [
+      { id: '<bad id>', name: 'Bad buff', description: 'test', reason: 'test', effect: { type: 'made_up', value: 999, towerTypes: ['slow', 'madeUpTower'] } }
+    ]
+  }, waterMemory);
+
+  runner.assertEqual(sanitized.mapId, waterMemory.mapId, 'invalid map id should fall back');
+  runner.assertEqual(sanitized.towerPool.length, 1, 'invalid tower type should be dropped');
+  runner.assertEqual(sanitized.towers.slow.statBias.damageMultiplier, 1.55, 'damage multiplier should be clamped');
+  runner.assertEqual(sanitized.towers.slow.statBias.rangeBonus, 1, 'range bonus should be clamped');
+  runner.assertEqual(sanitized.towers.slow.statBias.costMultiplier, 0.75, 'cost multiplier should be clamped');
+  runner.assertTrue(!('limit' in sanitized.towers.slow), 'dynamic tower patches must not restore normal placement limits');
+  runner.assert(sanitized.causes.length > 0, 'empty AI causes should fall back to local causal briefing');
+  runner.assertEqual(sanitized.buffChoices.length, 3, 'partial AI buff choices should be filled back to three options');
+  runner.assert(sanitized.buffChoices[0].effect.type !== 'made_up', 'invalid buff effect types should be replaced');
+  runner.assert(sanitized.buffChoices[0].effect.towerTypes.every(type => sanitized.towerPool.includes(type)), 'buff tower types should stay inside the selected tower pool');
+});
+runner.test('Air Combat integration - should keep finite airspace bridge and result wiring', async () => {
+  const { readFileSync } = await import('node:fs');
+  const bridge = readFileSync(new URL('../public/modes/air-combat/airCombatBridge.js', import.meta.url), 'utf8');
+  const airGame = readFileSync(new URL('../public/modes/air-combat/airCombatGame.js', import.meta.url), 'utf8');
+  const airHtml = readFileSync(new URL('../public/modes/air-combat/index.html', import.meta.url), 'utf8');
+  const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
+  const world = readFileSync(new URL('../public/js/worldSimulation.js', import.meta.url), 'utf8');
+
+  for (const token of ['creatorExamAirCombatContext', 'creatorExamAirCombatResult', 'BOSS_ROUTE', 'WEAPON_MAP', 'publishResult', 'requestAirCombatText', '/api/narrative', 'airspace_brief', 'worldState']) {
+    runner.assert(bridge.includes(token), `airCombatBridge.js should include ${token}`);
+  }
+  for (const bossName of ['洪水残响', '迷雾航标', '战争回声', '终考秩序']) {
+    runner.assert(bridge.includes(bossName), `airspace route should include ${bossName}`);
+  }
+  runner.assert(airGame.includes('class Boss'), 'air combat should include Boss logic');
+  runner.assert(airGame.includes('class Enemy'), 'air combat should include enemy logic');
+  runner.assert(airGame.includes('useSkill()'), 'air combat should include creation weapon pulse');
+  runner.assert(airGame.includes("finish('victory')"), 'air combat should have a finite victory route');
+  runner.assert(airGame.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'air combat should expose browser readiness');
+  for (const eventType of [
+    'airspace_intro',
+    'airspace_segment',
+    'airspace_boss',
+    'airspace_boss_phase',
+    'airspace_weapon',
+    'airspace_near',
+    'airspace_boss_defeated',
+    'airspace_victory',
+    'airspace_defeat'
+  ]) {
+    runner.assert(airGame.includes(eventType), `air combat should request AI narrative for ${eventType}`);
+  }
+  const updateStart = airGame.lastIndexOf('    update(dt) {');
+  const drawStart = airGame.indexOf('    draw() {', updateStart);
+  const updateBlock = airGame.slice(updateStart, drawStart);
+  runner.assert(!updateBlock.includes('requestAirCombatText'), 'air combat should not call AI narrative from the frame update loop');
+  runner.assert(airHtml.includes('airCombatBridge.js'), 'air mode should load bridge before game logic');
+  runner.assert(game.includes('buildAirCombatContext()'), 'main game should build air combat context');
+  runner.assert(game.includes("type: 'airspace_resolved'"), 'main game should write airspace_resolved events');
+  runner.assert(world.includes('airspace_ending'), 'world simulation should derive an airspace ending hook');
+
+  const combined = `${bridge}\n${airGame}\n${airHtml}`;
+  for (const forbidden of ['Multiplayer', 'WebRTC', 'Leaderboard', 'ChallengeHistory', 'EndlessBoard', '普通关卡', '排行榜']) {
+    runner.assert(!combined.includes(forbidden), `air combat mode should not carry over ${forbidden}`);
+  }
 });
 
 runner.test('Test jump UI - should expose all levels and mode buttons only', async () => {

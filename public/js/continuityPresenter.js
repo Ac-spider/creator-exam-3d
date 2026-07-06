@@ -1,3 +1,5 @@
+import { normalizeCreationDisplayText } from './creationDisplay.js';
+
 export function buildContinuityViewModel(worldSimulation, options = {}) {
   const currentRegionId = options.currentRegionId || 'unknown';
   const residents = worldSimulation.residentRegistry.getResidentsForRegion(currentRegionId).map(resident => ({
@@ -6,14 +8,14 @@ export function buildContinuityViewModel(worldSimulation, options = {}) {
     mood: resident.mood,
     currentGoal: resident.currentGoal,
     memoryCount: resident.memories.length,
-    latestMemory: resident.memories[resident.memories.length - 1]?.text || '暂无关键记忆'
+    latestMemory: normalizeCreationDisplayText(resident.memories[resident.memories.length - 1]?.text || '暂无关键记忆')
   }));
 
   const futureHooks = worldSimulation.getFutureHooks(currentRegionId).map(hook => ({
     id: hook.id,
     type: hook.type,
     priority: hook.priority || 0,
-    summary: hook.summary || hook.type,
+    summary: normalizeCreationDisplayText(hook.summary || hook.type),
     residentId: hook.residentId || null,
     sourceRegionId: hook.sourceRegionId || currentRegionId
   })).sort((a, b) => b.priority - a.priority);

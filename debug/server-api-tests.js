@@ -120,6 +120,29 @@ await withServer(async (baseUrl) => {
   });
   assert(narrative.response.status === 200, '/api/narrative should return local fallback with 200 when AI is not configured');
   assert(narrative.json.fallback === true, 'fallback narrative should be explicit');
+
+  const nightWatchTowers = await fetchJson(`${baseUrl}/api/night-watch-towers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      context: {
+        entropy: 6,
+        rescuedResidents: ['Xiaozhu', 'Ari'],
+        recentCreations: [
+          { name: 'remembered rain bridge', ability: 'create_bridge', type: 'miracle' },
+          { name: 'moonlit flood whale', ability: 'absorb_water', type: 'beast' }
+        ],
+        experiences: ['Xiaozhu was rescued in flood-village']
+      }
+    })
+  });
+  assert(nightWatchTowers.response.status === 200, '/api/night-watch-towers should return local fallback with 200 when AI is not configured');
+  assert(Array.isArray(nightWatchTowers.json.towerPool) && nightWatchTowers.json.towerPool.length > 0, 'night watch tower plan should include a tower pool');
+  assert(nightWatchTowers.json.towers[nightWatchTowers.json.towerPool[0]], 'night watch tower plan should include tower patches');
+  assert(!Object.values(nightWatchTowers.json.towers).some(tower => Object.prototype.hasOwnProperty.call(tower, 'limit')), 'night watch tower patches should not restore normal placement limits');
+  assert(Array.isArray(nightWatchTowers.json.causes) && nightWatchTowers.json.causes.length > 0, 'night watch tower plan should explain prior-flow causes');
+  assert(Array.isArray(nightWatchTowers.json.buffChoices) && nightWatchTowers.json.buffChoices.length === 3, 'night watch tower plan should include three buff choices');
+  assert(nightWatchTowers.json.buffChoices.every(choice => choice.effect && choice.effect.type), 'night watch buff choices should include whitelisted effects');
 });
 
 console.log('Server API tests passed');
