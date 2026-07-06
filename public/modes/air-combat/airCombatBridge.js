@@ -522,7 +522,7 @@
 
   let selectedWeaponIndex = 0;
 
-  function weaponOption(baseAbility, creation, reason) {
+  function weaponOption(baseAbility, creation, reason, focusText = '造物压缩') {
     const ability = baseAbility || creationAbility(creation);
     const fallback = {
       name: '裂隙光矛',
@@ -537,11 +537,12 @@
       sourceDescription: creationDescription(creation),
       sourceTags: creationTags(creation),
       ability: ability || 'unknown',
+      focusText,
       reason
     };
   }
 
-  function contextualWeaponOption(ability, sourceCreation, reason) {
+  function contextualWeaponOption(ability, sourceCreation, reason, focusText = '路线续构') {
     const weapon = WEAPON_MAP[ability];
     return {
       ...weapon,
@@ -549,6 +550,7 @@
       sourceDescription: reason,
       sourceTags: [],
       ability,
+      focusText,
       reason
     };
   }
@@ -582,8 +584,8 @@
     if (discoveredLore().length || Number(context.entropy || 0) >= 5) {
       add(contextualWeaponOption('illuminate', '高熵航线校准', '因为裂隙熵值或传说锚点已经显形，空域给出月树光束方案。'));
     }
-    if (options.length < 3) add(contextualWeaponOption('dream_link', '残留梦境轨迹', '因为前序流程仍有未闭合的行动轨迹，空域给出梦桥僚机方案。'));
-    if (options.length < 3) add(contextualWeaponOption('absorb_water', '灾害清算记录', '因为早期灾害仍在高空回响，空域给出鲤潮护盾方案。'));
+    if (options.length < 3) add(contextualWeaponOption('dream_link', '残留梦境轨迹', '因为前序流程仍有未闭合的行动轨迹，空域给出梦桥僚机方案。', '备选航线'));
+    if (options.length < 3) add(contextualWeaponOption('absorb_water', '灾害清算记录', '因为早期灾害仍在高空回响，空域给出鲤潮护盾方案。', '备选航线'));
     return options.slice(0, 3);
   }
 

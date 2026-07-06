@@ -184,6 +184,7 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('WEAPON_MAP'), 'air bridge must map creations into weapons');
   assert.ok(bridgeSource.includes('weaponOptions') && bridgeSource.includes('selectWeaponOption'), 'air bridge must expose prior-flow weapon choices before combat');
   assert.ok(bridgeSource.includes('选择依据') && bridgeSource.includes('reason'), 'air bridge must explain why prior flow unlocked each air weapon');
+  assert.ok(bridgeSource.includes('focusText') && bridgeSource.includes('路线续构'), 'air bridge must adapt upstream focused draft reason labels for weapon choices');
   assert.ok(bridgeSource.includes('publishResult'), 'air bridge must return a result to main game');
   assert.ok(bridgeSource.includes('requestAirCombatText'), 'air bridge must expose AI narrative requests');
   assert.ok(bridgeSource.includes('/api/narrative'), 'air bridge must use the shared narrative endpoint');
@@ -254,6 +255,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('class Enemy'), 'air combat slice must include enemy logic');
   assert.ok(airGameSource.includes('useSkill()'), 'air combat slice must include creation weapon pulse');
   assert.ok(airGameSource.includes('renderWeaponChoices') && airGameSource.includes('airspace-choice'), 'air combat opening must render prior-flow weapon choice cards');
+  assert.ok(airGameSource.includes('空域标记') && airGameSource.includes('option.focusText'), 'air combat opening must show compact choice reason tags');
   assert.ok(airGameSource.includes('syncUiState') && airGameSource.includes("this.state === 'playing'"), 'air combat opening must hide battle HUD until combat starts');
   assert.ok(airGameSource.includes('bridge.routeResonance()'), 'air combat slice must consume creation resonance locally');
   assert.ok(airGameSource.includes('firePrismLane'), 'air combat slice must apply prism boss affix locally');
@@ -424,6 +426,16 @@ function assertAirCombatRouteBalance() {
   const firstChoice = aggressiveCoreRoute.weaponLoadout().ability;
   aggressiveCoreRoute.selectWeaponOption(1);
   assert.notEqual(aggressiveCoreRoute.weaponLoadout().ability, firstChoice, 'selecting an air weapon card should change the active loadout');
+
+  const contextualChoiceRoute = loadAirBridgeForContext({
+    entropy: 0,
+    endingPressure: 0.67,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '未定形造物', ability: 'unknown' }],
+    playerStyle: 'aggressive'
+  });
+  assert.ok(contextualChoiceRoute.weaponOptions().some(option => option.focusText === '路线续构'), 'contextual air weapon choices should show focused route reason tags');
 
   const describedCreationRoute = loadAirBridgeForContext({
     entropy: 3,

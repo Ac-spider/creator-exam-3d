@@ -570,6 +570,7 @@
       const communicator = bridge.communicator();
       const rows = [
         `${weapon.name} 来自「${weapon.sourceCreation}」`,
+        weapon.focusText ? `空域标记：${weapon.focusText}` : '',
         weapon.reason ? `选择依据：${weapon.reason}` : '',
         weapon.description,
         `共鸣：${resonance.name} · ${resonance.effect}`,
@@ -603,7 +604,7 @@
         const title = document.createElement('strong');
         title.textContent = option.name;
         const source = document.createElement('span');
-        source.textContent = `来自：${option.sourceCreation}`;
+        source.textContent = `${option.focusText || '空域选项'} · 来自：${option.sourceCreation}`;
         const reason = document.createElement('small');
         reason.textContent = option.reason || option.description;
         button.append(title, source, reason);
