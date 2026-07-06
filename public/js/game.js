@@ -1062,6 +1062,12 @@ class CreatorExam3D extends GameEngine {
     const url = new URL('./modes/air-combat/index.html', window.location.href);
     url.searchParams.set('from', 'creator-exam');
     if (options.testEntry) url.searchParams.set('testEntry', '1');
+
+    if (options.testEntry) {
+      window.location.href = url.toString();
+      return;
+    }
+
     try {
       const response = await fetch(url.toString(), { method: 'HEAD' });
       if (response.ok) {
