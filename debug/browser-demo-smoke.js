@@ -43,6 +43,14 @@ for (const actionId of [
   assert.ok(smokeBlock.includes(`clickAdvancedAction('${actionId}')`), `browser smoke should cover ${actionId}`);
 }
 
+for (const personality of ['cassandra', 'phoebe', 'randy', 'narrator']) {
+  assert.ok(smokeBlock.includes(personality), `browser smoke should cover storyteller personality ${personality}`);
+}
+assert.ok(smokeBlock.includes('storytellerSelect.dispatchEvent'), 'browser smoke should trigger storyteller through the select UI');
+assert.ok(smokeBlock.includes('residentAgentSystem'), 'browser smoke should inspect Resident Agent state');
+assert.ok(smokeBlock.includes("type: 'unit_rescued'"), 'browser smoke should drive Resident Agent from a real world event');
+assert.ok(smokeBlock.includes("query?.({ type: 'resident_action' })"), 'browser smoke should verify resident_action events');
+
 for (const paradoxType of [
   'light_dark',
   'life_death',

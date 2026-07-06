@@ -2847,6 +2847,37 @@ class CreatorExam3D extends GameEngine {
       after: storyAfter
     });
 
+    const storytellerExpectations = {
+      cassandra: '卡珊德拉',
+      phoebe: '菲比',
+      randy: '兰迪',
+      narrator: '说书人'
+    };
+    const storytellerResults = [];
+    for (const [personality, expectedName] of Object.entries(storytellerExpectations)) {
+      const before = this.storyteller?.eventHistory?.length || 0;
+      if (this.ui.storytellerSelect) {
+        this.ui.storytellerSelect.value = personality;
+        this.ui.storytellerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        this.handleStorytellerChange(personality);
+      }
+      const click = clickAdvancedAction('trigger-story');
+      const after = this.storyteller?.eventHistory?.length || 0;
+      const currentName = this.storyteller?.personality?.name || '';
+      const desc = this.ui.storytellerDesc?.textContent || '';
+      storytellerResults.push({
+        personality,
+        currentName,
+        desc,
+        eventDelta: after - before,
+        passed: !!click && currentName === expectedName && after > before && desc.length > 0
+      });
+    }
+    record('storyteller personality matrix triggers through select UI', storytellerResults.every(item => item.passed), {
+      storytellerResults
+    });
+
     const legendBefore = worldLegendSystem.generateWorldLegendReport?.().totalLegends || 0;
     const legendClick = clickAdvancedAction('trigger-legend');
     const legendAfter = worldLegendSystem.generateWorldLegendReport?.().totalLegends || 0;
@@ -2911,6 +2942,41 @@ class CreatorExam3D extends GameEngine {
       previewCount: intentPreview?.previews?.length || 0,
       panelText: this.ui.enemyIntentList?.textContent?.trim()?.slice(0, 160) || '',
       arrowCount: this.intentArrowGroup?.children?.length || 0
+    });
+
+    const residentAgent = this.worldSimulation?.residentAgentSystem;
+    const residentAgentBefore = residentAgent?.recentActions?.length || 0;
+    const residentForAgent = (this.worldSimulation?.residentRegistry?.getResidentsForRegion(this.level?.id) || [])[0];
+    let residentAgentTick = null;
+    if (residentForAgent) {
+      this.worldSimulation.recordGameEvent({
+        type: 'unit_rescued',
+        regionId: this.level?.id || 'unknown',
+        actorId: 'browser-smoke',
+        turn: this.turn,
+        payload: {
+          residentId: residentForAgent.residentId,
+          unitName: residentForAgent.name
+        },
+        importance: 0.9,
+        tags: ['resident', 'browser-smoke']
+      });
+      if (this.worldSession) this.worldSession.currentRegionId = this.level?.id || this.worldSession.currentRegionId;
+      residentAgentTick = this.worldSession?.tickWorld?.({
+        regionId: this.level?.id || 'unknown',
+        turn: this.turn
+      }) || null;
+      this.renderAdvancedMechanicsPanel();
+    }
+    const residentAgentAfter = residentAgent?.recentActions?.length || 0;
+    const residentActionEvents = this.worldSimulation?.eventBus?.query?.({ type: 'resident_action' }) || [];
+    const residentAgentPanelText = `${this.ui.advancedMechanicList?.textContent || ''}\n${this.ui.advancedDetail?.textContent || ''}`;
+    record('resident agent reacts to world event in browser panel', !!residentForAgent && (residentAgentTick?.residentActions || []).length > 0 && residentAgentAfter > residentAgentBefore && residentActionEvents.some(event => event.payload?.residentId === residentForAgent.residentId) && residentAgentPanelText.includes('最近行动'), {
+      residentName: residentForAgent?.name || '',
+      before: residentAgentBefore,
+      after: residentAgentAfter,
+      tickActions: residentAgentTick?.residentActions?.map(action => action.type) || [],
+      panelText: residentAgentPanelText.slice(0, 180)
     });
 
     const paradoxResults = [];

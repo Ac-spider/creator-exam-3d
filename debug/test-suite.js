@@ -3846,6 +3846,7 @@ runner.test('WorldSimulation - 居民行动应由真实世界事件驱动', asyn
 
   const actions = world.tickResidents('flood-village', { turn: 4 });
   runner.assertTrue(actions.some(action => action.residentId === 'resident-xiaozhu'), 'actions 应包含 resident-xiaozhu 的行动');
+  runner.assertTrue(world.residentAgentSystem.recentActions.some(action => action.residentId === 'resident-xiaozhu'), 'recentActions 应保留最近居民行动供浏览器面板展示');
 
   const residentActionEvents = world.eventBus.query({ type: 'resident_action' });
   runner.assertTrue(residentActionEvents.some(event => event.payload && event.payload.residentId === 'resident-xiaozhu'), 'eventBus 应包含 resident-xiaozhu 的 resident_action 事件');

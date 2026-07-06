@@ -56,6 +56,7 @@ export class ResidentAgentSystem {
     }
     this.residentRegistry = options.residentRegistry
     this.recentEventsByResident = new Map()
+    this.recentActions = []
   }
 
   observeEvent(event, options = {}) {
@@ -124,6 +125,8 @@ export class ResidentAgentSystem {
       const action = this.tickResident(resident.residentId, context)
       if (action) actions.push(action)
     }
+    this.recentActions.push(...actions)
+    this.recentActions = this.recentActions.slice(-12)
     return actions
   }
 
@@ -148,7 +151,8 @@ export class ResidentAgentSystem {
     }
     return {
       version: 1,
-      recentEventsByResident
+      recentEventsByResident,
+      recentActions: [...this.recentActions]
     }
   }
 
@@ -159,6 +163,7 @@ export class ResidentAgentSystem {
         this.recentEventsByResident.set(entry.residentId, [...entry.events])
       }
     }
+    this.recentActions = Array.isArray(data.recentActions) ? [...data.recentActions].slice(-12) : []
   }
 }
 
