@@ -182,6 +182,8 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('洪水残响'), 'air route must reframe early memories as bosses');
   assert.ok(bridgeSource.includes('终考秩序'), 'air route must include final-exam boss wrapper');
   assert.ok(bridgeSource.includes('WEAPON_MAP'), 'air bridge must map creations into weapons');
+  assert.ok(bridgeSource.includes('weaponOptions') && bridgeSource.includes('selectWeaponOption'), 'air bridge must expose prior-flow weapon choices before combat');
+  assert.ok(bridgeSource.includes('选择依据') && bridgeSource.includes('reason'), 'air bridge must explain why prior flow unlocked each air weapon');
   assert.ok(bridgeSource.includes('publishResult'), 'air bridge must return a result to main game');
   assert.ok(bridgeSource.includes('requestAirCombatText'), 'air bridge must expose AI narrative requests');
   assert.ok(bridgeSource.includes('/api/narrative'), 'air bridge must use the shared narrative endpoint');
@@ -226,6 +228,8 @@ function assertAirCombatIntegration() {
   assert.ok(bridgeSource.includes('carrierWing') && bridgeSource.includes('母舰残群'), 'air bridge must adapt upstream carrier enemies as finite enemy-pressure affix');
   assert.ok(bridgeSource.includes('barrage') && bridgeSource.includes("attack: 'ring'"), 'air bridge must adapt upstream barrage boss affix into finite ring pressure');
   assert.ok(bridgeSource.includes('fieldRepair') && bridgeSource.includes('纳米修复'), 'air bridge must adapt upstream field repair as a prior-flow reward');
+  assert.ok(bridgeSource.includes('exposedCore') && bridgeSource.includes("attack: 'weak'") && bridgeSource.includes('weakDamageMult'), 'air bridge must adapt upstream exposed core as a finite boss weak-point affix');
+  assert.ok(bridgeSource.includes("keys.push('exposedCore')"), 'air bridge must derive exposed core from prior-flow context instead of unconditional route filler');
   assert.ok(bridgeSource.includes('damageTakenMult') && bridgeSource.includes('钛合装甲'), 'air bridge must adapt upstream armor plating as finite shield resonance');
   assert.ok(bridgeSource.includes('钨芯重弹') && bridgeSource.includes('fireIntervalMult: 1.12'), 'air bridge must adapt upstream heavy rounds as finite cannon resonance');
   assert.ok(bridgeSource.includes('破甲弹芯') && bridgeSource.includes('armorPierceMult: 0.35'), 'air bridge must adapt upstream armor piercer as finite cannon resonance');
@@ -246,6 +250,8 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('class Boss'), 'air combat slice must include boss logic');
   assert.ok(airGameSource.includes('class Enemy'), 'air combat slice must include enemy logic');
   assert.ok(airGameSource.includes('useSkill()'), 'air combat slice must include creation weapon pulse');
+  assert.ok(airGameSource.includes('renderWeaponChoices') && airGameSource.includes('airspace-choice'), 'air combat opening must render prior-flow weapon choice cards');
+  assert.ok(airGameSource.includes('syncUiState') && airGameSource.includes("this.state === 'playing'"), 'air combat opening must hide battle HUD until combat starts');
   assert.ok(airGameSource.includes('bridge.routeResonance()'), 'air combat slice must consume creation resonance locally');
   assert.ok(airGameSource.includes('firePrismLane'), 'air combat slice must apply prism boss affix locally');
   assert.ok(airGameSource.includes('bulletRateMult'), 'air combat slice must apply boss affix bullet-rate modifiers locally');
@@ -275,6 +281,8 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('fireBossEscort'), 'air combat slice must apply upstream escort affix as finite add pressure');
   assert.ok(airGameSource.includes("if (affix.elite === 'jammer') this.applyJammerElite(escort, affix)"), 'air combat slice must let electronic warfare escorts become jammer elites');
   assert.ok(airGameSource.includes("this.affix.attack === 'repair'") && airGameSource.includes('repairBoss'), 'air combat slice must apply upstream repair boss affix locally');
+  assert.ok(airGameSource.includes("this.affix.attack === 'weak'") && airGameSource.includes('openBossWeakPoint') && airGameSource.includes('_weakTimer'), 'air combat slice must apply upstream exposed-core weak windows locally');
+  assert.ok(airGameSource.includes('target._weakTimer > 0') && airGameSource.includes('target.affix?.weakDamageMult'), 'air combat slice must increase Boss damage only during exposed-core windows');
   assert.ok(airGameSource.includes('updateFieldRepair') && airGameSource.includes('fieldRepairStatus'), 'air combat slice must apply upstream field repair locally');
   assert.ok(airGameSource.includes('this.resonance.damageTakenMult'), 'air combat slice must apply finite armor-plating damage reduction locally');
   assert.ok(airGameSource.includes('armorPierces') && airGameSource.includes('playerBulletDamage') && airGameSource.includes('armorPierceMinHp') && airGameSource.includes('bullet.main'), 'air combat slice must apply finite armor-piercer bonus only to main bullets');
@@ -290,6 +298,7 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes('signalFilterStatus') && airGameSource.includes('signalFilterJamResist') && airGameSource.includes('Math.max(0.35, 1 - resist)'), 'air combat slice must reduce jammer slow with finite anti-jam resonance');
   assert.ok(airGameSource.includes('机体构筑') && airGameSource.includes('flowHpBonus'), 'air combat finite review must show prior-flow HP build gains');
   assert.ok(airGameSource.includes('triggerLivingArmorGrowth') && airGameSource.includes('livingArmorHpGained') && airGameSource.includes('livingArmorStatus'), 'air combat slice must grow max HP from finite living armor resonance');
+  assert.ok(airGameSource.includes('弱点') && airGameSource.includes('露核窗口'), 'air combat HUD and review must surface exposed-core weak windows');
   assert.ok(airGameSource.includes('splitDamage') && airGameSource.includes('#be4bdb'), 'air combat slice must fire finite split laser side beams for beam resonance');
   assert.ok(airGameSource.includes('sideDamage') && airGameSource.includes('#ffd43b'), 'air combat slice must fire finite side cannon shots for cannon resonance');
   assert.ok(airGameSource.includes('showClearanceCard') && airGameSource.includes('updateClearanceCard'), 'air combat must show a short boss clearance card after each boss defeat');
@@ -299,6 +308,8 @@ function assertAirCombatIntegration() {
   assert.ok(airGameSource.includes("finish('victory')"), 'air combat route must have a finite victory state');
   assert.ok(airGameSource.includes('CREATOR_EXAM_AIR_COMBAT_READY'), 'browser verification should have a readiness signal');
   assert.ok(airIndexSource.includes('id="hud-affix"'), 'air combat markup must expose an affix HUD line');
+  assert.ok(airIndexSource.includes('id="airspace-choices"'), 'air combat markup must expose prior-flow weapon choices');
+  assert.ok(airIndexSource.includes('id="airspace-hud" class="airspace-hud hidden"'), 'air combat battle HUD must start hidden during briefing');
   assert.ok(airIndexSource.includes('id="airspace-clearance-card"'), 'air combat markup must expose a boss clearance card');
   for (const eventType of [
     'airspace_intro',
@@ -372,9 +383,38 @@ function assertAirCombatRouteBalance() {
   assert.equal(highPressure.routeResonance().livingArmorEvery, 12, 'stable defense flow should unlock finite living armor growth');
   assert.equal(highPressure.routeResonance().livingArmorMaxHp, 30, 'finite living armor growth must stay capped');
   for (const boss of highRoute) {
-    assert.ok(['prism', 'ionStorm', 'ring', 'escort', 'repair', undefined].includes(boss.affix.attack), `unknown finite affix attack ${boss.affix.attack}`);
+    assert.ok(['prism', 'ionStorm', 'ring', 'escort', 'repair', 'weak', undefined].includes(boss.affix.attack), `unknown finite affix attack ${boss.affix.attack}`);
     assert.ok(boss.hp >= 300 && boss.hp <= 1100, `boss ${boss.title} hp is outside finite route bounds`);
   }
+
+  const exposedCoreRoute = loadAirBridgeForContext({
+    entropy: 6,
+    endingPressure: 0.78,
+    rescuedResidents: [{ name: '阿岚' }],
+    lostResidents: [],
+    recentCreations: [{ name: '会发光并指路的月亮树', ability: 'illuminate' }],
+    towerDefenseResult: { victory: false },
+    discoveredLore: [{ title: '裂隙核心会被光照出轮廓' }]
+  });
+  assert.ok(exposedCoreRoute.contextualAffixKeys().includes('exposedCore'), 'light/lore route should unlock finite exposed-core windows');
+  const exposedCoreBoss = exposedCoreRoute.route().find(boss => boss.affix.key === 'exposedCore');
+  assert.ok(exposedCoreBoss, 'finite route should include exposed-core affix when prior creations reveal the core');
+  assert.equal(exposedCoreBoss.affix.weakDamageMult, 0.35, 'exposed-core weak window damage bonus must stay bounded');
+
+  const aggressiveCoreRoute = loadAirBridgeForContext({
+    entropy: 2,
+    endingPressure: 0.67,
+    rescuedResidents: [],
+    lostResidents: [],
+    recentCreations: [{ name: '秩序重炮', ability: 'block' }],
+    playerStyle: 'aggressive'
+  });
+  assert.equal(aggressiveCoreRoute.route()[0].affix.key, 'exposedCore', 'aggressive high-pressure flow should be able to expose the first boss core');
+  assert.equal(aggressiveCoreRoute.weaponOptions().length, 3, 'prior-flow air opening should offer three weapon choices');
+  assert.ok(aggressiveCoreRoute.weaponOptions().every(option => option.reason), 'each air weapon choice should explain its prior-flow reason');
+  const firstChoice = aggressiveCoreRoute.weaponLoadout().ability;
+  aggressiveCoreRoute.selectWeaponOption(1);
+  assert.notEqual(aggressiveCoreRoute.weaponLoadout().ability, firstChoice, 'selecting an air weapon card should change the active loadout');
 
   const describedCreationRoute = loadAirBridgeForContext({
     entropy: 3,
@@ -474,6 +514,7 @@ function assertAirCombatRouteBalance() {
     ...lostRoute.route(),
     ...mineRoute.route(),
     ...memoryRoute.route(),
+    ...exposedCoreRoute.route(),
     ...failedDefenseRoute.route(),
     ...ewarRoute.route()
   ].map(boss => boss.affix.key));

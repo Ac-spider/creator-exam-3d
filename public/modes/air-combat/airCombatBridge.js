@@ -265,6 +265,17 @@
       scoreMult: 1.18,
       line: '电子战词缀会周期投放扰频精英机，先拉开干扰圈再输出 Boss。'
     },
+    exposedCore: {
+      key: 'exposedCore',
+      name: '露核',
+      color: '#ffd43b',
+      attack: 'weak',
+      every: 7.2,
+      dur: 2.6,
+      weakDamageMult: 0.35,
+      scoreMult: 1.12,
+      line: '裂隙核心会周期暴露，照亮它时把所有火力压进弱点窗口。'
+    },
     repair: {
       key: 'repair',
       name: '维修',
@@ -489,9 +500,10 @@
     return creations().find(item => WEAPON_MAP[creationAbility(item)]) || creations()[0] || null;
   }
 
-  function weaponLoadout() {
-    const creation = primaryCreation();
-    const ability = creationAbility(creation);
+  let selectedWeaponIndex = 0;
+
+  function weaponOption(baseAbility, creation, reason) {
+    const ability = baseAbility || creationAbility(creation);
     const fallback = {
       name: '裂隙光矛',
       description: '由白天残留的创造力压缩成的稳定直射武器。',
@@ -504,8 +516,66 @@
       sourceCreation: creationName(creation || '白天留下的造物'),
       sourceDescription: creationDescription(creation),
       sourceTags: creationTags(creation),
-      ability: ability || 'unknown'
+      ability: ability || 'unknown',
+      reason
     };
+  }
+
+  function contextualWeaponOption(ability, sourceCreation, reason) {
+    const weapon = WEAPON_MAP[ability];
+    return {
+      ...weapon,
+      sourceCreation,
+      sourceDescription: reason,
+      sourceTags: [],
+      ability,
+      reason
+    };
+  }
+
+  function weaponOptions() {
+    const options = [];
+    const seen = new Set();
+    const add = option => {
+      if (!option || seen.has(option.ability)) return;
+      seen.add(option.ability);
+      options.push(option);
+    };
+    for (const creation of creations().slice(-5).reverse()) {
+      const ability = creationAbility(creation);
+      if (!WEAPON_MAP[ability]) continue;
+      add(weaponOption(ability, creation, `因为你之前创造了「${creationName(creation)}」，它被压缩成这套空域武器。`));
+    }
+    const firstCreation = primaryCreation();
+    if (!options.length) {
+      add(weaponOption('unknown', firstCreation, `因为「${creationName(firstCreation || '未命名造物')}」没有稳定武器型，裂隙先把它补全成通用光矛。`));
+    }
+    if (aggressiveStyle() || endingPressure() >= 0.66) {
+      add(contextualWeaponOption('block', '进攻路线记录', '因为此前流程偏进攻或结局压力较高，空域给出秩序重炮方案。'));
+    }
+    if (context.towerDefenseResult?.victory || residentsCount() >= 2) {
+      add(contextualWeaponOption('force_field', '守夜与居民回声', '因为你守住过地面秩序或救下居民，空域给出誓约护盾方案。'));
+    }
+    if (discoveredLore().length || lostCount() > 0) {
+      add(contextualWeaponOption('memory_beacon', '传说与失落回声', '因为你发现过传说或留下失落居民回声，空域给出记忆星矢方案。'));
+    }
+    if (discoveredLore().length || Number(context.entropy || 0) >= 5) {
+      add(contextualWeaponOption('illuminate', '高熵航线校准', '因为裂隙熵值或传说锚点已经显形，空域给出月树光束方案。'));
+    }
+    if (options.length < 3) add(contextualWeaponOption('dream_link', '残留梦境轨迹', '因为前序流程仍有未闭合的行动轨迹，空域给出梦桥僚机方案。'));
+    if (options.length < 3) add(contextualWeaponOption('absorb_water', '灾害清算记录', '因为早期灾害仍在高空回响，空域给出鲤潮护盾方案。'));
+    return options.slice(0, 3);
+  }
+
+  function selectWeaponOption(index) {
+    const options = weaponOptions();
+    selectedWeaponIndex = Math.max(0, Math.min(options.length - 1, Number(index) || 0));
+    return weaponLoadout();
+  }
+
+  function weaponLoadout() {
+    const options = weaponOptions();
+    return options[selectedWeaponIndex] || options[0] || weaponOption('unknown', primaryCreation(), '裂隙使用默认光矛维持空域载体。');
   }
 
   function routeResonance() {
@@ -642,6 +712,7 @@
     if (entropy >= 8 || lightRoute) keys.push('ionStorm');
     if (entropy >= 7) keys.push('prism');
     else if (entropy >= 4) keys.push('rapid');
+    if ((lightRoute && (pressure >= 0.66 || discoveredLore().length > 0)) || (aggressiveStyle() && pressure >= 0.66)) keys.push('exposedCore');
     if (pressure >= 0.82) keys.push('armored');
     if (pressure >= 0.72 && /block|memory_beacon|force_field/.test(abilityText)) keys.push('sniperLockdown');
     if (lostCount() > 0) keys.push('phantom');
@@ -717,7 +788,11 @@
   }
 
   function cleanNarrative(text, max = 170) {
-    return String(text || '').replace(/\s+/g, ' ').trim().slice(0, max);
+    const clean = String(text || '').replace(/\s+/g, ' ').trim();
+    if (clean.length <= max) return clean;
+    const cut = clean.slice(0, max);
+    const end = Math.max(cut.lastIndexOf('。'), cut.lastIndexOf('；'), cut.lastIndexOf('，'), cut.lastIndexOf(' '));
+    return `${cut.slice(0, end > max * 0.6 ? end + 1 : max).trim()}…`;
   }
 
   function worldState(extra = {}) {
@@ -819,6 +894,7 @@
     if (loadout) {
       loadout.innerHTML = `
         <div><strong>${escapeHtml(weapon.name)}</strong> 来自「${escapeHtml(weapon.sourceCreation)}」</div>
+        ${weapon.reason ? `<div>选择依据：${escapeHtml(weapon.reason)}</div>` : ''}
         <div>${escapeHtml(weapon.description)}</div>
         ${weapon.sourceDescription ? `<div>造物原意：${escapeHtml(weapon.sourceDescription)}</div>` : ''}
         <div>共鸣：<strong>${escapeHtml(resonance.name)}</strong> · ${escapeHtml(resonance.effect)}</div>
@@ -878,6 +954,8 @@
     context,
     route,
     difficulty,
+    weaponOptions,
+    selectWeaponOption,
     weaponLoadout,
     routeResonance,
     communicator,

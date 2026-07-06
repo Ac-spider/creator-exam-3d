@@ -10,7 +10,7 @@
   <main class="airspace-shell">
     <section class="airspace-stage" aria-label="第七天裂隙空域">
       <canvas id="airspace-canvas" width="540" height="860"></canvas>
-      <div id="airspace-hud" class="airspace-hud">
+      <div id="airspace-hud" class="airspace-hud hidden">
         <div>
           <span class="hud-label">空域</span>
           <strong id="hud-stage">第七天裂隙空域</strong>
@@ -25,17 +25,18 @@
           <strong id="hud-score">0</strong>
         </div>
       </div>
-      <div id="airspace-comm" class="airspace-comm" aria-live="polite"></div>
+      <div id="airspace-comm" class="airspace-comm hidden" aria-live="polite"></div>
       <div id="airspace-clearance-card" class="airspace-clearance-card hidden" aria-live="polite">
         <span id="clearance-kicker">段落清算</span>
         <strong id="clearance-title">裂隙残响</strong>
         <p id="clearance-body"></p>
       </div>
-      <button id="airspace-skill" class="airspace-skill" type="button" title="释放造物副作用">造物脉冲</button>
+      <button id="airspace-skill" class="airspace-skill hidden" type="button" title="释放造物副作用">造物脉冲</button>
       <div id="airspace-menu" class="airspace-menu">
         <div class="menu-kicker">第七天</div>
         <h1>裂隙空域</h1>
         <p id="airspace-brief">白天留下的造物正在压缩为空域载体。</p>
+        <div id="airspace-choices" class="airspace-choices hidden"></div>
         <div id="airspace-loadout" class="airspace-loadout"></div>
         <button id="airspace-start" class="primary" type="button">进入空域</button>
         <button id="airspace-return" class="secondary" type="button">返回考核</button>

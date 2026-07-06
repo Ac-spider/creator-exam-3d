@@ -6,11 +6,13 @@
   const hudAffix = document.getElementById('hud-affix');
   const hudWeapon = document.getElementById('hud-weapon');
   const hudScore = document.getElementById('hud-score');
+  const hud = document.getElementById('airspace-hud');
   const comm = document.getElementById('airspace-comm');
   const menu = document.getElementById('airspace-menu');
   const menuKicker = menu.querySelector('.menu-kicker');
   const menuTitle = menu.querySelector('h1');
   const brief = document.getElementById('airspace-brief');
+  const choices = document.getElementById('airspace-choices');
   const loadout = document.getElementById('airspace-loadout');
   const resultPanel = document.getElementById('airspace-result');
   const resultTitle = document.getElementById('result-title');
@@ -378,6 +380,7 @@
       this.phase = 1;
       this.dead = false;
       this.spiral = 0;
+      this._weakTimer = 0;
     }
 
     update(dt) {
@@ -402,6 +405,7 @@
     }
 
     updateAffix(dt) {
+      if (this._weakTimer > 0) this._weakTimer = Math.max(0, this._weakTimer - dt);
       if (!this.affix?.attack) return;
       this.affixTimer -= dt;
       if (this.affixTimer > 0) return;
@@ -410,6 +414,7 @@
       else if (this.affix.attack === 'ionStorm') game.fireIonStormLane(this, this.affix);
       else if (this.affix.attack === 'ring') game.fireBarrageRing(this, this.affix);
       else if (this.affix.attack === 'escort') game.fireBossEscort(this, this.affix);
+      else if (this.affix.attack === 'weak') game.openBossWeakPoint(this, this.affix);
       else if (this.affix.attack === 'repair') game.repairBoss(this, this.affix);
     }
 
@@ -461,6 +466,13 @@
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(0, 0, r + 18 + Math.sin(game.time * 5) * 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (this._weakTimer > 0) {
+        ctx.strokeStyle = '#ffd43b';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, -6, 24 + Math.sin(game.time * 12) * 4, 0, Math.PI * 2);
         ctx.stroke();
       }
       const grad = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 4, 0, 0, r);
@@ -542,6 +554,71 @@
     nearLineCd: 0,
     commRequestId: 0,
 
+    syncUiState() {
+      const playing = this.state === 'playing';
+      hud?.classList.toggle('hidden', !playing);
+      comm?.classList.toggle('hidden', !playing);
+      skillBtn?.classList.toggle('hidden', !playing);
+      if (!playing && comm) comm.textContent = '';
+    },
+
+    renderSelectedLoadout() {
+      if (!loadout) return;
+      const weapon = bridge.weaponLoadout();
+      const resonance = bridge.routeResonance();
+      const route = bridge.route();
+      const communicator = bridge.communicator();
+      const rows = [
+        `${weapon.name} 来自「${weapon.sourceCreation}」`,
+        weapon.reason ? `选择依据：${weapon.reason}` : '',
+        weapon.description,
+        `共鸣：${resonance.name} · ${resonance.effect}`,
+        `通讯：${communicator.name} · ${communicator.role}`,
+        `航线：6 段 Boss 清算 · 词缀 ${route.map(boss => boss.affix.name).join(' / ')}`
+      ].filter(Boolean);
+      loadout.replaceChildren(...rows.map((text, index) => {
+        const div = document.createElement('div');
+        if (index === 0) {
+          const strong = document.createElement('strong');
+          strong.textContent = text;
+          div.append(strong);
+        } else {
+          div.textContent = text;
+        }
+        return div;
+      }));
+    },
+
+    renderWeaponChoices() {
+      if (!choices || typeof bridge.weaponOptions !== 'function') return;
+      const options = bridge.weaponOptions();
+      const selected = bridge.weaponLoadout();
+      choices.replaceChildren();
+      for (let i = 0; i < options.length; i += 1) {
+        const option = options[i];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `airspace-choice${option.ability === selected.ability ? ' selected' : ''}`;
+        button.dataset.index = String(i);
+        const title = document.createElement('strong');
+        title.textContent = option.name;
+        const source = document.createElement('span');
+        source.textContent = `来自：${option.sourceCreation}`;
+        const reason = document.createElement('small');
+        reason.textContent = option.reason || option.description;
+        button.append(title, source, reason);
+        button.addEventListener('click', () => {
+          bridge.selectWeaponOption(i);
+          this.weapon = bridge.weaponLoadout();
+          this.resonance = bridge.routeResonance();
+          this.difficulty = bridge.difficulty();
+          this.route = bridge.route();
+          this.renderBriefingStep();
+        });
+        choices.append(button);
+      }
+    },
+
     start() {
       this.state = 'playing';
       this.route = bridge.route();
@@ -578,6 +655,7 @@
       this.time = 0;
       menu.classList.add('hidden');
       resultPanel.classList.add('hidden');
+      this.syncUiState();
       this.hideClearanceCard();
       this.nextSegment();
     },
@@ -591,8 +669,14 @@
         if (menuTitle) menuTitle.textContent = slide.title;
         if (brief) brief.textContent = slide.text;
       }
+      choices?.classList.toggle('hidden', !final);
       loadout?.classList.toggle('hidden', !final);
+      if (final) {
+        this.renderWeaponChoices();
+        this.renderSelectedLoadout();
+      }
       if (startBtn) startBtn.textContent = final ? '进入空域' : '继续';
+      this.syncUiState();
     },
 
     advanceBriefing() {
@@ -809,6 +893,14 @@
         : '护卫词缀投放重炮僚机，先清掉侧翼高威胁目标。', 1.8);
     },
 
+    openBossWeakPoint(boss, affix) {
+      if (!boss || !affix) return false;
+      boss._weakTimer = affix.dur || 2.5;
+      this.burst(boss.x, boss.y, affix.color || '#ffd43b', 16);
+      this.say(`露核词缀打开裂隙核心，弱点窗口 +${Math.round((affix.weakDamageMult || 0) * 100)}% Boss 伤害。`, 1.8);
+      return true;
+    },
+
     repairBoss(boss, affix) {
       if (!boss || boss.hp >= boss.maxHp) return false;
       const heal = Math.min(boss.maxHp - boss.hp, Math.max(1, Math.round(boss.maxHp * (affix.healPct || 0.03))));
@@ -981,7 +1073,8 @@
         ? Number(this.resonance.executionerDamageMult) || 0
         : 0;
       const shield = (this.player?.shield || 0) > 0 ? Number(this.resonance.shieldAmplifierDamageMult) || 0 : 0;
-      return amount * (1 + vital + hunter + executioner + shield);
+      const weak = target?.isBoss && target._weakTimer > 0 ? Number(target.affix?.weakDamageMult) || 0 : 0;
+      return amount * (1 + vital + hunter + executioner + shield + weak);
     },
 
     resolveCollisions() {
@@ -1102,6 +1195,7 @@
       if (this.cleanClears >= 2) tags.push('完美清算');
       if (this.route.some(boss => boss.affix?.attack === 'prism')) tags.push('棱镜航线');
       if (this.route.some(boss => boss.affix?.attack === 'ionStorm')) tags.push('离子风暴');
+      if (this.route.some(boss => boss.affix?.attack === 'weak')) tags.push('露核窗口');
       if (this.route.some(boss => boss.affix?.attack === 'escort')) tags.push('护卫僚机');
       if (this.route.some(boss => boss.affix?.attack === 'ring')) tags.push('环幕弹幕');
       if (!victory && this.bossDefeated.length === 0) tags.push('首段压力高');
@@ -1115,6 +1209,7 @@
 
     finish(outcome) {
       this.state = 'result';
+      this.syncUiState();
       const victory = outcome === 'victory';
       const result = bridge.publishResult({
         outcome: victory ? 'victory' : 'defeat',
@@ -1185,7 +1280,8 @@
       if (hudAffix) {
         const active = this.boss?.def === boss ? this.boss : null;
         const cd = active?.affix?.attack ? ` · ${Math.max(0, active.affixTimer || 0).toFixed(1)}s` : '';
-        hudAffix.textContent = boss?.affix ? `${boss.affix.line}${cd}` : '';
+        const weak = active?._weakTimer > 0 ? ` · 弱点${active._weakTimer.toFixed(1)}s` : '';
+        hudAffix.textContent = boss?.affix ? `${boss.affix.line}${weak}${cd}` : '';
       }
       hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${this.armorCaliberStatus()}${this.vitalReactorStatus()}${this.shieldAmplifierStatus()}${this.bossHunterStatus()}${this.executionerStatus()}${this.missileVolleyStatus()}${this.painConverterStatus()}${this.pointDefenseStatus()}${this.livingArmorStatus()}${this.signalFilterStatus()}${this.lastStandStatus()}${this.fieldRepairStatus()}${this.jamStatus()}`;
       hudScore.textContent = String(Math.round(this.score));
