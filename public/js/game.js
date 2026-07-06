@@ -809,46 +809,6 @@ class CreatorExam3D extends GameEngine {
     }
   }
 
-  // Override endTurn to add browser-specific features (storyteller, applyAbility)
-  endTurn() {
-    if (this.gameState !== 'playing') {
-      this.showToast('本关已经结束。');
-      return;
-    }
-    this.addLog(`第 ${this.turn} 回合开始结算。`, true);
-    this.spreadHazards();
-    this.triggerRandomEvent();
-    this.applyActiveCreationEffects();
-    this.applyChainReactions();
-    this.moveUnits();
-    this.applyTileHazardsToUnits();
-    this.enemyIntentSystem.generatePreviews(this.worldState, this);
-    this.cognitiveAbyss.update(this.entropy, this.level.entropyLimit || 7);
-    this.processRiftEchoes();
-    this.decrementCreationDurations();
-    this.checkOathBetrayals();
-    this.checkEndCondition(true);
-    if (this.gameState === 'playing') {
-      this.turn += 1;
-      // Evolve world myths every 5 turns
-      if (this.turn % 5 === 0) {
-        worldLegendSystem.evolveMyths();
-      }
-      // Storyteller 叙事触发 (传入aiMemory实现深度联动)
-      const storyResult = this.storyteller.tellStory(this, this.memorySystem);
-      if (storyResult) {
-        this.addLog(`【叙事】${storyResult.narrative}`, true);
-        this.applyStorytellerEvent(storyResult.event);
-      }
-      this.storyteller.recordBehavior(this, 'turn_end');
-      if (this.turn > this.level.maxTurns) {
-        this.checkEndCondition(true, true);
-      }
-    }
-    this.renderWorld();
-    this.updateUi();
-  }
-
   applyStorytellerEvent(event) {
     if (!event) return;
 
@@ -2494,6 +2454,13 @@ class CreatorExam3D extends GameEngine {
         levelId: this.level?.id || '',
         turn: this.turn,
         gameState: this.gameState,
+        isResolvingTurn: this.isResolvingTurn,
+        turnControls: {
+          endTurnDisabled: !!this.ui.endTurnBtn?.disabled,
+          endTurnText: this.ui.endTurnBtn?.textContent || '',
+          compileDisabled: !!this.ui.compileBtn?.disabled,
+          placeDisabled: !!this.ui.placeBtn?.disabled
+        },
         activeCard: this.activeCard ? {
           name: this.getCreationDisplayName(this.activeCard),
           ability: this.activeCard.ability,
