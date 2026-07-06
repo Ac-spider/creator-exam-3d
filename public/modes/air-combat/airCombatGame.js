@@ -1772,6 +1772,7 @@
 
   window.airCombatGame = game;
   window.CREATOR_EXAM_AIR_COMBAT_READY = true;
+  document.documentElement.dataset.airCombatReady = 'true';
   game.renderBriefingStep();
   game.updateHud();
   game.say(bridge.lineFor('intro'), 3, { eventType: 'airspace_intro' });
