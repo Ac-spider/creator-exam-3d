@@ -62,78 +62,56 @@ button {
   pointer-events: none;
 }
 
-.hud-panel,
-.hud-score-chip,
+.hud-info-chip,
 .airspace-comm,
 .airspace-clearance-card,
 .airspace-skill,
 .airspace-menu,
-.airspace-result {
+.airspace-result,
+.airspace-pause {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(9, 13, 16, 0.72);
   backdrop-filter: blur(8px);
 }
 
-.hud-toggle-column {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  display: grid;
-  gap: 6px;
-  pointer-events: auto;
-  transform: translateY(-50%);
-  z-index: 4;
-}
-
-.hud-toggle {
-  width: 44px;
-  min-height: 32px;
-  padding: 0;
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(9, 13, 16, 0.68);
-  backdrop-filter: blur(8px);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.hud-toggle.is-active {
-  color: #10201d;
-  border-color: rgba(114, 214, 189, 0.9);
-  background: var(--teal);
-}
-
-.hud-panel {
-  position: absolute;
-  top: 50%;
-  right: 62px;
-  display: none;
-  min-width: 0;
-  width: min(318px, calc(100% - 86px));
-  max-height: 132px;
-  overflow: hidden auto;
-  padding: 8px 10px;
-  pointer-events: auto;
-  transform: translateY(-50%);
-  z-index: 4;
-}
-
-.hud-panel.is-open {
-  display: block;
-}
-
-.hud-score-chip {
+.hud-info-chip {
   position: absolute;
   top: 10px;
   left: 10px;
-  width: 82px;
-  padding: 6px 8px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  width: min(230px, calc(100% - 144px));
+  padding: 10px 12px;
   pointer-events: none;
   z-index: 4;
 }
+
+.hud-info-row {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.hud-info-row strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-info-row .hud-detail {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 
 .hud-label {
   display: block;
@@ -152,14 +130,6 @@ button {
   white-space: nowrap;
 }
 
-#hud-weapon {
-  display: block;
-  max-height: 112px;
-  overflow: hidden;
-  line-height: 1.35;
-  text-overflow: clip;
-  white-space: normal;
-}
 
 .hud-detail {
   display: block;
@@ -240,7 +210,8 @@ button {
 }
 
 .airspace-menu,
-.airspace-result {
+.airspace-result,
+.airspace-pause {
   position: absolute;
   left: 50%;
   top: 50%;
@@ -254,14 +225,16 @@ button {
 }
 
 .airspace-menu h1,
-.airspace-result h2 {
+.airspace-result h2,
+.airspace-pause h2 {
   margin: 0;
   font-size: 30px;
   letter-spacing: 0;
 }
 
 .airspace-menu p,
-.airspace-result p {
+.airspace-result p,
+.airspace-pause p {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
@@ -368,24 +341,10 @@ button {
     inset: 0;
   }
 
-  .hud-toggle-column {
-    top: 50%;
-    right: 8px;
-  }
-
-  .hud-toggle {
-    width: 42px;
-    min-height: 31px;
-  }
-
-  .hud-panel {
-    top: 50%;
-    right: 58px;
-    width: min(318px, calc(100vw - 82px));
-  }
-
-  .hud-score-chip {
+  .hud-info-chip {
     top: 8px;
     left: 8px;
+    width: min(230px, calc(100% - 140px));
+    padding: 8px 10px;
   }
 }
