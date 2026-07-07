@@ -45,7 +45,8 @@ export const INSPIRATIONS = [
   '造一台用月光运转的净化机器',
   '让影子替村民走过危险的沼泽',
   '创造一种害怕谎言的白鸟，让它们传递真话',
-  '让风把迷路者的名字吹向圣树'
+  '让风把迷路者的名字吹向圣树',
+  '让大风吹散迷雾'
 ];
 
 export const LEVELS = [
@@ -61,21 +62,21 @@ export const LEVELS = [
     entropyLimit: 7,
     requiredRescue: 4,
     map: [
-      '~~~....',
-      '~~..~~~',
-      '~..V..H',
-      '~~~V~~H',
-      '~~.V..H',
-      '~~~....',
-      '~~~~...'
+      '~~~~...',
+      '~~..~~.',
+      '~.V...H',
+      '~~V.~~H',
+      '~~V~..H',
+      '~~~~...',
+      '~.~~~.~'
     ],
     units: [
-      { type: 'villager', name: '阿粟', x: 3, y: 2, goal: { x: 6, y: 2 } },
-      { type: 'villager', name: '小烛', x: 3, y: 3, goal: { x: 6, y: 3 } },
-      { type: 'villager', name: '木匠', x: 3, y: 4, goal: { x: 6, y: 4 } },
-      { type: 'villager', name: '邮差', x: 4, y: 3, goal: { x: 6, y: 3 } }
+      { type: 'villager', name: '阿粟', x: 2, y: 2, goal: { x: 6, y: 3 } },
+      { type: 'villager', name: '小烛', x: 2, y: 3, goal: { x: 6, y: 3 } },
+      { type: 'villager', name: '木匠', x: 2, y: 4, goal: { x: 6, y: 3 } },
+      { type: 'villager', name: '邮差', x: 1, y: 2, goal: { x: 6, y: 3 } }
     ],
-    hazard: { type: 'flood', spreadPerTurn: 2, source: 'left' },
+    hazard: { type: 'flood', spreadPerTurn: 4, source: 'left', spreadIntoUnits: false },
     win: 'requiredRescue',
     tips: ['吸水、造桥、屏障和引导类造物都有效。', '洪水不会吞没高地，但会切断道路。']
   },
@@ -91,13 +92,13 @@ export const LEVELS = [
     entropyLimit: 7,
     requiredRescue: 3,
     map: [
-      'E..D...',
+      'E..D..D',
       '..DDD..',
-      '.DD....',
+      '.DDD...',
       '..M.M..',
-      '..V....',
-      '...V...',
-      '..V....'
+      '..V...D',
+      '...V..D',
+      '..V..DD'
     ],
     units: [
       { type: 'miner', name: '矿工甲', x: 2, y: 4, goal: { x: 0, y: 0 } },
@@ -116,17 +117,17 @@ export const LEVELS = [
     story: '古水巨兽正向城市移动。不能杀死它，因为巨兽背上的水源维系着整条河。你需要牵制或安抚它。',
     objective: '撑过 12 回合，城市不能被巨兽抵达，巨兽怒气不能达到 5。',
     maxTurns: 12,
-    creationCharges: 3,
-    miraclePoints: 6,
+    creationCharges: 4,
+    miraclePoints: 8,
     entropyLimit: 7,
     map: [
-      '.......',
-      '..F.F..',
-      '.......',
+      '...FF..',
+      '.M..F..',
+      '..M.F..',
       'W.....C',
-      '..F.F..',
-      '.......',
-      '.......'
+      '..M.M..',
+      '.FF.F..',
+      'FF..V..'
     ],
     units: [
       { type: 'beast', name: '古水巨兽', x: 0, y: 3, goal: { x: 6, y: 3 }, anger: 0 }
@@ -142,22 +143,22 @@ export const LEVELS = [
     shortTitle: '失语战争',
     story: '两个部落都认为对方偷走了星火。语言断裂让误会越来越深，边境上的战争值正在上升。',
     objective: '6 回合结束时战争值低于 5，并让两名使者在边境会合。',
-    maxTurns: 6,
-    creationCharges: 4,
+    maxTurns: 7,
+    creationCharges: 3,
     miraclePoints: 7,
     entropyLimit: 7,
     map: [
-      '..F.BF.',
-      '...B...',
-      '..GBG..',
-      '...B...',
-      '..F.BF.',
-      '.......',
-      '.......'
+      '..FV..B',
+      '.MG.FB.',
+      '.MGGBG.',
+      'V.GBG.V',
+      '.GBGG..',
+      '.B.VMM.',
+      'B.FFM..'
     ],
     units: [
-      { type: 'tribeA', name: '东岸使者', x: 0, y: 2, goal: { x: 3, y: 2 } },
-      { type: 'tribeB', name: '西岸使者', x: 6, y: 2, goal: { x: 3, y: 2 } }
+      { type: 'tribeA', name: '东岸使者', x: 0, y: 0, goal: { x: 3, y: 3 } },
+      { type: 'tribeB', name: '西岸使者', x: 6, y: 6, goal: { x: 3, y: 3 } }
     ],
     hazard: { type: 'war', warMeter: 1, warLimit: 8 },
     win: 'peace',
@@ -167,7 +168,7 @@ export const LEVELS = [
     id: 'memory-plague',
     title: '第 5 关：记忆瘟疫',
     shortTitle: '记忆瘟疫',
-    story: '村民开始忘记回家的路。圣树仍记得所有人的名字，但雾和沼泽正在抹去道路。',
+    story: '村民开始忘记回家的路。圣树仍记得所有人的名字，但大雾正在抹去道路。',
     objective: '7 回合内让至少 4 名村民抵达圣树。',
     maxTurns: 8,
     creationCharges: 4,
@@ -207,20 +208,20 @@ export const LEVELS = [
     entropyLimit: 8,
     requiredRescue: 3,
     map: [
-      '~~..D.C',
-      '~..DD..',
-      '..G.B..',
-      '..V.B..',
-      '.WV.BF.',
-      '~.V....',
-      '~~~....'
+      '~~D.M.C',
+      '~DDDM..',
+      '..GGBDD',
+      'F.V.B..',
+      'FWV.BF.',
+      '..VDB..',
+      '~~~DB..'
     ],
     units: [
       { type: 'villager', name: '星砂', x: 2, y: 3, goal: { x: 6, y: 0 } },
       { type: 'villager', name: '青麦', x: 2, y: 4, goal: { x: 6, y: 0 } },
       { type: 'villager', name: '砾歌', x: 2, y: 5, goal: { x: 6, y: 0 } },
-      { type: 'beast', name: '裂隙兽', x: 0, y: 4, goal: { x: 6, y: 0 }, anger: 1 },
-      { type: 'tribeA', name: '北境使者', x: 1, y: 2, goal: { x: 4, y: 2 } },
+      { type: 'beast', name: '裂隙兽', x: 1, y: 4, goal: { x: 6, y: 0 }, anger: 0  },
+      { type: 'tribeA', name: '北境使者', x: 0, y: 2, goal: { x: 4, y: 2 } },
       { type: 'tribeB', name: '南境使者', x: 6, y: 4, goal: { x: 4, y: 2 } }
     ],
     hazard: { type: 'mixed', spreadPerTurn: 2, warMeter: 2, warLimit: 9 },

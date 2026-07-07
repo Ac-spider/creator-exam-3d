@@ -6,11 +6,11 @@
   const ctx = canvas.getContext('2d');
   const hudStage = document.getElementById('hud-stage');
   const hudAffix = document.getElementById('hud-affix');
-  const hudWeapon = document.getElementById('hud-weapon');
   const hudScore = document.getElementById('hud-score');
   const hud = document.getElementById('airspace-hud');
-  const hudToggles = Array.from(document.querySelectorAll('.hud-toggle'));
-  const hudPanels = Array.from(document.querySelectorAll('.hud-panel'));
+  const pausePanel = document.getElementById('airspace-pause');
+  const pauseResume = document.getElementById('airspace-resume');
+  const pauseQuit = document.getElementById('airspace-quit');
   const comm = document.getElementById('airspace-comm');
   const menu = document.getElementById('airspace-menu');
   const menuKicker = menu.querySelector('.menu-kicker');
@@ -30,7 +30,6 @@
   const W = canvas.width;
   const H = canvas.height;
   const DEG = Math.PI / 180;
-  let hudCloseTimer = 0;
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -151,31 +150,7 @@
     };
   }
 
-  function setHudPanel(target) {
-    if (hudCloseTimer) {
-      window.clearTimeout(hudCloseTimer);
-      hudCloseTimer = 0;
-    }
-    hudPanels.forEach(panel => {
-      panel.classList.toggle('is-open', panel.dataset.hudPanel === target);
-    });
-    hudToggles.forEach(button => {
-      const active = button.dataset.hudTarget === target;
-      button.classList.toggle('is-active', active);
-      button.setAttribute('aria-expanded', active ? 'true' : 'false');
-    });
-  }
 
-  function showHudPanel(target, seconds = 5) {
-    setHudPanel(target);
-    if (target && seconds > 0) hudCloseTimer = window.setTimeout(() => setHudPanel(''), seconds * 1000);
-  }
-
-  function toggleHudPanel(target) {
-    const current = hudPanels.find(panel => panel.dataset.hudPanel === target && panel.classList.contains('is-open'));
-    const next = current ? '' : target;
-    showHudPanel(next, 5.2);
-  }
 
   function finishNarrativeFragment(text) {
     const clean = String(text || '').replace(/[，,；;：:、-]+$/g, '').trim();
@@ -1141,12 +1116,12 @@
     backgroundWorld: 1,
 
     syncUiState() {
-      const playing = this.state === 'playing';
-      hud?.classList.toggle('hidden', !playing);
-      comm?.classList.toggle('hidden', !playing);
-      skillBtn?.classList.toggle('hidden', !playing);
-      if (!playing) {
-        setHudPanel('');
+      const inGame = this.state === 'playing' || this.state === 'paused';
+      hud?.classList.toggle('hidden', !inGame);
+      comm?.classList.toggle('hidden', !inGame);
+      skillBtn?.classList.toggle('hidden', !inGame);
+      pausePanel?.classList.toggle('hidden', this.state !== 'paused');
+      if (!inGame) {
         if (comm) comm.textContent = '';
       }
     },
@@ -1250,9 +1225,22 @@
       this.backgroundWorld = backgroundWorldForRoute(this.route, this.segmentIndex);
       menu.classList.add('hidden');
       resultPanel.classList.add('hidden');
+      pausePanel?.classList.add('hidden');
       this.syncUiState();
       this.hideClearanceCard();
       this.nextSegment();
+    },
+
+    pause() {
+      if (this.state !== 'playing') return;
+      this.state = 'paused';
+      this.syncUiState();
+    },
+
+    resume() {
+      if (this.state !== 'paused') return;
+      this.state = 'playing';
+      this.syncUiState();
     },
 
     renderBriefingStep() {
@@ -1302,7 +1290,6 @@
         context: { stage: boss.stage }
       });
       this.updateHud();
-      showHudPanel('stage', 5);
     },
 
     currentAffix() {
@@ -1371,7 +1358,6 @@
         context: { stage: def.stage, pattern: def.pattern }
       });
       this.updateHud();
-      showHudPanel('stage', 5);
     },
 
     firePlayer() {
@@ -1995,6 +1981,7 @@
       resultTitle.textContent = victory ? '裂隙空域已清算' : '空域载体坠落';
       this.renderResultBody(result, victory);
       resultPanel.classList.remove('hidden');
+      pausePanel?.classList.add('hidden');
       this.say(victory ? bridge.lineFor('victory') : bridge.lineFor('defeat'), 4, {
         eventType: victory ? 'airspace_victory' : 'airspace_defeat',
         context: { result }
@@ -2047,8 +2034,6 @@
         const weak = active?._weakTimer > 0 ? ` · 弱点${active._weakTimer.toFixed(1)}s` : '';
         hudAffix.textContent = boss?.affix ? `${boss.affix.line}${weak}${cd}` : '';
       }
-      const weaponTags = this.weaponHudTags();
-      hudWeapon.textContent = `${this.weapon.name} · ${this.resonance.name}${weaponTags.length ? ` · ${weaponTags.join(' · ')}` : ''}`;
       hudScore.textContent = String(Math.round(this.score));
       skillBtn.disabled = !this.player || this.player.skillCd > 0 || this.state !== 'playing';
       skillBtn.textContent = this.player && this.player.skillCd > 0 ? `${Math.ceil(this.player.skillCd)}s` : '造物脉冲';
@@ -2490,33 +2475,35 @@
   }
 
   canvas.addEventListener('pointerdown', event => {
-    setHudPanel('');
     pointerMove(event);
   });
   canvas.addEventListener('pointermove', pointerMove);
   canvas.addEventListener('touchstart', pointerMove, { passive: false });
   canvas.addEventListener('touchmove', pointerMove, { passive: false });
   window.addEventListener('keydown', event => {
-    if (!game.player) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (game.state === 'playing') game.pause();
+      else if (game.state === 'paused') game.resume();
+      return;
+    }
+    if (game.state !== 'playing' || !game.player) return;
     const step = 42;
     if (event.key === 'ArrowLeft' || event.key === 'a') game.player.targetX -= step;
     if (event.key === 'ArrowRight' || event.key === 'd') game.player.targetX += step;
     if (event.key === 'ArrowUp' || event.key === 'w') game.player.targetY -= step;
     if (event.key === 'ArrowDown' || event.key === 's') game.player.targetY += step;
-    if (event.key === ' ' || event.key === 'Shift') game.useSkill();
+    if (event.key === ' ' || event.key === 'Shift' || event.key === 'b' || event.key === 'B') game.useSkill();
   });
   startBtn.addEventListener('click', () => {
     if (!game.advanceBriefing()) game.start();
   });
   document.getElementById('airspace-return').addEventListener('click', () => bridge.returnToMain());
   document.getElementById('result-return').addEventListener('click', () => bridge.returnToMain());
+  if (pauseResume) pauseResume.addEventListener('click', () => game.resume());
+  if (pauseQuit) pauseQuit.addEventListener('click', () => bridge.returnToMain());
   skillBtn.addEventListener('click', () => game.useSkill());
-  hudToggles.forEach(button => {
-    button.addEventListener('click', event => {
-      event.stopPropagation();
-      toggleHudPanel(button.dataset.hudTarget || '');
-    });
-  });
+
 
   let last = performance.now();
   function loop(now) {

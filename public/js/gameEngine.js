@@ -1410,7 +1410,8 @@ class GameEngine {
 
   canHazardEnter(x, y, sourceTerrain, terrain) {
     if (this.isProtected(x, y)) return false;
-    if (this.unitAt(x, y)) return false;
+    const allowIntoUnits = this.level.hazard?.spreadIntoUnits && sourceTerrain === TILE.WATER;
+    if (this.unitAt(x, y) && !allowIntoUnits) return false;
     if ([TILE.HIGH, TILE.EXIT, TILE.CITY, TILE.MOUNTAIN, TILE.WALL, TILE.FIELD, TILE.SACRED].includes(terrain)) return false;
     if (terrain === sourceTerrain) return false;
     if (terrain === TILE.BRIDGE && sourceTerrain !== TILE.DARK) return false;
