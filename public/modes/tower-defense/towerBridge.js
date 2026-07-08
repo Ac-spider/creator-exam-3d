@@ -311,7 +311,7 @@
       {
         kicker: '守夜配置',
         title: '把白天的答案搬上防线',
-        body: `接下来是第六关到第七关之间的过场玩法。选择要带上城墙的守夜器械，防线由系统抽取；裂隙来袭者会在战场上回应你的塔和造物。`
+        body: `接下来是第六关到第七关之间的守夜。选择要带上城墙的器械，防线会从这些器械里成型；裂隙来袭者会在战场上回应你的塔和造物。`
       }
     ];
   }
@@ -680,7 +680,7 @@
       <span id="night-watch-ai-text">${fallbackNarrative()}</span>
       <div id="night-watch-causes" aria-label="守夜因果简报"></div>
       <div id="night-watch-buff-choices" aria-label="守夜誓约选择"></div>
-      <span id="night-watch-wave">AI 正在整理六夜防守主题。</span>
+      <span id="night-watch-wave">通讯正在整理六夜防守主题。</span>
     `;
     const selectionSlots = document.getElementById('selection-slots');
     selectionSlots?.parentElement?.insertBefore(brief, selectionSlots);
@@ -850,7 +850,7 @@
       finalWave: Number(state.finalWave || 30)
     };
     const target = document.getElementById('night-watch-wave');
-    if (target) target.textContent = '第 1 夜开始，裂隙潮正在靠近，AI 已把六关记忆编入防线。';
+    if (target) target.textContent = '第 1 夜开始，裂隙潮正在靠近，六关记录已编入防线。';
   }
 
   function announceWave(wave, state = {}) {
@@ -887,9 +887,9 @@
     }
     const lines = [
       '居民通讯：北墙有回声，别让它们穿过第一道弯。',
-      'AI Storyteller：裂隙正在模仿你白天创造过的形状。',
+      '守夜通讯：裂隙正在模仿你白天创造过的形状。',
       '居民通讯：拾荒队带回了材料，守住这一波就能继续加固。',
-      'AI Storyteller：长夜进入深段，敌人的影子开始重叠。',
+      '守夜通讯：长夜进入深段，敌人的影子开始重叠。',
       '居民通讯：第七天还没有来，城墙必须先替我们醒着。'
     ];
     const target = document.getElementById('night-watch-wave');

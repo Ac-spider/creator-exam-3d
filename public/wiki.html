@@ -1,0 +1,1290 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>造物者考核玩法WIKI</title>
+    <style>
+      :root {
+        --bg: #0b0c10;
+        --panel: #181a20;
+        --panel-2: #20232b;
+        --text: #f4f1e8;
+        --muted: #b8b1a1;
+        --line: rgba(255, 255, 255, 0.14);
+        --gold: #d8c58a;
+        --green: #79d0b0;
+        --red: #ff7a8a;
+        --blue: #8fc7ff;
+        --violet: #bca3ff;
+        --shadow: rgba(0, 0, 0, 0.28);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background:
+          linear-gradient(180deg, rgba(216, 197, 138, 0.08), transparent 280px),
+          linear-gradient(135deg, #0b0c10, #15171d 48%, #0e1014);
+        line-height: 1.65;
+      }
+
+      a { color: inherit; }
+
+      .wiki-shell {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+
+      .wiki-nav {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        padding: 22px 18px;
+        border-right: 1px solid var(--line);
+        background: rgba(18, 19, 24, 0.92);
+        overflow: auto;
+      }
+
+      .wiki-nav h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+        letter-spacing: 0;
+      }
+
+      .wiki-nav p {
+        margin: 0 0 18px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .wiki-nav a {
+        display: block;
+        margin: 6px 0;
+        padding: 7px 9px;
+        border-radius: 8px;
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 14px;
+      }
+
+      .wiki-nav a:hover,
+      .wiki-nav a.primary-link {
+        color: var(--text);
+        background: rgba(216, 197, 138, 0.12);
+      }
+
+      .wiki-main {
+        max-width: 1120px;
+        width: 100%;
+        padding: 28px 34px 72px;
+      }
+
+      .wiki-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 18px;
+        align-items: end;
+        margin-bottom: 20px;
+        padding-bottom: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        color: var(--gold);
+        font-weight: 800;
+        font-size: 12px;
+      }
+
+      .wiki-header h2 {
+        margin: 3px 0 8px;
+        font-size: clamp(26px, 4vw, 42px);
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .wiki-header p {
+        max-width: 780px;
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .game-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 9px 14px;
+        border: 1px solid rgba(216, 197, 138, 0.38);
+        border-radius: 8px;
+        background: rgba(216, 197, 138, 0.12);
+        color: var(--gold);
+        font-weight: 800;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      section {
+        margin: 18px 0;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(24, 26, 32, 0.82);
+        box-shadow: 0 14px 34px var(--shadow);
+      }
+
+      section h2 {
+        margin: 0 0 12px;
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+
+      section h3 {
+        margin: 18px 0 8px;
+        font-size: 17px;
+        letter-spacing: 0;
+      }
+
+      p { margin: 8px 0; }
+
+      .lead-grid,
+      .two-col,
+      .three-col {
+        display: grid;
+        gap: 12px;
+      }
+
+      .lead-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+      .fact,
+      .step,
+      .panel-note,
+      .mechanic,
+      .level-note {
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.045);
+      }
+
+      .fact strong,
+      .step strong,
+      .panel-note strong,
+      .mechanic strong,
+      .level-note strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--text);
+      }
+
+      .fact span,
+      .step span,
+      .panel-note span,
+      .mechanic span,
+      .level-note span,
+      li span {
+        color: var(--muted);
+      }
+
+      .callout {
+        padding: 12px 14px;
+        border-left: 4px solid var(--gold);
+        border-radius: 8px;
+        background: rgba(216, 197, 138, 0.08);
+      }
+
+      .danger { border-color: rgba(255, 122, 138, 0.36); }
+      .danger strong { color: var(--red); }
+      .good { border-color: rgba(121, 208, 176, 0.34); }
+      .good strong { color: var(--green); }
+      .info { border-color: rgba(143, 199, 255, 0.34); }
+      .info strong { color: var(--blue); }
+      .weird { border-color: rgba(188, 163, 255, 0.34); }
+      .weird strong { color: var(--violet); }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      th,
+      td {
+        padding: 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--gold);
+        background: rgba(255, 255, 255, 0.055);
+        font-size: 13px;
+      }
+
+      tr:last-child td { border-bottom: 0; }
+
+      code {
+        padding: 1px 5px;
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.09);
+        color: var(--gold);
+      }
+
+      ul,
+      ol {
+        margin: 8px 0 0;
+        padding-left: 22px;
+      }
+
+      li { margin: 5px 0; }
+
+      .board {
+        display: grid;
+        grid-template-columns: repeat(7, 30px);
+        gap: 4px;
+        margin: 10px 0;
+      }
+
+      .tile {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .water { background: #1f5f87; }
+      .land { background: #404739; }
+      .village { background: #8a6543; }
+      .high { background: #7d7247; }
+      .exit { background: #417b76; }
+      .threat { outline: 2px solid var(--red); }
+
+      .legend-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .legend-row span {
+        display: inline-flex;
+        gap: 5px;
+        align-items: center;
+      }
+
+      .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        display: inline-block;
+      }
+
+      .kbd {
+        display: inline-block;
+        min-width: 24px;
+        padding: 1px 6px;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.07);
+        text-align: center;
+      }
+
+      @media (max-width: 980px) {
+        .wiki-shell { grid-template-columns: 1fr; }
+        .wiki-nav {
+          position: static;
+          height: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .wiki-nav a { display: inline-block; }
+        .wiki-main { padding: 22px 16px 56px; }
+        .wiki-header { grid-template-columns: 1fr; }
+        .lead-grid,
+        .two-col,
+        .three-col { grid-template-columns: 1fr; }
+        table { display: block; overflow-x: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wiki-shell">
+      <nav class="wiki-nav" aria-label="玩法目录">
+        <h1>造物者考核 WIKI</h1>
+        <p>按真实界面讲，不按宣传语讲。</p>
+        <a class="primary-link" href="./">返回游戏</a>
+        <a href="#first-run">第一局怎么下手</a>
+        <a href="#worked-example">三回合实战例</a>
+        <a href="#screen">界面每块看什么</a>
+        <a href="#loop">一回合流程</a>
+        <a href="#board-rules">棋盘与地形规则</a>
+        <a href="#resources">资源与状态</a>
+        <a href="#intent">意图预览怎么读</a>
+        <a href="#creation">自然语言造物</a>
+        <a href="#ai-driven">AI 驱动怎么用</a>
+        <a href="#placement">放置判断</a>
+        <a href="#recipes">常用造物模板</a>
+        <a href="#tactical-room">AI 战术室</a>
+        <a href="#mechanic-cases">8 机制实战用例</a>
+        <a href="#panels">高级面板</a>
+        <a href="#levels">六关重点</a>
+        <a href="#level-plans">逐关打法</a>
+        <a href="#review">日志与复盘</a>
+        <a href="#modes">长夜与空战</a>
+        <a href="#save">存档与对话</a>
+        <a href="#mistakes">常见误区</a>
+      </nav>
+
+      <main class="wiki-main">
+        <header class="wiki-header">
+          <div>
+            <div class="eyebrow">OFFICIAL PLAY WIKI</div>
+            <h2>你不是在点技能栏，你是在改写下一回合。</h2>
+            <p>
+              《造物者考核3D》的核心是 7x7 棋盘战术解谜：先看下一步意图，再用自然语言造物和 AI 战术室改变单位、灾害、地形和风险。AI 会给建议，但真正结算永远由棋盘规则完成。
+            </p>
+          </div>
+          <a class="game-link" href="./">返回游戏</a>
+        </header>
+
+        <section id="first-run">
+          <h2>第一局怎么下手</h2>
+          <div class="callout">
+            先玩第 1 关“洪水村庄”。目标不是把水全清掉，而是在 7 回合内让至少 4 名居民到东边高地，其中必须包括邮差。
+          </div>
+
+          <div class="two-col">
+            <div>
+              <h3>第 1 关棋盘读法</h3>
+              <div class="board" aria-label="洪水村庄示意图">
+                <div class="tile water">~</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile land">.</div><div class="tile land">.</div><div class="tile land">.</div>
+                <div class="tile water">~</div><div class="tile water">~</div><div class="tile land">.</div><div class="tile land">.</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile land">.</div>
+                <div class="tile water">~</div><div class="tile land">.</div><div class="tile village">V</div><div class="tile land">.</div><div class="tile land">.</div><div class="tile land">.</div><div class="tile high">H</div>
+                <div class="tile water">~</div><div class="tile water">~</div><div class="tile village">V</div><div class="tile land threat">!</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile high">H</div>
+                <div class="tile water">~</div><div class="tile water">~</div><div class="tile village">V</div><div class="tile water">~</div><div class="tile land">.</div><div class="tile land">.</div><div class="tile high">H</div>
+                <div class="tile water">~</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile land">.</div><div class="tile land">.</div><div class="tile land">.</div>
+                <div class="tile water">~</div><div class="tile land">.</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile water">~</div><div class="tile land">.</div><div class="tile water">~</div>
+              </div>
+              <div class="legend-row">
+                <span><i class="dot water"></i> 水</span>
+                <span><i class="dot village"></i> 村庄/居民起点</span>
+                <span><i class="dot high"></i> 安全高地</span>
+                <span><i class="dot land"></i> 可走地面</span>
+                <span>! 表示 WIKI 示例里的关键洪水边缘</span>
+              </div>
+            </div>
+            <div>
+              <h3>第一回合建议</h3>
+              <ol>
+                <li>看左侧“行动指引”：阿粟、小烛、木匠、邮差下一步会往哪里走，灾害会扩散到哪里。</li>
+                <li>如果看到 <code>灾害「扩散」波及 (4,4)</code>，先处理这类会切断路线的格子。</li>
+                <li>输入一个具体造物，例如 <code>造一条导流渠，把村口的洪水引到左边河道</code>。</li>
+                <li>生成卡后看卡牌：能力、范围、持续、奇迹点消耗。能解决当前格子再放置。</li>
+                <li>打开 AI 战术室，只选 1 个关键干涉，不要把资源全花在同一回合。</li>
+                <li>结束回合后看日志和新意图，再决定下一步。</li>
+              </ol>
+            </div>
+          </div>
+
+          <h3>三种靠谱开局</h3>
+          <div class="three-col">
+            <div class="step good">
+              <strong>稳妥路线：吸水/导流</strong>
+              <span>输入“吸走村口洪水”“挖一条排水渠”。适合第 1 关，因为洪水才是主要威胁。</span>
+            </div>
+            <div class="step info">
+              <strong>通路路线：桥/高地</strong>
+              <span>输入“让浮石连成桥”“抬高一段泥地”。适合水已经堵住居民路线时。</span>
+            </div>
+            <div class="step weird">
+              <strong>引导路线：灯/路标</strong>
+              <span>输入“造会发光的月亮树”“立一座唱名字的路标”。适合居民在雾、暗、混乱里走错路。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="worked-example">
+          <h2>第 1 关三回合实战例</h2>
+          <p>下面不是唯一解，但它展示了游戏真正的思路：每回合只解决下一步最危险的事，不追求一次性清全图。</p>
+          <table>
+            <thead>
+              <tr><th>回合</th><th>先看什么</th><th>造物输入示例</th><th>放哪里</th><th>战术室选择</th><th>回合后检查</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>第 1 回合</td>
+                <td>灾害扩散目标格、邮差下一步路线。</td>
+                <td><code>造一条导流渠，把村口洪水引回左边河道</code></td>
+                <td>放在洪水边缘和居民路线之间，优先处理显示为“波及”的格。</td>
+                <td>如果路线仍会断，打“造物者工坊”补工具；如果只有情报不确定，先“重算下一步”。</td>
+                <td>看日志确认地形改变；看邮差是否仍朝高地走。</td>
+              </tr>
+              <tr>
+                <td>第 2 回合</td>
+                <td>哪名居民会被水绕路，是否有人被困在村庄旁。</td>
+                <td><code>让几块浮石连成一座只撑三回合的桥</code></td>
+                <td>放在水面或断路口，不要放在居民已经走过的身后。</td>
+                <td>“连锁反应”适合给混乱或绕路的单位补引导；别急着用 2 点强机制。</td>
+                <td>看行动指引里的目标格是否更靠近高地。</td>
+              </tr>
+              <tr>
+                <td>第 3 回合</td>
+                <td>邮差是否落后，剩余回合够不够。</td>
+                <td><code>种一棵会唱邮差名字的月亮树，照亮去高地的路</code></td>
+                <td>放在邮差和高地之间，范围要覆盖他下一步或下两步。</td>
+                <td>如果邮差会失败，用“言灵誓约”；如果多人都乱，用“认知深渊”。</td>
+                <td>看救援数、剩余回合、裂隙。如果裂隙已高，下一回合少用回响/深渊。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="two-col">
+            <div class="panel-note good">
+              <strong>为什么不第一回合就用腐化</strong>
+              <span>腐化很强，但会提高长期不稳定。第 1 关早期用导流、桥、引导就能解决的问题，不值得把引擎污染掉。</span>
+            </div>
+            <div class="panel-note danger">
+              <strong>什么时候必须上强机制</strong>
+              <span>如果一个格子会让邮差失败、巨兽进城或战争值爆表，并且普通造物已经来不及，才用仪式熔炉或验证腐化。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="screen">
+          <h2>界面每块看什么</h2>
+          <div class="lead-grid">
+            <div class="fact">
+              <strong>左侧：当前考核</strong>
+              <span>读目标、剩余回合、裂隙、特殊压力。这里决定你到底要救人、守城、压战争，还是撑回合。</span>
+            </div>
+            <div class="fact">
+              <strong>左侧：行动指引</strong>
+              <span>这是最重要的列表。每个单位和灾害的下一步会提前写出来，优先处理高威胁。</span>
+            </div>
+            <div class="fact">
+              <strong>中间：3D 棋盘</strong>
+              <span>放置造物、观察箭头、确认地形。水、暗、雾、城、边境、高地都不是装饰。</span>
+            </div>
+            <div class="fact">
+              <strong>右侧：造物与战术</strong>
+              <span>输入自然语言生成卡，放置后再用 AI 战术室决定是否打破一条高级规则。</span>
+            </div>
+          </div>
+
+          <h3>顶部和底部</h3>
+          <table>
+            <thead>
+              <tr><th>位置</th><th>作用</th><th>你应该怎么用</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>顶部标题栏</td><td>关卡标识、WIKI入口</td><td>忘了规则就点“玩法WIKI”，不会影响当前游戏。</td></tr>
+              <tr><td>底部日志</td><td>记录结算、AI事件、能力效果</td><td>结束回合后看这里，确认造物到底做了什么。</td></tr>
+              <tr><td>弹窗</td><td>胜利、失败、下一关</td><td>失败通常不是数值不够，而是没读下一步意图。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="loop">
+          <h2>一回合流程</h2>
+          <div class="two-col">
+            <div class="step good">
+              <strong>1. 读目标</strong>
+              <span>本关要救几个人、守几回合、战争值压到多少。不要先想酷炫造物。</span>
+            </div>
+            <div class="step good">
+              <strong>2. 读下一步意图</strong>
+              <span>看谁会走、灾害会扩散到哪里、巨兽是否冲锋、使者是否误判。</span>
+            </div>
+            <div class="step info">
+              <strong>3. 做一个主要造物</strong>
+              <span>一句话写清效果和目标，例如“在邮差前方造一座会发光的桥”。</span>
+            </div>
+            <div class="step info">
+              <strong>4. 放在棋盘关键格</strong>
+              <span>不是越靠中间越好。放在下一步目标格、路径拐点、灾害边缘或单位旁。</span>
+            </div>
+            <div class="step weird">
+              <strong>5. 选择战术室干涉</strong>
+              <span>每回合 AI 干涉只有 2 点。普通机制 1 点，强机制 2 点。</span>
+            </div>
+            <div class="step danger">
+              <strong>6. 结束回合并复盘</strong>
+              <span>如果没救到人，先看日志和新意图，不要马上重复同一种造物。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="board-rules">
+          <h2>棋盘与地形规则</h2>
+          <p>棋盘是 7x7。大多数能力都看“范围”，范围不是全图，而是以放置格为中心的附近格。你要把造物放在路径、威胁格或单位旁边。</p>
+          <table>
+            <thead>
+              <tr><th>地形/格子</th><th>怎么看</th><th>影响</th><th>常见处理</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>陆地</td><td>普通可走格。</td><td>居民、使者、巨兽通常能通过。</td><td>用作桥头、引导点、记忆信标位置。</td></tr>
+              <tr><td>水 / 洪水</td><td>第 1 关主要威胁。</td><td>切断居民路线，会持续扩散。</td><td>吸水、导流、造桥、抬高、冻结。</td></tr>
+              <tr><td>高地</td><td>第 1 关东侧安全区。</td><td>洪水上不去，常是救援目标附近。</td><td>把路线接到高地，不要在高地后面浪费造物。</td></tr>
+              <tr><td>村庄</td><td>居民常从这里附近出发。</td><td>被灾害包围后会拖慢救援。</td><td>前两回合优先保村口和出口路线。</td></tr>
+              <tr><td>黑暗</td><td>永夜矿井常见。</td><td>会让路线判断变差。</td><td>照明、太阳祝福、显路。</td></tr>
+              <tr><td>雾</td><td>记忆瘟疫常见。</td><td>没有引导/免混乱时，居民可能随机走。</td><td>记忆信标、净化、认知深渊解码。</td></tr>
+              <tr><td>边境</td><td>失语战争里使者要碰头的区域。</td><td>使者到达边境才推进和平目标。</td><td>在边境附近放安抚或记忆信标，降低误判。</td></tr>
+              <tr><td>城市</td><td>巨兽关/终考里的防守目标。</td><td>巨兽进城通常会失败或造成重大损失。</td><td>安抚、陷阱、墙、仪式、腐化屏障。</td></tr>
+              <tr><td>墙 / 山</td><td>阻挡格。</td><td>可挡灾害或巨兽，也可能堵住自己人。</td><td>只在敌人路径上挡，不要封死救援路线。</td></tr>
+            </tbody>
+          </table>
+
+          <h3>单位规则</h3>
+          <table>
+            <thead>
+              <tr><th>单位</th><th>目标</th><th>危险信号</th><th>解法</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>居民</td><td>到达出口、高地、圣树等安全点。</td><td>混乱、被水断路、剩余回合不够。</td><td>桥、引导、显路、记忆信标、誓约。</td></tr>
+              <tr><td>邮差</td><td>第 1 关必须救下。</td><td>比其他居民落后或路线被切断。</td><td>优先给邮差路线，不要平均救所有人。</td></tr>
+              <tr><td>矿工</td><td>第 2 关摸到出口。</td><td>黑暗扩散，出口附近断光。</td><td>照明放在出口和下一步之间。</td></tr>
+              <tr><td>使者</td><td>第 4 关要在边境碰头。</td><td>误判导致战争值上升。</td><td>安抚、记忆信标、边境附近引导。</td></tr>
+              <tr><td>巨兽</td><td>通常朝城市或目标推进。</td><td>冲锋、暴走、怒气接近上限。</td><td>安抚降怒、陷阱牵制、仪式停滞、墙改路。</td></tr>
+              <tr><td>灾害</td><td>不是单位，但有下一步意图。</td><td>扩散、加剧、波及关键格。</td><td>处理“下一步波及格”，不要盲目清全图。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="resources">
+          <h2>资源与状态</h2>
+          <p>多数失败不是因为没有技能，而是资源花错了。你要同时看回合、造物次数、奇迹点、裂隙、特殊压力。</p>
+          <table>
+            <thead>
+              <tr><th>资源/状态</th><th>来源</th><th>用处</th><th>危险阈值</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>回合</td><td>每点“结束回合”推进。</td><td>决定还有几次机会救人或压风险。</td><td>剩 2 回合还没接通路线时，必须用强机制。</td></tr>
+              <tr><td>造物次数</td><td>每关给定。</td><td>限制你能放多少张普通造物。</td><td>次数少时，别在非关键格试验。</td></tr>
+              <tr><td>奇迹点</td><td>关卡初始和部分事件。</td><td>支付造物、战术室、工坊等成本。</td><td>低于 2 时，仪式和高成本造物会很难用。</td></tr>
+              <tr><td>世界裂隙</td><td>造物、副作用、回响、深渊。</td><td>推动认知深渊和裂隙回响，也会提高风险。</td><td>接近上限时，少用回响/深渊，优先稳定局面。</td></tr>
+              <tr><td>AI干涉</td><td>每回合刷新为 2。</td><td>限制 AI 战术室能打多少张高级机制。</td><td>剩 0 时，战术牌会灰掉，必须靠普通造物或结束回合。</td></tr>
+              <tr><td>战争值</td><td>失语战争/终考。</td><td>表示误判和冲突升级。</td><td>接近上限时，优先安抚和使者路线。</td></tr>
+              <tr><td>巨兽怒气</td><td>巨兽被堵、受牵制、接近城市。</td><td>怒气越高越容易暴走。</td><td>接近上限时，安抚比堵路更重要。</td></tr>
+              <tr><td>腐化</td><td>验证腐化和悖论卡。</td><td>换强力违规效果。</td><td>高腐化会让正常造物更不稳定，不能当常规资源花。</td></tr>
+            </tbody>
+          </table>
+
+          <h3>单位身上的状态</h3>
+          <div class="three-col">
+            <div class="fact good">
+              <strong>受引导</strong>
+              <span>单位会更稳定地朝目标走。对洪水绕路、雾中迷路非常关键。</span>
+            </div>
+            <div class="fact good">
+              <strong>免混乱</strong>
+              <span>雾、黑暗、认知干扰不会马上让单位乱走。记忆信标、誓约、深渊成功都能提供。</span>
+            </div>
+            <div class="fact info">
+              <strong>显路</strong>
+              <span>单位能看见更好的路径，有时会多走或走得更可靠。</span>
+            </div>
+            <div class="fact info">
+              <strong>护盾</strong>
+              <span>关键单位承受一次风险。适合保邮差、使者和最后一个居民。</span>
+            </div>
+            <div class="fact danger">
+              <strong>被牵制</strong>
+              <span>巨兽或单位暂时行动受限。对巨兽是好事，但它可能涨怒。</span>
+            </div>
+            <div class="fact danger">
+              <strong>混乱 / 误判</strong>
+              <span>最容易让玩家觉得“游戏乱来”。其实它通常来自雾、黑暗、战争值或未处理的意图。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="intent">
+          <h2>意图预览怎么读</h2>
+          <p>游戏不是靠猜。每回合开始前，左侧“行动指引”和右侧“敌方意图”会告诉你下一步。AI 战术室也会锁定最高压力。</p>
+          <table>
+            <thead>
+              <tr><th>意图</th><th>代表什么</th><th>怎么处理</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>前进 / 受引导</td><td>单位会向目标走。</td><td>确认路线没有水、暗、雾、墙。必要时造桥、照明、记忆信标。</td></tr>
+              <tr><td>混乱 / 误判</td><td>单位在雾、暗或战争压力下会走错或引发战争值。</td><td>用照明、净化、记忆信标、誓约或深渊解题。</td></tr>
+              <tr><td>扩散 / 加剧</td><td>灾害会吞掉更多格子，常常切断路线。</td><td>用吸水、导流、净化、仪式、悖论或工坊备件封住关键格。</td></tr>
+              <tr><td>冲锋 / 暴走</td><td>巨兽即将接近城市或怒气失控。</td><td>用安抚、陷阱、迟缓、仪式熔炉或腐化屏障。</td></tr>
+              <tr><td>受阻 / 被困</td><td>敌人或巨兽暂时动不了。</td><td>这是喘息窗口，别浪费强力战术；转去救人或修路。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="creation">
+          <h2>自然语言造物</h2>
+          <p>你输入的不是咒语作文。编译器会读关键词和上下文，把它落成卡牌：能力、范围、持续、奇迹点消耗、副作用。</p>
+          <div class="two-col">
+            <div>
+              <h3>好用句式</h3>
+              <ul>
+                <li><code>造一条导流渠，把村口洪水引到左边河道</code>：容易生成挖渠/排水。</li>
+                <li><code>让石头浮起来，在邮差前面搭桥</code>：容易生成造桥/通路。</li>
+                <li><code>种一棵发光月亮树，照亮矿井出口</code>：容易生成照明。</li>
+                <li><code>立一座记住名字的碑，帮迷路的人找回圣树</code>：容易生成记忆信标。</li>
+                <li><code>造一张安静圆桌，让巨兽和城市都慢下来</code>：容易生成安抚。</li>
+              </ul>
+            </div>
+            <div>
+              <h3>不要这样写</h3>
+              <ul>
+                <li><code>随便来个最强的</code>：没有目标，生成结果不稳定。</li>
+                <li><code>让我直接赢</code>：棋盘规则不接受凭空胜利。</li>
+                <li><code>召唤无敌神</code>：可能高成本、低可控，解决不了下一步格子。</li>
+                <li><code>做个好东西</code>：没有能力词，通常不如直接说“吸水、照明、桥、引导”。</li>
+              </ul>
+            </div>
+          </div>
+
+          <h3>能力速查</h3>
+          <table>
+            <thead>
+              <tr><th>能力方向</th><th>关键词</th><th>用在哪</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>吸水 / 导流</td><td>水、洪、雨、渠、排水、引流</td><td>洪水村庄、终考混合灾害。</td></tr>
+              <tr><td>桥 / 路</td><td>桥、路、通道、浮石、渡水</td><td>水或沼泽把路线切断时。</td></tr>
+              <tr><td>照明 / 显路</td><td>光、灯、月亮、路径、地图</td><td>永夜矿井、记忆瘟疫、误判。</td></tr>
+              <tr><td>安抚 / 控制</td><td>安抚、和平、沟通、睡、迟缓、陷阱</td><td>巨兽、战争、冲突。</td></tr>
+              <tr><td>记忆 / 引导</td><td>记忆、名字、歌、碑、路标、指路</td><td>雾、混乱、居民路线管理。</td></tr>
+              <tr><td>地形改造</td><td>抬高、森林、墙、结界、冻结</td><td>造安全格、堵灾害、拖巨兽。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="ai-driven">
+          <h2>AI 驱动怎么参与游戏</h2>
+          <p>这个游戏里的 AI 不是只写旁白。它会读当前棋盘、你的造物句子、居民记忆、风险值和前几关留下的事，再把结果交给棋盘规则结算。你可以把它当翻译器、战术参谋和现场记录员，但不是裁判。</p>
+          <div class="callout">
+            关键点：AI 可以提出卡牌、解释压力、生成居民反应、把旧选择带进长夜和空战；但它不能绕过范围、持续、奇迹点、AI 干涉、裂隙、腐化和放置位置。
+          </div>
+
+          <table>
+            <thead>
+              <tr><th>入口</th><th>AI 读取什么</th><th>它交回什么</th><th>玩家要检查什么</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>自然语言造物</td>
+                <td>你的句子、关卡目标、附近灾害、能力关键词。</td>
+                <td>卡牌能力、范围、持续、奇迹点消耗、副作用。</td>
+                <td>这张卡能不能处理下一步目标格，而不是名字好不好听。</td>
+              </tr>
+              <tr>
+                <td>AI 战术室</td>
+                <td>敌方意图、路线瓶颈、AI 干涉预算、裂隙和记忆。</td>
+                <td>8 张围绕当前局面的战术牌，以及最高压力提示。</td>
+                <td>本回合只选最关键的一张或两张，预算花完就靠普通造物。</td>
+              </tr>
+              <tr>
+                <td>居民对话</td>
+                <td>居民身份、当前位置、是否被救过、是否被承诺过。</td>
+                <td>需求、路线提示、害怕什么、愿不愿意承担誓约。</td>
+                <td>问具体问题：去哪、怕什么、能不能等一回合。</td>
+              </tr>
+              <tr>
+                <td>留下的事 / 民间说法</td>
+                <td>造物、死亡、救援、背约、蝴蝶效应和旧传闻。</td>
+                <td>可追溯的传闻、回响、长期压力和居民反应。</td>
+                <td>看哪些旧选择还在影响后面的关卡，不要只看当前回合。</td>
+              </tr>
+              <tr>
+                <td>长夜守城</td>
+                <td>前六关造物、救下的人、近期经历、熵值和守夜结果。</td>
+                <td>守夜塔名称、因果简报、三选一加成和数值偏向。</td>
+                <td>选能补防线短板的加成，而不是只选听起来最猛的名字。</td>
+              </tr>
+              <tr>
+                <td>裂隙空域</td>
+                <td>武器化造物、守夜表现、失落居民、传闻锚点。</td>
+                <td>空战通讯、Boss 航线压力、结局回写。</td>
+                <td>看哪件旧造物变成武器，别把终局当成普通第七关。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>API 接上以后有什么变化</h3>
+          <div class="two-col">
+            <div class="panel-note good">
+              <strong>有密钥时</strong>
+              <span>AI 更会引用本局名字、居民、造物和刚发生的事。它写出的卡牌、对话和战术提示仍要经过校验，不能随口让你赢。</span>
+            </div>
+            <div class="panel-note info">
+              <strong>没密钥时</strong>
+              <span>本地编译器和本地短句会接上。游戏仍能完整玩，只是造物解释、居民反应和长线记录会少一些现场细节。</span>
+            </div>
+          </div>
+
+          <h3>怎么把 AI 用好</h3>
+          <div class="three-col">
+            <div class="fact">
+              <strong>写具体动作</strong>
+              <span>说“把村口洪水引到左边河道”，不要说“解决洪水”。AI 更容易落成能放到棋盘上的卡。</span>
+            </div>
+            <div class="fact">
+              <strong>点名目标格或单位</strong>
+              <span>邮差、矿工、巨兽、出口、城市、某个坐标，都比“大家”“这里”更可靠。</span>
+            </div>
+            <div class="fact">
+              <strong>看日志复盘</strong>
+              <span>AI 写建议，棋盘写结果。底部日志会告诉你造物到底改了哪格、救了谁、留下什么代价。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="placement">
+          <h2>放置判断</h2>
+          <p>造物不是越靠中间越好。每次放置前用下面的顺序判断。</p>
+          <div class="two-col">
+            <div>
+              <h3>五步检查</h3>
+              <ol>
+                <li><strong>看下一步目标格。</strong>如果意图写着“波及 (4,4)”或“前进 → (4,3)”，这就是第一候选格。</li>
+                <li><strong>看范围。</strong>范围 1 只能管相邻，范围 2 才能管一小片。别把范围 1 放在离目标两格外。</li>
+                <li><strong>看持续。</strong>持续 1 是临时补洞；持续 3 适合做路线骨架。</li>
+                <li><strong>看单位下一步。</strong>造桥要放在单位将要走的水格，不是放在他现在站的村庄。</li>
+                <li><strong>看副作用。</strong>裂隙、腐化、怒气、战争值都会进入下一回合，不是结算后消失。</li>
+              </ol>
+            </div>
+            <div>
+              <h3>放置优先级</h3>
+              <table>
+                <thead>
+                  <tr><th>优先级</th><th>位置</th><th>原因</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>1</td><td>下一步会出事的目标格</td><td>直接改写最近一次结算。</td></tr>
+                  <tr><td>2</td><td>路线瓶颈</td><td>一个格子可能决定多人是否能通过。</td></tr>
+                  <tr><td>3</td><td>关键单位旁边</td><td>范围小的引导、护盾、安抚需要贴近。</td></tr>
+                  <tr><td>4</td><td>灾害边缘</td><td>处理扩散源头比处理已安全区域有用。</td></tr>
+                  <tr><td>5</td><td>未来两回合路线</td><td>只有在当前回合已经安全时才考虑。</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <h3>常见放错位置</h3>
+          <div class="three-col">
+            <div class="panel-note danger">
+              <strong>桥放在陆地上</strong>
+              <span>桥要解决不可走格或断路口。如果水已经不挡路，桥没有价值。</span>
+            </div>
+            <div class="panel-note danger">
+              <strong>照明离黑暗太远</strong>
+              <span>照明要覆盖单位下一步或出口附近，否则黑暗仍会影响路线。</span>
+            </div>
+            <div class="panel-note danger">
+              <strong>安抚不靠近冲突</strong>
+              <span>巨兽、战争边境、使者误判都需要靠近目标，否则只是好听的日志。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="recipes">
+          <h2>常用造物模板</h2>
+          <p>这些不是固定指令，而是可靠写法。你可以换成更有风格的描述，但要保留能力词和目标。</p>
+          <table>
+            <thead>
+              <tr><th>局面</th><th>输入模板</th><th>期望能力</th><th>放置建议</th><th>注意</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>洪水切路</td><td><code>造一条导流渠，把这里的洪水引回河道</code></td><td>挖渠/吸水/改道</td><td>灾害边缘和路线之间。</td><td>导流可能留下新水路，别切断自己人。</td></tr>
+              <tr><td>水面必须通过</td><td><code>让浮石排成一座临时桥</code></td><td>造桥</td><td>单位下一步要踩的水格。</td><td>桥有持续时间，别太早放在远处。</td></tr>
+              <tr><td>黑暗挡路</td><td><code>种一棵发光月亮树，照亮出口前的路</code></td><td>照明</td><td>出口和单位之间。</td><td>照明范围比你想象的小，贴近路线。</td></tr>
+              <tr><td>雾中混乱</td><td><code>立一座唱出家乡名字的记忆碑</code></td><td>记忆信标</td><td>迷雾入口或目标路线旁。</td><td>信标能引导，但雾继续扩散时要补净化。</td></tr>
+              <tr><td>居民落后</td><td><code>造一只会带路的北星狐，护送邮差去高地</code></td><td>引导/显路</td><td>落后单位附近。</td><td>优先保必救单位，不要平均覆盖所有人。</td></tr>
+              <tr><td>巨兽冲锋</td><td><code>造一座会让巨兽安静下来的钟</code></td><td>安抚/迟缓</td><td>巨兽旁或城市前。</td><td>堵路会涨怒，安抚能处理根因。</td></tr>
+              <tr><td>战争值上升</td><td><code>摆一张让双方说真话的圆桌</code></td><td>安抚/沟通</td><td>边境、使者路线或冲突中心。</td><td>使者误判比普通移动更危险。</td></tr>
+              <tr><td>最后一回合差一步</td><td><code>让风给所有迷路的人指出最近的安全路</code></td><td>显路/加速/引导</td><td>关键单位和目标之间。</td><td>最后回合不要再投资长期地形。</td></tr>
+            </tbody>
+          </table>
+
+          <h3>把普通描述写成好描述</h3>
+          <div class="two-col">
+            <div class="panel-note">
+              <strong>普通：造一个灯</strong>
+              <span>更好：<code>造一盏照亮矿井出口和矿工下一步的灯</code>。它说明了能力、目标和位置。</span>
+            </div>
+            <div class="panel-note">
+              <strong>普通：挡住洪水</strong>
+              <span>更好：<code>在 (4,4) 前挖一条导流渠，把洪水引到左边</code>。它说明了具体目标格。</span>
+            </div>
+            <div class="panel-note">
+              <strong>普通：救邮差</strong>
+              <span>更好：<code>造一只北星狐，引导邮差穿过村口去东边高地</code>。它说明了单位和目标。</span>
+            </div>
+            <div class="panel-note">
+              <strong>普通：让巨兽别动</strong>
+              <span>更好：<code>在巨兽脚下布一个安抚陷阱，让它下一步停滞</code>。它说明了战术结果。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="tactical-room">
+          <h2>AI 战术室</h2>
+          <p>AI 战术室不是外挂菜单。它会读取当前棋盘、意图、资源、记忆和风险，给你 8 张围绕“改写下一步”的战术牌。规则仍由棋盘结算。</p>
+          <div class="callout">
+            每回合 AI 干涉预算为 2。你可以打两个 1 点机制，或一个 2 点强机制。情报刷新不消耗，深渊已有谜题时提交解码不消耗。
+          </div>
+          <table>
+            <thead>
+              <tr><th>机制</th><th>真实作用</th><th>代价/风险</th><th>什么时候用</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>敌方意图预览</td><td>刷新箭头、目标格和威胁排序。</td><td>免费，但只给情报。</td><td>每回合先点或先看，确认最高压力。</td></tr>
+              <tr><td>连锁反应</td><td>在威胁线附近放净化与记忆造物，触发真实共鸣，给单位引导/免混乱。</td><td>1 奇迹、裂隙 +1、AI干涉 1。</td><td>有人要在雾里走错，或路线刚好差一个引导。</td></tr>
+              <tr><td>仪式熔炉</td><td>牺牲/调用两张造物，净化危险地形或把巨兽改成停滞。</td><td>2 奇迹、裂隙 +1、AI干涉 2。</td><td>单个灾害格会毁掉全局，或巨兽冲锋必须停住。</td></tr>
+              <tr><td>言灵誓约</td><td>让居民信任承担风险，给关键单位护盾、免混乱、短引导。</td><td>AI干涉 1；信任下降，背弃会引发怨恨链。</td><td>必须保邮差、使者或最后一个居民时。</td></tr>
+              <tr><td>裂隙回响</td><td>召回旧造物，在目标格附近立刻触发一次能力。</td><td>裂隙 +1、AI干涉 1；高裂隙可能恶意回响。</td><td>手里没有合适新卡，但过去造物可能正好克制当前意图。</td></tr>
+              <tr><td>认知深渊</td><td>生成/解开谜题。成功后全员显路、免混乱，改变混乱意图。</td><td>开题裂隙 +2、AI干涉 1；答错加深深渊。</td><td>多人都被雾或混乱卡住，普通造物救不过来。</td></tr>
+              <tr><td>验证腐化</td><td>生成悖论造物，强行封住最高威胁目标格。</td><td>腐化上升、AI干涉 2；正常造物更不稳定。</td><td>局面快崩，只剩强行改规则能保命。</td></tr>
+              <tr><td>造物者工坊</td><td>用库存/材料做低耗工具，立刻投到意图线上。</td><td>材料或奇迹，AI干涉 1；无库存时会加裂隙。</td><td>你知道要什么小工具，但当前手牌没有。</td></tr>
+            </tbody>
+          </table>
+
+          <h3>怎么判断要打哪张</h3>
+          <div class="three-col">
+            <div class="mechanic good">
+              <strong>局部路线问题</strong>
+              <span>桥、导流、工坊、连锁反应。别用腐化这种重手。</span>
+            </div>
+            <div class="mechanic info">
+              <strong>单点爆炸问题</strong>
+              <span>仪式熔炉、言灵誓约、验证腐化。目标是保住唯一关键单位或格子。</span>
+            </div>
+            <div class="mechanic weird">
+              <strong>全局混乱问题</strong>
+              <span>认知深渊、记忆信标、敌方意图预览。先恢复可预测性，再谈救人。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="mechanic-cases">
+          <h2>8 个高级机制实战用例</h2>
+          <p>高级机制的判断标准很简单：它有没有改变“下一步意图”。如果只是让日志变长，就不是好用法。</p>
+
+          <h3>敌方意图预览</h3>
+          <div class="two-col">
+            <div class="mechanic good">
+              <strong>好用法</strong>
+              <span>每回合开始先看最高压力，例如“灾害「扩散」波及 (4,4)”。然后所有造物和战术都围绕这个格子或单位。</span>
+            </div>
+            <div class="mechanic danger">
+              <strong>误用</strong>
+              <span>看完不改变计划。预览不是装饰，它是让你少走弯路的主要信息源。</span>
+            </div>
+          </div>
+
+          <h3>连锁反应</h3>
+          <table>
+            <thead>
+              <tr><th>触发前</th><th>适合局面</th><th>打出后看</th><th>别用在</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>是否有单位会混乱、误判、绕路。</td>
+                <td>雾、黑暗、记忆瘟疫、邮差落后。</td>
+                <td>单位是否获得受引导/免混乱，意图是否从混乱改成前进。</td>
+                <td>没有单位风险，只有纯地形问题时。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>仪式熔炉</h3>
+          <table>
+            <thead>
+              <tr><th>触发前</th><th>适合局面</th><th>打出后看</th><th>别用在</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>是否有 2 个造物能构成明确配方，或巨兽必须停。</td>
+                <td>单点灾害会切断全队，巨兽冲锋线必须停止。</td>
+                <td>危险地形是否清掉，巨兽意图是否变成受阻/停滞。</td>
+                <td>只是想省一张普通造物时。仪式消耗很重。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>言灵誓约</h3>
+          <table>
+            <thead>
+              <tr><th>触发前</th><th>适合局面</th><th>打出后看</th><th>别用在</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>谁是必须活下来的关键单位，居民关系是否还能承受风险。</td>
+                <td>邮差、使者、最后一个救援目标即将失败。</td>
+                <td>关键单位是否有护盾/免混乱，誓约信任是否下降。</td>
+                <td>普通居民已经安全，只是想多一点保险时。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>裂隙回响</h3>
+          <table>
+            <thead>
+              <tr><th>触发前</th><th>适合局面</th><th>打出后看</th><th>别用在</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>过去是否放过能解决当前问题的造物，裂隙是否还安全。</td>
+                <td>手里没有合适卡，但旧造物可能正好克制目标格。</td>
+                <td>回响类型是善意、恶意、悖论还是预言；能力是否在目标格触发。</td>
+                <td>裂隙接近上限，且当前回合还有普通解法时。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>认知深渊</h3>
+          <table>
+            <thead>
+              <tr><th>触发前</th><th>适合局面</th><th>打出后看</th><th>别用在</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>是否多人同时混乱，是否有足够裂隙承受开题。</td>
+                <td>记忆瘟疫、黑暗、多人路线失控。</td>
+                <td>解码后单位是否获得显路/免混乱，是否停止自动生成新谜题。</td>
+                <td>只有一个格子被水挡住时。那是导流或桥的问题。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>验证腐化</h3>
+          <table>
+            <thead>
+              <tr><th>触发前</th><th>适合局面</th><th>打出后看</th><th>别用在</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>这回合是否不腐化就会失败。</td>
+                <td>巨兽进城、邮差必死、战争爆表、灾害切断唯一通路。</td>
+                <td>腐化值、悖论卡效果、目标格是否被封住。</td>
+                <td>早期小问题。腐化是救命刀，不是常规锤子。</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>造物者工坊</h3>
+          <table>
+            <thead>
+              <tr><th>触发前</th><th>适合局面</th><th>打出后看</th><th>别用在</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>库存/材料里有没有能改成当前工具的东西。</td>
+                <td>需要一张小工具：照明、净化、安抚、桥、显路。</td>
+                <td>库存是否消耗，投放位置是否在意图线上。</td>
+                <td>需要全局翻盘时。工坊是补件，不是核按钮。</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="panels">
+          <h2>高级面板逐个看</h2>
+          <div class="two-col">
+            <div class="panel-note">
+              <strong>留下的事</strong>
+              <span>显示管理压力、居民记忆、未解决线索。它会影响后面的居民反应，不是当前回合的救火按钮。</span>
+            </div>
+            <div class="panel-note">
+              <strong>民间说法</strong>
+              <span>记录神器、封神者、蝴蝶效应和居民怎么讲这件事。看它理解长期后果，不要用它救当前回合。</span>
+            </div>
+            <div class="panel-note">
+              <strong>仪式熔炉</strong>
+              <span>选择 2-3 个已放置造物执行配方。场上造物越明确，仪式结果越可控。</span>
+            </div>
+            <div class="panel-note">
+              <strong>言灵誓约</strong>
+              <span>与居民缔结守护、知识、复仇、牺牲、血盟等誓约。誓约不是免费护盾，会改变关系。</span>
+            </div>
+            <div class="panel-note">
+              <strong>敌方意图</strong>
+              <span>右侧完整列表，左侧是简版行动指引。遇到不懂的局面先看这里。</span>
+            </div>
+            <div class="panel-note">
+              <strong>认知深渊</strong>
+              <span>裂隙高时出现谜题。输入解码答案，成功会给单位显路/免混乱，失败会加深风险。</span>
+            </div>
+            <div class="panel-note">
+              <strong>验证腐化</strong>
+              <span>制造违反常规的悖论卡。强，但污染棋盘；不要把它当常规技能。</span>
+            </div>
+            <div class="panel-note">
+              <strong>造物者工坊</strong>
+              <span>库存造物、材料、拆解、改造、熔合。适合把过去造物变成当前关卡的工具。</span>
+            </div>
+            <div class="panel-note">
+              <strong>救下的人</strong>
+              <span>记录谁活了下来、欠了谁的人情、身上留下什么变化。后续关卡可能把他们带回来。</span>
+            </div>
+            <div class="panel-note">
+              <strong>NPC 交流</strong>
+              <span>点击居民后出现。可以问需求、路线、记忆，也可以安抚。AI 对话会被事实约束。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="levels">
+          <h2>六关重点</h2>
+          <table>
+            <thead>
+              <tr><th>关卡</th><th>胜利条件</th><th>主要威胁</th><th>优先造物</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>第 1 关：洪水村庄</td><td>7 回合救 4 人，必须有邮差。</td><td>洪水切路。</td><td>吸水、导流、桥、显路。</td></tr>
+              <tr><td>第 2 关：永夜矿井</td><td>8 回合让至少 3 名矿工到出口。</td><td>黑暗扩散。</td><td>照明、太阳祝福、记忆信标、路径显示。</td></tr>
+              <tr><td>第 3 关：巨兽困城</td><td>撑 15 回合，城不能被踩，怒气不能到 5。</td><td>巨兽冲锋和怒气。</td><td>安抚、陷阱、迟缓、墙、仪式熔炉。</td></tr>
+              <tr><td>第 4 关：失语战争</td><td>8 回合后战争值低于 8，两名使者边境碰头。</td><td>误判、战争值。</td><td>安抚、沟通、记忆信标、边境引导。</td></tr>
+              <tr><td>第 5 关：记忆瘟疫</td><td>10 回合内 4 名村民到圣树。</td><td>雾、混乱、路线遗忘。</td><td>记忆信标、净化、显路、认知深渊解题。</td></tr>
+              <tr><td>终考：第七天之前</td><td>8 回合救 3 人，守城，战争值低于 9。</td><td>混合灾害、巨兽、战争。</td><td>先读意图，再用战术室做取舍；不要平均用资源。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="level-plans">
+          <h2>逐关打法</h2>
+          <p>每关都按同一个顺序打：先找会立刻失败的意图，再造一个能改变那条意图的东西，最后才考虑高级机制。下面的打法不是唯一解，但能帮你理解每关在考什么。</p>
+
+          <article class="level-note">
+            <h3>第 1 关：洪水村庄</h3>
+            <table>
+              <thead>
+                <tr><th>阶段</th><th>具体打法</th><th>不要做</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>前 2 回合</td><td>围绕邮差开路。优先处理行动指引里的洪水扩散目标格，尤其是会切断村庄到高地的格子。</td><td>不要在远离居民的水面乱吸水，清水面不等于救人。</td></tr>
+                <tr><td>中段</td><td>用桥、导流渠、发光路标把普通居民接到邮差路线附近。输入可以写：<code>在邮差前方造一座三回合浮桥，桥面会指向东侧高地</code>。</td><td>不要把桥放在居民身后，也不要为了漂亮描述丢掉“桥、方向、持续”这些关键词。</td></tr>
+                <tr><td>收尾</td><td>如果最后一名居民差一步，用言灵誓约给关键单位免混乱或护盾；如果水已经封死唯一出口，再考虑仪式熔炉。</td><td>不要早早腐化。第 1 关大多数问题可以用地形造物解决。</td></tr>
+              </tbody>
+            </table>
+            <div class="two-col">
+              <div class="panel-note good">
+                <strong>推荐造物输入</strong>
+                <span><code>造一条导流渠，把村口洪水引到左侧河道</code><br /><code>让浮石连成一座只撑三回合的桥</code><br /><code>种一棵会喊邮差名字的月亮树，照亮去高地的路</code></span>
+              </div>
+              <div class="panel-note info">
+                <strong>战术室优先级</strong>
+                <span>第 1 回合通常只刷新意图和保留预算。第 2 到 3 回合如果邮差被水或混乱卡住，用言灵誓约；如果路线只差一个小工具，用造物者工坊。</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="level-note">
+            <h3>第 2 关：永夜矿井</h3>
+            <table>
+              <thead>
+                <tr><th>你要读什么</th><th>具体打法</th><th>危险信号</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>黑暗下一回合会扩到哪里</td><td>先点意图预览，看矿工路线是不是会被黑暗切断。第一张造物通常应该是光源，不是墙。</td><td>行动指引里出现“徘徊、受阻、误判”时，说明矿工不是缺速度，是缺信息。</td></tr>
+                <tr><td>出口是不是在光照链末端</td><td>用太阳祝福、会反射光的矿车、记忆信标连成一条可读路线。好的输入：<code>造一盏会沿铁轨传光的矿灯，每回合照亮下一段路</code>。</td><td>只照亮起点会很快失效，光要落在矿工下一步和下两步之间。</td></tr>
+                <tr><td>谁会落单</td><td>落单矿工用连锁反应或言灵誓约救。多人同时乱走时，认知深渊比单个光源更合适。</td><td>不要把所有预算花在最前面的矿工，后排落单更容易导致失败。</td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="level-note">
+            <h3>第 3 关：巨兽困城</h3>
+            <p>这一关不是杀巨兽，而是让它的下一步变得无害。巨兽冲锋线比巨兽位置更重要。</p>
+            <div class="three-col">
+              <div class="panel-note good">
+                <strong>开局</strong>
+                <span>读冲锋目标。用墙、陷阱、迟缓或安抚把“冲锋”改成“受阻、停滞、绕路”。</span>
+              </div>
+              <div class="panel-note info">
+                <strong>中段</strong>
+                <span>怒气接近 4 时，优先安抚和仪式熔炉。不要继续用会激怒它的强控制。</span>
+              </div>
+              <div class="panel-note danger">
+                <strong>失败点</strong>
+                <span>只看城墙血量，不看下一回合冲锋线。城没被踩之前就要处理目标格。</span>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr><th>局面</th><th>推荐输入</th><th>高级机制</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>巨兽直冲城门</td><td><code>在城门前造一排会下沉的软泥陷阱，让巨兽下一步停住</code></td><td>仪式熔炉可以把陷阱和迟缓造物合成更稳定的停滞。</td></tr>
+                <tr><td>怒气过高</td><td><code>造一座低声唱眠歌的钟塔，安抚城外巨兽</code></td><td>言灵誓约适合保护守门居民，验证腐化只留给马上踩城的回合。</td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="level-note">
+            <h3>第 4 关：失语战争</h3>
+            <p>这一关考的是“误判管理”。你要让两名使者碰头，同时把战争值压下去。</p>
+            <table>
+              <thead>
+                <tr><th>优先级</th><th>做法</th><th>解释</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>1. 使者路线</td><td>用边境路标、记忆信标、安抚场让使者朝同一格靠近。</td><td>两名使者如果各走各的，战争值会被误判持续推高。</td></tr>
+                <tr><td>2. 战争值</td><td>每次看到“误判、冲突、边境压力”就处理最高威胁源，不要平均降噪。</td><td>战争值不是血条，它通常来自具体的下一步误会。</td></tr>
+                <tr><td>3. 承诺成本</td><td>言灵誓约能强行让关键使者相信路线，但背弃会产生关系风险。</td><td>只给关键单位发誓，不要给所有人套承诺。</td></tr>
+              </tbody>
+            </table>
+            <div class="callout">好输入示例：<code>在边境中央造一面会翻译手势的白旗，让两名使者下一步都朝它移动</code>。它同时写清了位置、功能和目标单位。</div>
+          </article>
+
+          <article class="level-note">
+            <h3>第 5 关：记忆瘟疫</h3>
+            <p>雾和混乱会让单位忘记路线。这里的强度来自“可预测性被拿走”，所以第一目标是把路线重新变得可预测。</p>
+            <div class="two-col">
+              <div class="panel-note good">
+                <strong>基础解法</strong>
+                <span>记忆信标、显路、净化。把造物放在下一步分岔口，不是放在圣树旁边等人自己来。</span>
+              </div>
+              <div class="panel-note weird">
+                <strong>深层解法</strong>
+                <span>多人混乱或出现谜题时，用认知深渊解码。解开后看单位是否获得“显路、免混乱”。</span>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr><th>症状</th><th>处理</th><th>复盘时看</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>一个人反复绕路</td><td>给他下一步前方放记忆信标或发光路标。</td><td>他的意图是否从“徘徊/混乱”变成“前进”。</td></tr>
+                <tr><td>多人同时失控</td><td>认知深渊解题，或者连锁反应触发引导加记忆。</td><td>是否只是救了一个人，却让其他三人继续乱走。</td></tr>
+                <tr><td>雾堵住圣树入口</td><td>净化入口前一格，再用显路把路线接过去。</td><td>净化是不是放在了目标路线，而不是随便清雾。</td></tr>
+              </tbody>
+            </table>
+          </article>
+
+          <article class="level-note">
+            <h3>终考：第七天之前</h3>
+            <p>终考会把洪水、巨兽、战争和混乱叠在一起。它的正确打法不是“每种问题都管一点”，而是每回合只处理会导致失败的那一条链。</p>
+            <table>
+              <thead>
+                <tr><th>回合开始</th><th>判断方式</th><th>行动建议</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>先看失败条件</td><td>救援人数、守城、战争值哪个最接近失败。</td><td>把本回合资源全部围绕这个条件，不要平均分配。</td></tr>
+                <tr><td>再看最高威胁意图</td><td>巨兽踩城、灾害切路、使者误判、居民混乱，哪个会立刻影响失败条件。</td><td>普通造物先试，解决不了再上 2 点高级机制。</td></tr>
+                <tr><td>最后看长期风险</td><td>裂隙、腐化、誓约信任、深渊深度是否已经很高。</td><td>如果长期风险接近上限，下回合用低风险造物补救。</td></tr>
+              </tbody>
+            </table>
+            <div class="callout">终考最常见的赢法：第一回合读意图，第二回合建立主路线，第三到五回合用工坊和誓约救关键单位，最后只在必败点使用验证腐化。</div>
+          </article>
+        </section>
+
+        <section id="review">
+          <h2>日志与失败复盘</h2>
+          <p>如果你觉得“不知道发生了什么”，不要从棋盘开始猜，先看底部日志和下一回合意图。日志告诉你刚才的因果，意图告诉你下一步要改哪里。</p>
+
+          <table>
+            <thead>
+              <tr><th>日志写了什么</th><th>它通常意味着</th><th>下一步怎么改</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>造物未找到有效目标</td><td>能力本身可能对，但放置格不在范围内，或目标类型不匹配。</td><td>下一张卡写清“目标单位/目标格”，放在意图箭头经过的位置。</td></tr>
+              <tr><td>单位徘徊、误判、混乱</td><td>不是缺路，而是缺引导、光照、记忆或信任。</td><td>优先显路、记忆信标、言灵誓约、认知深渊，不要继续造桥。</td></tr>
+              <tr><td>灾害扩散到某格</td><td>那格会在下回合改变路线或封死目标。</td><td>看它是否切断关键单位。如果会，立刻导流、净化、冻结或腐化封格。</td></tr>
+              <tr><td>AI 干涉预算不足</td><td>本回合已经花满 2 点。</td><td>放弃低优先级机制。下一回合先做免费意图预览，再决定是否用强机制。</td></tr>
+              <tr><td>裂隙、腐化或深渊上升</td><td>你用了强行改规则的手段，长期风险变高。</td><td>之后两回合尽量用普通造物和工坊补救，不要连续重手。</td></tr>
+            </tbody>
+          </table>
+
+          <div class="three-col">
+            <div class="panel-note good">
+              <strong>赢了以后看什么</strong>
+              <span>看是哪一个造物改变了关键意图，把这个模板记下来。下次遇到类似局面可以复用。</span>
+            </div>
+            <div class="panel-note info">
+              <strong>输了以后看什么</strong>
+              <span>不要先怪数值。找失败前一回合的最高威胁意图，通常是它没有被处理。</span>
+            </div>
+            <div class="panel-note danger">
+              <strong>最值得截图的东西</strong>
+              <span>行动指引、造物卡能力、放置位置、底部日志。四个放在一起，基本能复现一次失败。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="modes">
+          <h2>长夜守城与裂隙空域</h2>
+          <div class="two-col">
+            <div class="panel-note good">
+              <strong>长夜守城</strong>
+              <span>第 6 到第 7 天之间的塔防过场。它读取你的造物、居民、近期经历、熵值，生成守夜塔和三选一加成。重点是把你之前的选择变成守城资源。</span>
+            </div>
+            <div class="panel-note info">
+              <strong>第七天裂隙空域</strong>
+              <span>终局 Canvas 空战。造物会武器化，Boss 航线和结局会回写主线。这里不是普通棋盘回合，而是结算你整个旅程的压力。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="save">
+          <h2>存档、居民对话、AI 配置</h2>
+          <div class="three-col">
+            <div class="fact">
+              <strong>存档</strong>
+              <span>页面下方存档区可以保存、读取、删除、导出、导入。导出文本适合备份或复现 bug。</span>
+            </div>
+            <div class="fact">
+              <strong>居民对话</strong>
+              <span>对话不是装饰。居民会记忆你的救援、承诺和危险手段，后续面板会显示这些事实。</span>
+            </div>
+            <div class="fact">
+              <strong>AI 配置</strong>
+              <span>没有 API 密钥也能玩，本地编译器会兜底。有密钥时，自然语言和战术导演更有上下文。</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="mistakes">
+          <h2>常见误区</h2>
+          <div class="two-col">
+            <div class="panel-note danger">
+              <strong>误区：看到按钮就全点</strong>
+              <span>AI 战术室每回合只有 2 点干涉。全点不是玩法，取舍才是玩法。</span>
+            </div>
+            <div class="panel-note danger">
+              <strong>误区：造物越诗意越好</strong>
+              <span>诗意可以加分，但必须包含可解析能力和目标。先说“吸水/照明/桥/引导”，再写诗。</span>
+            </div>
+            <div class="panel-note danger">
+              <strong>误区：忽略灾害目标格</strong>
+              <span>灾害通常不是杀人，而是切断路线。堵关键格比清全图更重要。</span>
+            </div>
+            <div class="panel-note danger">
+              <strong>误区：把 AI 当裁判</strong>
+              <span>AI 是战术导演和翻译器。能不能生效，看棋盘规则、资源、范围、持续和风险。</span>
+            </div>
+          </div>
+          <div class="callout">
+            最短记法：每回合先问四件事：谁下一步会出事？出事格在哪里？我用哪个造物改变它？值不值得花 AI 干涉？
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

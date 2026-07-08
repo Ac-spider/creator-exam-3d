@@ -361,7 +361,7 @@ export class WorldLegendSystem {
       creation: [
         '在{level}那回出事的时候，{actor}造出了{target}，打那起{effect}。',
         '都传{actor}那造物{target}带着{quality}的劲，能{effect}。',
-        '{level}的老歌里唱：等{actor}把{target}举起来，世界就{effect}。'
+        '{level}后来有人唱起这事：{actor}把{target}放下后，局面就{effect}。'
       ],
       rescue: [
         '{actor}在{level}把{target}捞了上来，这事被人念叨了好几辈。',
@@ -381,7 +381,7 @@ export class WorldLegendSystem {
       miracle: [
         '在{level}，{actor}办了件谁都没想到的事——{effect}。',
         '没人信{actor}能成，可{level}亲眼瞧见了这事成了。',
-        '{level}出了神迹，{actor}成了活着就成了传说的人。'
+        '{level}那天没人敢先动，{actor}硬是把事办成了。'
       ],
       cataclysm: [
         '{level}那场灾连世界都打了个哆嗦，可{actor}在烂摊子里扒拉出了指望。',
@@ -421,10 +421,10 @@ export class WorldLegendSystem {
   generateEffectDescription(legend) {
     const effects = {
       creation: ['把河道拨转了', '把黑暗赶退了', '把地养好了', '把散了的人心又拢上', '添了新的活气'],
-      rescue: ['把指望又点起来了', '救下了一村人', '把命数拨转了', '让人瞧见了善有善报'],
-      sacrifice: ['把世界换了个样', '成了往后被人念叨的事', '让后头的人有了胆', '让那场付出没白搭'],
-      battle: ['把世界的走向定下来了', '让太平有了指望', '让人瞧见了正道的劲', '翻开了新的一页'],
-      miracle: ['把办不到的事办成了', '立下了新规矩', '让世界肯信了', '开了个新头'],
+      rescue: ['把人从坏格子里带出来', '救下了一村人', '改掉了当天的伤亡名单', '让后来的人敢继续走'],
+      sacrifice: ['把局面换了回来', '成了往后被人念叨的事', '让后头的人有了胆', '让那场付出没白搭'],
+      battle: ['把进城的路挡住了', '给防线抢到一口气', '让人看清了敌人的弱点', '把局面翻了回来'],
+      miracle: ['把办不到的事办成了', '立下了新规矩', '让旁观的人闭了嘴', '开了个新头'],
       cataclysm: ['从烂摊子里又站起来了', '摸出了新路', '把废墟弄成了能住的地', '让人瞧见命硬']
     };
     const pool = effects[legend.type] || effects.creation;
@@ -440,7 +440,7 @@ export class WorldLegendSystem {
   startNewAge(catalystEvent) {
     const ageNames = [
       '创造之纪元', '裂隙之纪元', '救赎之纪元', '重生之纪元',
-      '传说之纪元', '奇迹之纪元', '黄昏之纪元', '黎明之纪元'
+      '记档之纪元', '余烬之纪元', '黄昏之纪元', '黎明之纪元'
     ];
 
     const ageName = ageNames[(this.currentAge - 1) % ageNames.length];
@@ -536,24 +536,24 @@ export class WorldLegendSystem {
   generateQuotes(npc, reason) {
     const quotePools = {
       rescued: [
-        `我曾被拯救，如今我要拯救他人。`,
-        `黑暗中的那道光，我永远记得。`,
-        `当你拉我一把时，我学会了什么是希望。`
+        `那天有人拉了我一把，我记着。`,
+        `黑里那盏灯，我到现在还认得。`,
+        `我活下来了，也该去拉别人。`
       ],
       sacrificed: [
-        `不要为我哭泣，我为所爱的人付出了一切。`,
-        `传说我没有真正离开，只是变成了风。`,
-        `我的故事结束了，但你的还在继续。`
+        `别哭。我知道自己为什么留下。`,
+        `要是起风了，就当我还在附近。`,
+        `我的路到这儿，你们接着走。`
       ],
       legendary_deed: [
-        `那一刻，我知道自己注定要做些什么。`,
-        `世界记住了我的名字，但更重要的是记住了那一刻。`,
-        `传奇不是天生的，是在选择中诞生的。`
+        `那一下，我知道该往哪儿站。`,
+        `名字不打紧，记住那条路就行。`,
+        `不是谁天生了不起，是那一刻没退。`
       ],
       wisdom: [
-        `知识是光，但智慧知道何时点亮它。`,
-        `我见过太多，但学到更多。`,
-        `真正的智慧不是知道一切，而是知道何时行动。`
+        `灯不是越亮越好，得照在路口。`,
+        `我见过不少事，也栽过不少跟头。`,
+        `知道多没用，关键是该动手时别迟。`
       ]
     };
 
@@ -670,20 +670,20 @@ export class WorldLegendSystem {
         rules: {
           'Myth': ['{Departure} {Initiation} {Return} {Sacrifice}'],
           'Departure': [
-            '在{Origin}的平凡日子里，{Hero}从未想过自己会成为传说。',
-            '当裂隙第一次出现在{Origin}的天空时，{Hero}知道世界需要改变。'
+            '在{Origin}还没出事前，{Hero}只是个会记路的人。',
+            '裂隙第一次撕开{Origin}时，{Hero}先去数还剩多少出口。'
           ],
           'Initiation': [
-            '面对{Challenge}，{Hero}用{Artifact}证明了{Virtue}的力量。',
-            '在{Challenge}的试炼中，{Hero}发现了自己内心深处的{Virtue}。'
+            '{Challenge}压过来时，{Hero}把{Artifact}放在最窄的路口。',
+            '在{Challenge}最乱的那一刻，{Hero}靠{Virtue}稳住了手。'
           ],
           'Return': [
-            '当{Hero}回到{Origin}时，一切都变了——但{Hero}也变了。',
-            '{Hero}带着{Artifact}和新的智慧回到了{Origin}。'
+            '{Hero}回到{Origin}时，地上还留着烧痕。',
+            '{Hero}带着{Artifact}回到{Origin}，先把坏掉的路标扶正。'
           ],
           'Sacrifice': [
-            '为了拯救{Target}，{Hero}付出了{Cost}——但传说永远不会忘记。',
-            '有人说{Hero}还在守护着{Origin}，只是换了一种方式。'
+            '为了救{Target}，{Hero}付出了{Cost}。这笔账一直记在村口木牌上。',
+            '有人说{Hero}还在{Origin}附近巡夜，只是不再点灯。'
           ]
         }
       },
@@ -692,20 +692,20 @@ export class WorldLegendSystem {
         rules: {
           'Myth': ['{Hubris} {Fall} {Aftermath} {Legacy}'],
           'Hubris': [
-            '{Hero}曾相信{Virtue}可以征服一切，包括{Challenge}。',
-            '在{Origin}的辉煌时刻，{Hero}忘记了谦卑。'
+            '{Hero}曾以为只靠{Virtue}就能压住{Challenge}。',
+            '在{Origin}最顺的那几回合，{Hero}少看了一眼水线。'
           ],
           'Fall': [
-            '但{Challenge}太强大了，{Hero}的{Artifact}碎裂在黑暗中。',
-            '当{Cost}降临时，{Hero}才明白有些代价无法承受。'
+            '但{Challenge}从侧边绕了进来，{Artifact}没撑住。',
+            '{Cost}落下时，{Hero}才知道这一步不能悔棋。'
           ],
           'Aftermath': [
             '{Origin}沉默了很长时间，风中有{Target}的哭泣。',
-            '世界记住了{Hero}的失败，但比失败更深刻的是{Hero}的勇气。'
+            '人们记住了{Hero}的失误，也记住了后来那次补救。'
           ],
           'Legacy': [
             '如今，每当{Challenge}重现，人们会想起{Hero}的教训。',
-            '悲剧不是终点——{Hero}的故事成为了{Origin}的守护。'
+            '后来有人照着{Hero}的旧路线重走了一遍，少死了一个人。'
           ]
         }
       },
@@ -714,20 +714,20 @@ export class WorldLegendSystem {
         rules: {
           'Myth': ['{Void} {Spark} {Shaping} {Legacy}'],
           'Void': [
-            '在{Origin}还是一片虚无时，{Hero}听到了创造的召唤。',
-            '世界尚未成形，{Hero}手中握着{Artifact}的雏形。'
+            '在{Origin}还没有路标时，{Hero}先画下第一条线。',
+            '{Origin}还没稳住，{Hero}手里已经攥着{Artifact}的雏形。'
           ],
           'Spark': [
-            '第一道光芒来自{Hero}的{Virtue}，照亮了{Challenge}的黑暗。',
-            '当{Hero}举起{Artifact}，{Origin}第一次有了颜色。'
+            '第一盏灯靠{Hero}的{Virtue}撑住，勉强照到{Challenge}边缘。',
+            '{Hero}把{Artifact}放下时，{Origin}终于看得清路。'
           ],
           'Shaping': [
-            '{Hero}用{Artifact}塑造了{Target}，每一个细节都倾注了心血。',
+            '{Hero}用{Artifact}修出了{Target}，缝补处还看得见。',
             '从{Challenge}中，{Hero}提炼出了{Target}——不完美，但真实。'
           ],
           'Legacy': [
-            '如今{Target}依然在{Origin}守护着，提醒着创造的代价与荣耀。',
-            '每一个来到{Origin}的造物者，都会感受到{Hero}留下的{Virtue}。'
+            '如今{Target}还在{Origin}，提醒后来的人别忘了代价。',
+            '每个来到{Origin}的造物者，都会先检查{Hero}留下的旧标记。'
           ]
         }
       },
@@ -736,20 +736,20 @@ export class WorldLegendSystem {
         rules: {
           'Myth': ['{Beginning} {Rise} {Turning} {Renewal}'],
           'Beginning': [
-            '传说{Origin}经历过无数次{Challenge}，每一次都有一位{Hero}。',
-            '在时间的轮回中，{Hero}不是第一个，也不会是最后一个。'
+            '{Origin}不止一次遇到{Challenge}，每次都有人被推到前面。',
+            '旧记录里写着，{Hero}不是第一个，也不会是最后一个。'
           ],
           'Rise': [
-            '但这一次，{Hero}带着{Artifact}和前所未有的{Virtue}。',
-            '{Hero}在{Origin}的崛起，让古老的预言开始应验。'
+            '但这次，{Hero}带着{Artifact}和一套新的{Virtue}。',
+            '{Hero}在{Origin}站出来时，旁边的人先递了一盏灯。'
           ],
           'Turning': [
-            '当{Cost}降临时，轮回似乎要重演——但{Hero}做出了不同的选择。',
-            '在{Challenge}的最高潮，{Hero}打破了循环。'
+            '{Cost}落下时，旧路又摆在眼前，但{Hero}换了走法。',
+            '{Challenge}最凶的时候，{Hero}没有照旧规则出牌。'
           ],
           'Renewal': [
-            '新的轮回开始了，但这一次{Origin}学会了{Hero}的{Virtue}。',
-            '{Hero}成为了轮回的一部分，{Artifact}在等待着下一个守护者。'
+            '下一轮开始时，{Origin}保留了{Hero}留下的{Virtue}。',
+            '{Artifact}被收进仓库，等下一个守夜人来取。'
           ]
         }
       }

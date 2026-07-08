@@ -36,15 +36,15 @@ export const SYMBOL_TO_TILE = Object.freeze({
 });
 
 export const INSPIRATIONS = [
-  '造一群透明的鲸鱼，把洪水驮到天上去',
+  '造一只透明水桶兽，把村口洪水背到左边河沟',
   '让石头浮在水面上，搭一段临时的桥',
   '种一棵会发光的月亮树，给人指路',
-  '造一座只对悲伤生灵开放的花园，让巨兽安静下来',
-  '让两个部落的梦，在同一张桌上碰头',
-  '立一块碑，能唱出每个人老家的歌',
+  '在城门前种一圈软花，让巨兽踩进去就慢下来',
+  '在边境放一张白桌，让两个使者都朝它走',
+  '立一块碑，唱出每个人老家的路名',
   '造一台靠月光转的机器，把毒和脏东西洗掉',
-  '让风把迷路人的名字，吹到圣树那边去',
-  '起一阵大风，把雾吹散'
+  '让风把迷路人的名字吹到圣树入口',
+  '起一阵大风，把入口前的雾吹散'
 ];
 
 export const LEVELS = [
@@ -52,7 +52,7 @@ export const LEVELS = [
     id: 'flood-village',
     title: '第 1 关：洪水村庄',
     shortTitle: '洪水村庄',
-    story: '暴雨下了几天，河堤没撑住。水正往村里漫，村民得在水位盖过房子前挪到东边高地。你没法直接挪人，只能改这世界。',
+    story: '雨下了三天，河堤从西边裂开。水已经进村，村民得在屋顶被淹前挪到东边高地。你不能直接搬人，只能动地形。',
     objective: '7 回合内救下至少 4 名居民，其中得有邮差。',
     maxTurns: 7,
     creationCharges: 3,
@@ -82,7 +82,7 @@ export const LEVELS = [
     id: 'night-mine',
     title: '第 2 关：永夜矿井',
     shortTitle: '永夜矿井',
-    story: '矿井里的光叫黑夜吞了。矿工只记得出口大概在东北边，黑暗每回合都在往外爬。',
+    story: '矿灯一盏接一盏灭了。矿工只记得出口在东北，黑暗正顺着轨道往外爬。',
     objective: '8 回合内，至少 3 名矿工摸到出口。',
     maxTurns: 8,
     creationCharges: 3,
@@ -112,7 +112,7 @@ export const LEVELS = [
     id: 'giant-city',
     title: '第 3 关：巨兽困城',
     shortTitle: '巨兽困城',
-    story: '古水巨兽正朝城里挪。杀不得——它背上驮着水，养着整条河。你得想法子拦住它，或者让它安静下来。',
+    story: '古水巨兽正往城门挪。不能杀，它背上的水养着整条河。要么拦住它，要么让它先停下来。',
     objective: '撑过 15 回合：城不能叫巨兽踩进，它的怒气不能涨到 5。',
     maxTurns: 15,
     creationCharges: 3,
@@ -139,7 +139,7 @@ export const LEVELS = [
     id: 'wordless-war',
     title: '第 4 关：失语战争',
     shortTitle: '失语战争',
-    story: '两个部落都咬定是对方偷了星火。话说不通，误会越结越深，边境的战争值正往上走。',
+    story: '两个部落都说对方偷了星火。没人肯先低头，雾又把边境盖住了，战争值正在往上跳。',
     objective: '8 回合结束时，战争值压到 8 以下，还得让两名使者在边境碰头。',
     maxTurns: 8,
     creationCharges: 3,
@@ -166,7 +166,7 @@ export const LEVELS = [
     id: 'memory-plague',
     title: '第 5 关：记忆瘟疫',
     shortTitle: '记忆瘟疫',
-    story: '村民开始忘记回家的路。圣树仍记得所有人的名字，但大雾正在抹去道路。',
+    story: '村民开始忘路，连家门朝哪边都说不清。圣树还记得他们的名字，大雾正在把路擦掉。',
     objective: '10 回合内让至少 4 名村民抵达圣树。',
     maxTurns: 10,
     creationCharges: 4,
@@ -197,8 +197,8 @@ export const LEVELS = [
   {
     id: 'final-exam',
     title: '终考：第七天之前',
-    shortTitle: '创世终考',
-    story: '洪水、永夜、失语，一块儿回来了。前五关你证明了自己能造奇迹，这回得证明你能让奇迹变成秩序。',
+    shortTitle: '第七天之前',
+    story: '洪水、永夜和失语一起压了回来。棋盘上没有空闲回合，每一次造物都得落在要害处。',
     objective: '8 回合内：救下 3 名居民，守住城，战争值压到 9 以下。',
     maxTurns: 8,
     creationCharges: 5,

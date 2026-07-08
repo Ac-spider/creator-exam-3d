@@ -536,7 +536,7 @@ export class NPCManager {
 
       // 记录记忆
       npc.memories.push({
-        text: `见证了 ${rescued} 个生命被拯救，希望重新燃起`,
+        text: `看着 ${rescued} 个人从危险地块里出来`,
         timestamp: Date.now(),
         type: 'rescue'
       });
@@ -567,7 +567,7 @@ export class NPCManager {
       }
 
       npc.memories.push({
-        text: `目睹了 ${lost} 个生命消逝，心中充满悲伤`,
+        text: `亲眼看见 ${lost} 个人没回来，话也少了`,
         timestamp: Date.now(),
         type: 'loss'
       });
@@ -644,7 +644,7 @@ export class NPCManager {
       }
 
       npc.memories.push({
-        text: '关卡完成，见证了奇迹的发生',
+        text: '关卡完成，危险线退了下去',
         timestamp: Date.now(),
         type: 'victory'
       });
@@ -670,7 +670,7 @@ export class NPCManager {
       }
 
       npc.memories.push({
-        text: '关卡失败，希望破灭',
+        text: '关卡失败，有人没能离开危险地块',
         timestamp: Date.now(),
         type: 'defeat'
       });
@@ -1036,13 +1036,13 @@ export class NPCManager {
         default: [
           '你每造一回，我就跟着变一点。',
           '裂隙在变大，可指望也在长。',
-          '我见过太多造物者，你是不一样的那个。',
-          '到了第七天，世界自己会挑一条路走。'
+          '我见过不少造物者，能停手的没几个。',
+          '到了第七天，裂隙会把旧账翻出来。'
         ],
         onRescue: [
-          '命的光，又把世界照亮了一回。',
+          '又有人活下来，我这儿亮了一下。',
           '你选了手软的那条路，我看着心里宽。',
-          '每一条捞上来的命，都是世界又往下走了一程。'
+          '每救回来一个人，后面的路就多一截。'
         ],
         onLoss: [
           '难过，也是世界里头的一块。',

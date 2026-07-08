@@ -100,7 +100,7 @@ export class AIDirector {
       }
     }
 
-    // Local fallback narrative
+    // 没接上远端时，用本地短句补一段场面。
     return {
       ...beat,
       narrative: this.generateLocalNarrative(beat, context),

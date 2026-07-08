@@ -78,7 +78,7 @@
       pattern: 'mixed',
       lines: [
         '秩序从来不是静止，它只是崩塌前还愿意排队。',
-        '第七天不收草稿，只收你真正守住的世界。'
+        '第七天不看说法，只看防线还剩几格。'
       ]
     }
   ];
@@ -903,9 +903,9 @@
     const add = (key, name, reason) => {
       if (!signals.some(signal => signal.key === key)) signals.push({ key, name, reason });
     };
-    if (/棱镜|审判者|prism|折射/i.test(text)) add('prismBurst', '棱镜审判者', 'Skyward 最新 Boss 设计里的折射光束被 AI 简报识别为空域棱爆词缀。');
-    if (/铁幕|空母|护卫编队|甲板|carrier|deck/i.test(text)) add('ironCarrier', '铁幕空母', 'Skyward 最新 Boss 设计里的护卫编队被 AI 简报识别为空域铁幕词缀。');
-    if (/引潮|潮汐|重力|gravity|tide/i.test(text)) add('tideCore', '引潮核心', 'Skyward 最新 Boss 设计里的重力潮汐被 AI 简报识别为空域引潮词缀。');
+    if (/棱镜|审判者|prism|折射/i.test(text)) add('prismBurst', '棱镜审判者', '前序记录里出现折射光束，航线加入棱爆词缀。');
+    if (/铁幕|空母|护卫编队|甲板|carrier|deck/i.test(text)) add('ironCarrier', '铁幕空母', '前序记录里出现护卫编队，航线加入铁幕词缀。');
+    if (/引潮|潮汐|重力|gravity|tide/i.test(text)) add('tideCore', '引潮核心', '前序记录里出现重力潮汐，航线加入引潮词缀。');
     return signals;
   }
 
@@ -1136,8 +1136,8 @@
     if (event === 'near') return comm.kind === 'rescued'
       ? `${comm.name}提醒：裂隙残影贴近机翼，立刻拉开。`
       : `${comm.name}在噪声里重复：残影贴近机翼，别回头。`;
-    if (event === 'victory') return `${comm.name}记录：第七天没有被消灭，它只是终于愿意让世界继续。`;
-    if (event === 'defeat') return `${comm.name}失去信号：空域载体坠回裂隙，世界还需要下一次清算。`;
+    if (event === 'victory') return `${comm.name}记录：第七天航线清空，地面防线仍在。`;
+    if (event === 'defeat') return `${comm.name}失去信号：空域载体坠回裂隙，清算未完成。`;
     if (event === 'boss-defeated' && boss) return `${comm.name}记录${boss.title}被清算，${boss.memory}`;
     if (event === 'boss' && boss?.affix) return `${boss.affix.name}·${boss.title}进入航线。${boss.affix.line}`;
     if (event === 'boss-phase' && boss?.affix) return `${boss.title}换相，${boss.affix.line}`;

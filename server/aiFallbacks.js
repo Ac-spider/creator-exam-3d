@@ -20,8 +20,8 @@ export function fallbackRegionCandidate(input = {}) {
   return {
     id: input.id || 'fallback-region',
     title: input.title || '未知区域',
-    story: input.story || '一片被裂隙影响的土地。',
-    objective: input.objective || '在危机中拯救生命，找到前进的道路。',
+    story: input.story || '裂隙刚擦过这里，地上还在冒冷气。',
+    objective: input.objective || '把人带出去，别让路被灾切断。',
     maxTurns: 8,
     creationCharges: 3,
     miraclePoints: 6,
@@ -39,7 +39,7 @@ export function fallbackRegionCandidate(input = {}) {
     hazard: input.hazard || { type: 'flood', spreadPerTurn: 2 },
     win: input.win || 'requiredRescue',
     requiredRescue: input.requiredRescue || 3,
-    connections: input.connections || { from: 'unknown', reason: '世界的裂隙引导你来到这里' }
+    connections: input.connections || { from: 'unknown', reason: '上一片地的裂缝通到这里' }
   };
 }
 
@@ -82,17 +82,17 @@ export function fallbackResidentDialogueEnvelope(input = {}) {
 
 export function fallbackCard(playerText = '') {
   return {
-    name: String(playerText || 'Unnamed Creation').slice(0, 14),
-    type: 'miracle',
+    name: String(playerText || '临时造物').slice(0, 14),
+    type: '奇迹',
     ability: 'transform_land',
-    tags: ['fallback'],
+    tags: ['本地规则'],
     range: 1,
     duration: 2,
     cost: 2,
     stabilityCost: 1,
-    description: 'A safe local creation used when the AI provider is unavailable.',
-    side_effect: 'Entropy rises slightly.',
-    specialEffect: { type: 'none', description: 'No special effect.', trigger: 'none' },
+    description: '云端没回话，先按本地规则做一张保守卡。',
+    side_effect: '裂隙轻微上升。',
+    specialEffect: { type: 'none', description: '无特殊效果', trigger: 'none' },
     source: 'fallback'
   };
 }

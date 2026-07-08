@@ -38,12 +38,23 @@ export const INTENT_TYPES = {
   }
 };
 
+const HAZARD_LABELS = {
+  flood: '洪水',
+  darkness: '黑暗',
+  poison: '毒雾',
+  swamp: '沼泽',
+  memory: '记忆瘟疫',
+  war: '战争'
+};
+
 export class IntentPreview {
   constructor(data) {
     this.unitId = data.unitId || null;
     this.unitName = data.unitName || '未知';
     this.unitType = data.unitType || 'unknown';
     this.intentType = data.intentType || 'advance';
+    this.name = data.name || data.intentName || this.intentType;
+    this.icon = data.icon || '';
     this.category = data.category || 'beast'; // beast, civilian, messenger, hazard
     this.threat = data.threat || 'low';
     this.description = data.description || '';
@@ -61,6 +72,8 @@ export class IntentPreview {
       unitName: this.unitName,
       unitType: this.unitType,
       intentType: this.intentType,
+      name: this.name,
+      icon: this.icon,
       category: this.category,
       threat: this.threat,
       description: this.description,
@@ -446,6 +459,7 @@ export class EnemyIntentSystem {
     if (!hazard || !hazard.type) return null;
 
     const type = hazard.type;
+    const typeName = HAZARD_LABELS[type] || type;
     const spreadPerTurn = hazard.spreadPerTurn || 2;
     const currentTurn = engine.turn || 1;
 
@@ -459,7 +473,7 @@ export class EnemyIntentSystem {
         intentType: 'intensify',
         ...INTENT_TYPES.hazard.intensify,
         position: { x: -1, y: -1 },
-        predictedAction: `${type} 灾害加剧，扩散速度加快`,
+        predictedAction: `${typeName}灾害加剧，扩散速度加快`,
         turn,
         confidence: 0.7
       });
@@ -473,7 +487,7 @@ export class EnemyIntentSystem {
       intentType: 'spread',
       ...INTENT_TYPES.hazard.spread,
       position: { x: -1, y: -1 },
-      predictedAction: `${type} 将向周围扩散 ${spreadPerTurn} 格`,
+      predictedAction: `${typeName}将向周围扩散 ${spreadPerTurn} 格`,
       turn,
       confidence: 0.85
     });

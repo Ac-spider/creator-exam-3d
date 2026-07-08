@@ -36,7 +36,7 @@ export const OATH_TYPES = {
   },
   sacrifice: {
     name: '牺牲誓约',
-    description: '以一方牺牲换取另一方强大力量',
+    description: '一方顶住代价，另一方在下回合爆发',
     playerBenefit: { type: 'power_surge', value: 2, description: '下回合造物效果翻倍' },
     npcBenefit: { type: 'immortal', value: 1, description: 'NPC本回合无敌' },
     betrayalCost: { type: 'death', value: 1, description: 'NPC立即死亡' },
@@ -45,10 +45,10 @@ export const OATH_TYPES = {
   },
   kinship: {
     name: '血盟誓约',
-    description: '最深刻的羁绊，能力共享但命运相连',
+    description: '最深的羁绊，能力共享，风险也一起承担',
     playerBenefit: { type: 'ability_share', value: 1, description: '可使用NPC特殊能力' },
     npcBenefit: { type: 'resilience', value: 1, description: 'NPC获得韧性，不易死亡' },
-    betrayalCost: { type: 'soul_wound', value: 1, description: '灵魂创伤，永久属性下降' },
+    betrayalCost: { type: 'soul_wound', value: 1, description: '誓痕反噬，永久属性下降' },
     betrayalRisk: 0.1,
     duration: -1
   }
@@ -231,7 +231,7 @@ export class Oath {
       consequences.push({
         type: 'soul_wound',
         value: 1,
-        description: '灵魂创伤，永久属性下降'
+        description: '誓痕反噬，永久属性下降'
       });
     }
 

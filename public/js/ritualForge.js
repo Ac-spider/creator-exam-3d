@@ -17,7 +17,7 @@ export const RITUAL_ARCHETYPES = {
   },
   sacrifice: {
     name: '献祭仪式',
-    description: '牺牲造物换取强大效果',
+    description: '烧掉造物，换一次高压解场',
     minCards: 1,
     maxCards: 2,
     requiresSacrifice: true

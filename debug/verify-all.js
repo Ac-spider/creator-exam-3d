@@ -10,6 +10,8 @@ const suites = [
   { label: 'turn-reliability', command: 'node', args: ['debug/turn-reliability-tests.js'] },
   { label: 'advanced-mechanisms-reliability', command: 'node', args: ['debug/advanced-mechanisms-reliability-tests.js'] },
   { label: 'browser-demo-smoke', command: 'node', args: ['debug/browser-demo-smoke.js'] },
+  { label: 'wiki-integration', command: 'node', args: ['debug/wiki-integration-tests.js'] },
+  { label: 'copy-tone', command: 'node', args: ['debug/copy-tone-tests.js'] },
   { label: 'browser-modes-smoke', command: 'node', args: ['debug/browser-modes-smoke.js'] },
   { label: 'npc-dialogue-reliability', command: 'node', args: ['debug/npc-dialogue-reliability-tests.js'] },
   { label: 'narrative-reliability', command: 'node', args: ['debug/narrative-reliability-tests.js'] },

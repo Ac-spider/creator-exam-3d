@@ -207,7 +207,7 @@ function sanitizeCard(raw, playerText) {
     : '奇迹';
   const description = typeof card.description === 'string' && card.description.trim()
     ? card.description.trim().slice(0, 120)
-    : `由"${String(playerText || '').slice(0, 24)}"凝成的创世奇迹。`;
+    : `从"${String(playerText || '').slice(0, 24)}"整理出的临时造物。`;
   const sideEffect = typeof card.side_effect === 'string' && card.side_effect.trim()
     ? card.side_effect.trim().slice(0, 80)
     : '世界裂隙轻微上升。';
@@ -332,17 +332,17 @@ function buildResolvedDescription(ability, range) {
   if (ability === 'redirect_hazard') return '临时把附近最多两格洪水、雾或毒拨开，腾出通路。';
   if (ability === 'reveal_path') return '给附近的人显出最顺的路，短时间里走得更快。';
   if (ability === 'steam_burst') return '蒸汽炸开，造一片遮眼雾，让附近的人短时找不着路。';
-  if (ability === 'nature_awakening') return '附近的地醒过来，长成林子，人也走得快了。';
+  if (ability === 'nature_awakening') return '附近长出林子，人借着树根走得更快。';
   if (ability === 'rift_sealing') return '封3点裂隙，吃掉范围内的记忆信标。';
   if (ability === 'beast_taming') return '把附近巨兽降住，安静2回合，走也慢。';
-  if (ability === 'time_weave') return '把时间续上，所有活跃造物多撑2回合。';
+  if (ability === 'time_weave') return '把时间续上一截，场上造物多撑2回合。';
   if (ability === 'dig_channel') return '挖排水渠，吸走附近的水，把洪水引开。';
-  return '规则系统理出来的可执行造物效果。';
+  return '按玩家描述整理出的可放置效果。';
 }
 
 function buildResolvedSideEffect(ability) {
   if (ability === 'haste') return '加速撑不长，出了圈就没了。';
-  if (ability === 'teleport') return '空间一折，世界裂隙涨得厉害。';
+  if (ability === 'teleport') return '空间一折，裂隙涨得厉害。';
   if (ability === 'shield_units') return '护盾挡完一下就快没了。';
   if (ability === 'redirect_hazard') return '拨开的灾，造物没了可能又流回来。';
   if (ability === 'reveal_path') return '显路费人元气。';
@@ -350,9 +350,9 @@ function buildResolvedSideEffect(ability) {
   if (ability === 'nature_awakening') return '林子可能挡住自己人。';
   if (ability === 'rift_sealing') return '吃掉的记忆信标要不回来。';
   if (ability === 'beast_taming') return '降住的效果会随时间散。';
-  if (ability === 'time_weave') return '续时间，世界裂隙还得往上撕。';
+  if (ability === 'time_weave') return '续时间，裂隙还会往上撕。';
   if (ability === 'dig_channel') return '渠得常看着，不然可能被水倒灌。';
-  return '世界裂隙往上动一点。';
+  return '裂隙往上动一点。';
 }
 
 function inferHasteRange(text) {
@@ -367,11 +367,11 @@ function getExplicitHasteRange(text) {
 }
 
 const COMPILE_FALLBACK_MESSAGES = {
-  no_key: 'AI 编译未配置，已使用本地规则兜底。',
-  timeout: 'AI 编译超时，已使用本地规则兜底。',
-  budget: 'AI 调用预算已用尽，已使用本地规则兜底。',
-  invalid_response: 'AI 编译返回异常，已使用本地规则兜底。',
-  provider_failed: 'AI 编译服务暂不可用，已使用本地规则兜底。'
+  no_key: '未配置云端编译，当前使用本地规则。',
+  timeout: '云端编译超时，已改用本地规则。',
+  budget: '云端调用预算已用尽，已改用本地规则。',
+  invalid_response: '云端返回异常，已改用本地规则。',
+  provider_failed: '云端编译暂不可用，已改用本地规则。'
 };
 
 function normalizeCompileFallbackReason(reason) {
@@ -403,16 +403,16 @@ function buildFallbackCreation(text, fallbackReason = 'no_key') {
   const strong = ability === 'teleport';
   const range = ability === 'haste' ? inferHasteRange(clean) : (['illuminate', 'gale', 'shield_units', 'redirect_hazard', 'teleport'].includes(ability) ? 2 : 1);
   return {
-    name: clean.slice(0, 12) || 'Local Gift',
+    name: clean.slice(0, 12) || '临时造物',
     type: '奇迹',
     ability,
-    tags: ['local', ability],
+    tags: ['本地', ability],
     range,
     duration: ['haste', 'teleport'].includes(ability) ? 2 : 3,
     cost: strong ? 3 : 2,
     stabilityCost: strong ? 2 : ability === 'haste' ? 1 : 0,
-    description: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedDescription(ability, range) : `A local rule-safe creation inferred from "${clean}".`,
-    side_effect: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedSideEffect(ability) : 'Local fallback keeps play moving without external AI.',
+    description: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedDescription(ability, range) : `按「${clean}」整理成可放置造物。`,
+    side_effect: RULE_DESCRIBED_ABILITIES.has(ability) ? buildResolvedSideEffect(ability) : '本地规则兜底，效果偏保守。',
     source: 'fallback',
     fallback: true,
     fallbackReason: reason,
@@ -421,15 +421,15 @@ function buildFallbackCreation(text, fallbackReason = 'no_key') {
 }
 
 function buildFallbackNarrative(type, context = {}, worldState = {}) {
-  const level = worldState.currentLevel || 'unknown region';
-  const name = context.unitName || context.creationName || 'someone';
+  const level = worldState.currentLevel || '这片地';
+  const name = context.unitName || context.creationName || '有人';
   const textByType = {
-    rescue: `${name} remembers the moment in ${level}. The rescue becomes a rumor that can pull future paths toward safer ground.`,
-    loss: `${level} grows quieter after the loss. Residents will carry this absence into later choices and conversations.`,
-    placement: `The new creation changes how people speak about ${level}. Some call it a miracle, others a warning.`,
-    hazard: `The hazard shifts across ${level}, leaving a visible scar for future travelers to interpret.`
+    rescue: `${name}被拉了回来。${level}的人会记得这一下。`,
+    loss: `${level}少了一个声音。后来的人会绕开这处伤口。`,
+    placement: `新造物落在${level}。有人说管用，也有人离它远远的。`,
+    hazard: `${level}的灾往旁边挪了一格，地上留下清楚的痕。`
   };
-  return textByType[type] || `${level} records a new event. The world keeps the consequence and waits for the player to follow it.`;
+  return textByType[type] || `${level}又多了一条记录。后果先留在棋盘上。`;
 }
 
 async function handleCompileCreation(req, res) {
@@ -453,7 +453,7 @@ async function handleCompileCreation(req, res) {
     return;
   }
 
-  const systemPrompt = `你是3D游戏《创世计划：造物者考核》的"造物编译器"。玩家会用自然语言创造一个物件、生物或世界法则。你必须把它翻译成受规则约束的游戏卡牌，同时根据玩家的创意描述生成独特的机制变体。
+  const systemPrompt = `你是3D游戏《裂隙考核：造物者》的造物编译器。玩家会用自然语言创造一个物件、生物或世界法则。你要把它翻译成受规则约束的游戏卡牌，并尽量保留原句里具体的物件、动作和限制。
 
 【绝对规则】
 1. 只输出JSON对象，不要Markdown，不要解释，不要注释。
@@ -517,16 +517,18 @@ async function handleCompileCreation(req, res) {
 - mobile/movement：造物每回合自动向特定地形移动，如"向水域移动"、"向黑暗移动"。
 - reactive：当特定事件发生时触发额外效果，如"当洪水扩散时吸收它"。
 - environmental：改变周围环境的行为，如"在水域中范围+1"。
-- sacrifice：获得强大效果但付出代价，如"每回合消耗1奇迹点"。
+- sacrifice：获得额外效果但付出代价，如"每回合消耗1奇迹点"。
 - none：标准造物，没有特殊机制。
 
 【设计原则】
-1. 保留玩家创意的诗意，但能力必须落在枚举中。
+1. 保留玩家创意里的具体画面，但能力必须落在枚举中。
 2. 越强的造物 cost 和 stabilityCost 越高。
 3. 不允许全图清除、不允许直接过关、不允许永久无敌。
 4. 当前关卡目标优先，输出要能帮助玩家解决关卡但仍需要玩家放置和结算。
 5. 相同ability可以有完全不同的玩法：例如"发光水母"和"月光灯塔"都是illuminate，但水母应该mobile（向水域移动），灯塔应该environmental（在高点范围+1）。
-6. 如果玩家描述非常标准，没有独特之处，specialEffect的type填"none"，description填"无特殊效果"，trigger填"none"。`;
+6. 文案不要写“前所未有”“命运”“伟大”“希望之光”“震撼体验”“创世奇迹”等模板词。
+7. description 和 side_effect 写短句，先说棋盘效果，再说限制。
+8. 如果玩家描述非常标准，没有独特之处，specialEffect的type填"none"，description填"无特殊效果"，trigger填"none"。`;
 
   const userPrompt = JSON.stringify({
     playerText,
@@ -643,12 +645,12 @@ function fallbackNarrativeText(narrativeType, input, ctx = {}) {
   const clean = String(input || '').trim();
   if (clean && containsCjk(clean)) return `本地叙事：${clean}`;
   if (narrativeType === 'airspace_brief') {
-    return '本地叙事：第六关和长夜之后，白天留下的造物被压缩为空域载体。没有远方神谕时，裂隙把已有选择整理成第七天的清算航线。';
+    return '本地叙事：长夜过后，白天留下的造物被压进空域载体。第七天不等神谕，只结算你做过的事。';
   }
   if (containsCjk(ctx.unitName)) {
-    return `本地叙事：${ctx.unitName}的记录仍在继续，世界把这次选择写成新的回声。`;
+    return `本地叙事：${ctx.unitName}还在名单上。这次选择会留下回声。`;
   }
-  return '本地叙事：世界不等待远方神谕，也会把已有选择整理成可听见的回声。';
+  return '本地叙事：没有远方回复，棋盘也会把后果记下来。';
 }
 
 async function handleNarrative(req, res) {
@@ -766,22 +768,24 @@ function formatPromptValue(value, fallback = '无') {
 }
 
 function buildNarrativePrompt(type, context, worldState) {
-  const basePrompt = `你是《创世计划：造物者考核》的叙事引擎。你负责构建一个由AI共同创造的开放世界，玩家的每一个选择都会影响世界的走向。
+  const basePrompt = `你是《裂隙考核：造物者》的叙事调度器。你只写玩家当前能看到、能验证的场面和对话。
 
 【绝对规则】
 1. 只输出纯文本叙事内容，不要JSON，不要Markdown格式，不要解释。
-2. 叙事风格：诗意、神秘、略带忧伤，带有东方奇幻色彩。
-3. 每次输出控制在100-200字之间。
+2. 叙事风格：短句、具体、有现场感；少用抽象总结。
+3. 每次输出控制在60-140字之间。
 4. 必须根据提供的世界状态和上下文生成内容，不能脱离上下文。
+5. 不要写“命运”“奇迹”“希望重新点燃”“世界见证”“前所未有”“史诗”“灵魂”等套话，除非输入事实里已有。
+6. 不要写广告腔、总结句或排比句；多写具体动作、格子、路线、伤口、沉默。
 
 【世界背景】
-这个世界被称为"裂隙之地"，是一个正在缓慢崩解的幻想世界。玩家是"造物者"，拥有用意念创造物体和改变世界的能力。但每一次创造都会加深世界的裂隙。
+这里叫裂隙之地。地形、灾害和居民状态都写在棋盘上。玩家能造物，但每次造物都会让裂隙更深。
 
 【当前世界状态】
 - 当前关卡：${worldState.currentLevel || '未知'}
 - 已拯救的生命：${worldState.rescued || 0}
 - 已失去的生命：${worldState.lost || 0}
-- 世界裂隙：${worldState.entropy || 0}/${worldState.entropyLimit || 7}
+- 裂隙：${worldState.entropy || 0}/${worldState.entropyLimit || 7}
 - 已创造的造物：${(worldState.creations || []).join('、') || '无'}
 - 已发现的故事片段：${(worldState.discoveredLore || []).join('、') || '无'}
 - 玩家的行为倾向：${worldState.playStyle || '未知'}
@@ -790,7 +794,7 @@ function buildNarrativePrompt(type, context, worldState) {
   const typePrompts = {
     dialogue: `
 【任务：生成角色对话】
-你正在扮演一个具有独立人格的AI角色。
+你正在扮演棋盘上的一个人或存在。不要提自己是 AI、系统、模型或旁白。
 
 角色信息：
 - 名称：${context.characterName || '神秘存在'}
@@ -813,15 +817,16 @@ function buildNarrativePrompt(type, context, worldState) {
 - 已知世界事实：${formatPromptValue(context.knownWorldFacts, '无')}
 
 对话规则：
-1. 角色要有自己独特的说话方式（口头禅、语气、用词习惯）。
+1. 角色要像正在现场说话的人：句子短，有具体需求，不写宣言。
 2. 角色会记住之前与玩家的对话，并据此调整态度。
 3. 如果玩家帮助过角色或与其目标一致，态度会更友好。
 4. 如果玩家的行为造成了伤害，角色会表现出悲伤或愤怒。
-5. 对话中可以适当透露一些世界背景信息，但不要一次性说完。
+5. 对话中可以透露一点背景，但必须从当前关卡、当前位置或记忆里长出来。
 6. 必须先直接回应“玩家刚刚说”的内容；如果玩家询问需求、路线、记忆或正在安抚，请先给出具体回应，再保留角色口吻。
 7. 不要输出与当前单位、当前位置、关卡目标无关的泛泛环境独白。
 8. 只引用上方提供的当前位置、关卡目标、周边单位、周边造物、已知世界事实和记忆；不知道就说不确定。
 9. 不得新增未提供的人名、地名、道具、任务、王国、宫殿、亲属关系或已经通关等事实。
+10. 不要写“在这个充满危机的世界中”“你将”“我们必须守护希望”这类模板句。
 
 请直接输出角色的对话内容（不要加角色名前缀，不要加引号）。`,
 
@@ -837,9 +842,9 @@ function buildNarrativePrompt(type, context, worldState) {
 - 活跃的单位：${(context.units || []).join('、') || '无'}
 
 描述规则：
-1. 用感官细节（视觉、听觉、嗅觉）让场景生动。
+1. 用一两个感官细节让场景站得住。
 2. 如果场景中有玩家的造物，描述它们如何改变了环境。
-3. 如果世界裂隙较高，描述一些异常现象（地面轻微震动、空气中飘浮的光点等）。
+3. 如果裂隙较高，描述具体异常（格子裂纹、灯抖、雾倒流等）。
 4. 描述中暗示可能的危险或机会，但不要直接说明。
 
 请直接输出环境描述。`,
@@ -858,13 +863,33 @@ function buildNarrativePrompt(type, context, worldState) {
 
 叙事规则：
 1. 从受影响最深的角色的视角描述事件。
-2. 强调事件的情感冲击，而不是机械地陈述事实。
-3. 如果事件是悲剧性的，用诗意的语言描述损失。
-4. 如果事件是胜利的，描述希望如何重新点燃。
-5. 在叙事中埋下伏笔，暗示未来可能发生的事。
+2. 先写发生了什么，再写角色的反应。
+3. 如果事件是悲剧性的，直接写损失，不煽情。
+4. 如果事件是胜利的，写具体变化：谁活下来了，哪条路通了，哪片灾害退了。
+5. 伏笔只写当前事实能推出的后果。
 6. 如果提供了风格约束，必须优先遵守，不要为了诗意牺牲可读性。
 
 请直接输出事件叙事。`,
+
+    tactical_director: `
+【任务：生成AI考核者的战术预言】
+你不是旁白，也不是系统菜单。你是正在考核玩家的AI战术导演，必须围绕下一回合可验证的棋盘意图说话。
+
+当前战术事实：
+- 回合：${context.turn || 1}
+- AI干涉预算：${context.budget ? `${context.budget.remaining}/${context.budget.limit} 可用` : '未知'}
+- 主要意图：${context.primaryIntent ? `${context.primaryIntent.unitName} / ${context.primaryIntent.intent} / ${context.primaryIntent.threat} / ${context.primaryIntent.predictedAction}` : '暂无'}
+- 可用战术：${formatPromptValue((context.options || []).map(o => `${o.mechanism}:${o.label};收益=${o.impact};代价=${JSON.stringify(o.cost || {})};风险=${o.risk}`).join(' | '), '无')}
+- 最近使用：${formatPromptValue((context.recentActions || []).map(a => `${a.mechanism}:${a.summary}`).join('；'), '无')}
+
+规则：
+1. 只输出 1-2 句中文，总字数 80 字以内。
+2. 必须点名一个当前可用战术及其代价或风险。
+3. 不许编造未提供的单位、地点、任务或隐藏规则。
+4. 语气像有性格的考核者：冷静、有压迫感、会诱惑玩家冒险，但不卖弄诗意。
+5. 建议必须能被棋盘验证，不要说“命运”“神谕”这类无法操作的话。
+
+请直接输出战术预言。`,
 
     lore: `
 【任务：生成造物起源故事】
@@ -878,11 +903,11 @@ function buildNarrativePrompt(type, context, worldState) {
 - 玩家的原始描述：${context.playerText || '无'}
 
 故事规则：
-1. 故事应该与玩家的描述紧密相关，体现玩家的创意。
-2. 解释这个造物为什么存在，它从何而来。
-3. 可以暗示这个造物与世界裂隙的关系。
-4. 故事要有文学性，像一个微型童话或寓言。
-5. 控制在100-150字。
+1. 故事必须抓住玩家原始描述里的具体物件和动作。
+2. 解释这个造物为什么存在，它从哪里被捡起、拼好或唤醒。
+3. 可以暗示这个造物与裂隙的关系。
+4. 不写寓言总结，不拔高主题。
+5. 控制在60-120字。
 
 请直接输出起源故事。`
   };
@@ -983,26 +1008,27 @@ function buildRegionPrompt(state, difficulty, regionCount) {
 
   // 根据玩家风格确定主题
   let themeHint = '';
-  if (playStyle === 'creative') themeHint = '充满想象力和诗意的环境';
-  else if (playStyle === 'strategic') themeHint = '需要策略和规划的环境';
-  else if (playStyle === 'aggressive') themeHint = '充满冲突和挑战的环境';
-  else if (playStyle === 'careful') themeHint = '需要谨慎和耐心的环境';
-  else themeHint = '平衡的环境，既有挑战也有机会';
+  if (playStyle === 'creative') themeHint = '出现一个具体、怪异但可操作的地形问题';
+  else if (playStyle === 'strategic') themeHint = '需要规划路线、落点和回合顺序';
+  else if (playStyle === 'aggressive') themeHint = '压力来得快，但要给玩家可验证的反制点';
+  else if (playStyle === 'careful') themeHint = '危险推进较慢，但错误落点会扩大损失';
+  else themeHint = '有清楚威胁，也有一两个能利用的机会';
 
   // 根据裂隙值确定氛围
   let atmosphereHint = '';
-  if (entropy > 6) atmosphereHint = '世界濒临崩解，天空出现裂缝，现实不稳定';
-  else if (entropy > 4) atmosphereHint = '压抑，空气中弥漫着不安，偶尔出现异象';
-  else if (entropy > 2) atmosphereHint = '微妙的紧张感，世界在缓慢变化';
-  else atmosphereHint = '相对平静，但隐藏着不确定性';
+  if (entropy > 6) atmosphereHint = '裂隙很高，地块边缘有裂纹，规则会偶尔失真';
+  else if (entropy > 4) atmosphereHint = '压抑，路标、灯和水线会出现小异常';
+  else if (entropy > 2) atmosphereHint = '有紧张感，但问题仍能从棋盘上读出来';
+  else atmosphereHint = '相对平静，危险藏在地形布置里';
 
-  return `你是《创世计划：造物者考核》的区域生成引擎。你负责根据玩家的历史行为和当前状态，生成下一个游戏区域。
+  return `你是《裂隙考核：造物者》的区域生成器。你根据玩家历史生成下一个7x7棋盘区域，重点是可玩的危机，不是宏大旁白。
 
 【绝对规则】
 1. 只输出JSON对象，不要Markdown，不要解释，不要注释。
 2. JSON必须包含完整的区域定义，包括地图、单位、危机、目标。
 3. 地图必须是7x7的字符串数组，每个字符代表一种地形。
 4. 区域必须与玩家的历史行为有逻辑连接。
+5. story 和 objective 必须短、具体，避免“命运、史诗、希望之光、前所未有、世界见证”等模板词。
 
 【地形符号】
 . = 平地

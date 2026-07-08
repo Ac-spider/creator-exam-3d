@@ -164,6 +164,11 @@ class CreatorExam3D extends GameEngine {
     this.creationMeshPool = new Map();
     this.rescuedMarkerPool = new Map();
     this.intentArrowGroup = new THREE.Group();
+    this.lastIntentPreview = null;
+    this.aiTacticalBrief = null;
+    this.tacticalBriefRequestKey = null;
+    this.tacticalActionHistory = [];
+    this.tacticalInterferenceLimit = 2;
 
     // Initialize new systems
     this.memorySystem = getMemorySystem();
@@ -236,18 +241,18 @@ class CreatorExam3D extends GameEngine {
       const result = await this.runBrowserDemoSmoke();
       this.root.dataset.browserDemoSmoke = JSON.stringify(result);
       this.root.dataset.browserDemoSmokeStatus = result.passed ? 'passed' : 'failed';
-      this.showToast(result.passed ? '演示烟测通过' : `演示烟测失败：${result.failed.join('、')}`);
+      this.showToast(result.passed ? '烟测通过' : `烟测失败：${result.failed.join('、')}`);
     } catch (error) {
       this.root.dataset.browserDemoSmoke = JSON.stringify({
         passed: false,
         error: error?.message || String(error)
       });
       this.root.dataset.browserDemoSmokeStatus = 'failed';
-      this.showToast('演示烟测失败');
+      this.showToast('烟测失败');
     } finally {
       if (button) {
         button.disabled = false;
-        button.textContent = '演示烟测';
+        button.textContent = '跑烟测';
       }
     }
   }
@@ -261,6 +266,11 @@ class CreatorExam3D extends GameEngine {
     this.selectedWorkshopItems.clear();
     this.currentAbyssRiddle = null;
     this.suppressAbyssAutoRiddle = false;
+    this.lastIntentPreview = null;
+    this.aiTacticalBrief = null;
+    this.tacticalBriefRequestKey = null;
+    this.tacticalActionHistory = [];
+    this.tacticalInterferenceLimit = 2;
     this.isResolvingTurn = false;
     if (this.turnUnlockTimer) {
       window.clearTimeout(this.turnUnlockTimer);
@@ -417,12 +427,13 @@ class CreatorExam3D extends GameEngine {
     this.scene.background = new THREE.Color(0x070918);
     this.scene.fog = new THREE.Fog(0x070918, 15, 34);
 
-    this.camera = new THREE.PerspectiveCamera(47, window.innerWidth / window.innerHeight, 0.1, 100);
+    const renderSize = this.getCanvasRenderSize();
+    this.camera = new THREE.PerspectiveCamera(47, renderSize.width / renderSize.height, 0.1, 100);
     this.camera.position.set(6.8, 9.2, 10.5);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: false });
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(renderSize.width, renderSize.height, false);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -707,9 +718,18 @@ class CreatorExam3D extends GameEngine {
   }
 
   onResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const renderSize = this.getCanvasRenderSize();
+    this.camera.aspect = renderSize.width / renderSize.height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(renderSize.width, renderSize.height, false);
+  }
+
+  getCanvasRenderSize() {
+    const rect = this.canvas?.getBoundingClientRect?.();
+    return {
+      width: Math.max(1, Math.floor(rect?.width || document.documentElement.clientWidth || window.innerWidth || 1)),
+      height: Math.max(1, Math.floor(rect?.height || document.documentElement.clientHeight || window.innerHeight || 1))
+    };
   }
 
   async handleCompile() {
@@ -735,12 +755,12 @@ class CreatorExam3D extends GameEngine {
       this.showCard(card);
       const displayName = this.getCreationDisplayName(card);
       const compileNote = card.source === 'ai'
-        ? 'AI 已生成结构化卡牌。'
-        : (card.fallbackMessage || '使用本地兜底编译器。');
-      this.addLog(`造物编译完成：${displayName}。${compileNote}`, true);
+        ? '卡能放了。'
+        : (card.fallbackMessage || '本地规则先顶上。');
+      this.addLog(`造物就绪：${displayName}。${compileNote}`, true);
       this.ui.aiMode.textContent = card.source === 'ai'
-        ? '当前使用后端 AI 接口编译。'
-        : (card.fallbackMessage || '当前使用本地兜底编译器；配置 .env 后可切换为真实 AI。');
+        ? '云端编译回来了。'
+        : (card.fallbackMessage || '本地规则在跑；配好 .env 后会接上云端。');
     } catch (error) {
       this.showToast(error.message || '造物编译失败。');
     } finally {
@@ -772,7 +792,7 @@ class CreatorExam3D extends GameEngine {
 
   startPlacement() {
     if (!this.activeCard) {
-      this.showToast('请先生成造物卡。');
+      this.showToast('先把造物整理成卡。');
       return;
     }
     if (this.activeCard.cost > this.miraclePoints) {
@@ -825,7 +845,7 @@ class CreatorExam3D extends GameEngine {
     const displayName = this.getCreationDisplayName(card);
     this.addLog(`你在 ${this.tileName(x, y)} 创造了「${displayName}」：${card.description}`, true);
     if (card.stabilityCost > 0) {
-      this.addLog(`副作用触发：${card.side_effect} 世界裂隙 +${card.stabilityCost}。`);
+      this.addLog(`副作用：${card.side_effect} 裂隙 +${card.stabilityCost}。`);
     }
 
     this.recordCreationPlacement(creation, x, y);
@@ -886,7 +906,7 @@ class CreatorExam3D extends GameEngine {
         if (civilians.length > 0) {
           const target = civilians[Math.floor(Math.random() * civilians.length)];
           target.guidedTurns = Math.max(target.guidedTurns, 2);
-          this.addLog(`【事件】${target.name} 获得了神秘指引`);
+          this.addLog(`【事件】${target.name} 听见了方向。`);
         }
         break;
       }
@@ -894,7 +914,7 @@ class CreatorExam3D extends GameEngine {
         const beast = this.units.find(u => u.type === 'beast' && u.status === 'active');
         if (beast) {
           beast.stunnedTurns = 2;
-          this.addLog(`【事件】${beast.name} 被神秘力量牵制`);
+          this.addLog(`【事件】${beast.name} 的脚步被拖住。`);
         }
         break;
       }
@@ -927,7 +947,7 @@ class CreatorExam3D extends GameEngine {
       case 'entropyFluctuation': {
         const change = Math.random() < 0.5 ? -1 : 1;
         this.entropy = Math.max(0, this.entropy + change);
-        this.addLog(`【事件】世界裂隙 ${change > 0 ? '增加' : '减少'}了 1`);
+        this.addLog(`【事件】裂隙 ${change > 0 ? '增加' : '减少'}了 1`);
         break;
       }
       case 'hazardRedirect': {
@@ -988,7 +1008,7 @@ class CreatorExam3D extends GameEngine {
     }
 
     this.ui.nextBtn.classList.toggle('hidden', isFinal);
-    this.showModal('考核通过', message + (isFinal ? ' 长夜守城已经解锁。' : ' 可以进入下一关。'), isFinal ? '开启守城' : '继续', '重试');
+    this.showModal('考核通过', message + (isFinal ? ' 防线入口已打开。' : ' 下一关已打开。'), isFinal ? '开启守城' : '继续', '重试');
   }
 
   // Override failLevel for browser-specific effects
@@ -1650,7 +1670,7 @@ class CreatorExam3D extends GameEngine {
       this.addLog(`【工坊】${surviving.length} 个造物已存入跨关工坊。`, true);
     }
 
-    this.showModal('考核通过', message + (isFinal ? ' 长夜守城已经解锁。' : ' 可以进入下一关。'), isFinal ? '开启守城' : '继续', '重试');
+    this.showModal('考核通过', message + (isFinal ? ' 防线入口已打开。' : ' 下一关已打开。'), isFinal ? '开启守城' : '继续', '重试');
   }
 
   handleLose(message) {
@@ -2350,7 +2370,7 @@ class CreatorExam3D extends GameEngine {
     this.clearIntentArrows();
     if (this.gameState !== 'playing') return;
 
-    const result = this.generateEnemyIntentPreview();
+    const result = this.getIntentPreviewSnapshot();
     if (!result || !result.previews || result.previews.length === 0) return;
 
     const threatColor = {
@@ -2571,6 +2591,342 @@ class CreatorExam3D extends GameEngine {
     }, TURN_RESOLUTION_LOCK_MS);
   }
 
+  getIntentPreviewSnapshot(force = false) {
+    if (typeof this.generateEnemyIntentPreview !== 'function') {
+      return { previews: [], narrative: '', turn: this.turn };
+    }
+
+    const key = [
+      this.turn,
+      this.entropy,
+      this.warMeter,
+      this.units.map(unit => `${unit.id}:${unit.x},${unit.y}:${unit.status}:${unit.guidedTurns || 0}:${unit.stunnedTurns || 0}`).join('|'),
+      this.creations.filter(c => c.placed && c.remaining > 0).map(c => `${c.id}:${c.card?.ability}:${c.x},${c.y}:${c.remaining}`).join('|')
+    ].join('::');
+
+    if (!force && this.lastIntentPreview?.key === key) return this.lastIntentPreview.result;
+
+    const result = this.generateEnemyIntentPreview() || { previews: [], narrative: '', turn: this.turn };
+    this.lastIntentPreview = { key, result };
+    return result;
+  }
+
+  invalidateIntentPreview() {
+    this.lastIntentPreview = null;
+  }
+
+  getPrimaryTacticalThreat(snapshot = this.getIntentPreviewSnapshot()) {
+    const rank = { high: 3, medium: 2, low: 1, none: 0 };
+    return (snapshot.previews || [])
+      .slice()
+      .sort((a, b) => (rank[b.threat] || 0) - (rank[a.threat] || 0))[0] || null;
+  }
+
+  formatTacticalCell(cell) {
+    if (!cell || !Number.isFinite(cell.x) || !Number.isFinite(cell.y) || cell.x < 0 || cell.y < 0) return '全域';
+    return `(${cell.x + 1},${cell.y + 1})`;
+  }
+
+  describeTacticalTarget(snapshot = this.getIntentPreviewSnapshot()) {
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const unit = this.getTacticalThreatUnit(snapshot);
+    const targetCell = this.getTacticalTargetCell(snapshot);
+    const origin = primary?.position || (unit ? { x: unit.x, y: unit.y } : null);
+    const name = primary?.unitName || unit?.name || '当前威胁';
+    const intent = primary?.name || primary?.intentType || '未明意图';
+    const originText = origin ? this.formatTacticalCell(origin) : '未知格';
+    const targetText = this.formatTacticalCell(targetCell);
+    const routeText = origin && origin.x >= 0 && origin.y >= 0
+      ? `${originText} → ${targetText}`
+      : `波及 ${targetText}`;
+    return {
+      primary,
+      unit,
+      targetCell,
+      name,
+      intent,
+      originText,
+      targetText,
+      action: primary?.predictedAction || primary?.description || '等待结算',
+      line: primary ? `${name}「${intent}」${routeText}` : `暂无高压意图，默认观察 ${targetText}`
+    };
+  }
+
+  getTacticalInterferenceLimit() {
+    return this.tacticalInterferenceLimit || 2;
+  }
+
+  getTacticalInterferenceSpent(turn = this.turn) {
+    return this.tacticalActionHistory
+      .filter(action => action.turn === turn)
+      .reduce((sum, action) => sum + (action.spentInterference || 0), 0);
+  }
+
+  getTacticalInterferenceState() {
+    const limit = this.getTacticalInterferenceLimit();
+    const spent = this.getTacticalInterferenceSpent();
+    return {
+      limit,
+      spent,
+      remaining: Math.max(0, limit - spent)
+    };
+  }
+
+  canPayTacticalCost(cost = {}) {
+    if (this.gameState !== 'playing') return false;
+    if ((cost.miracle || 0) > this.miraclePoints) return false;
+    const materialNeed = cost.material || 0;
+    if (materialNeed > 0) {
+      const materialCount = Object.values(this.workshopGetMaterials?.() || {})
+        .reduce((sum, item) => sum + (item.count || 0), 0);
+      if (materialCount < materialNeed && (cost.allowDraft !== true)) return false;
+    }
+    return true;
+  }
+
+  buildTacticalOptions(snapshot = this.getIntentPreviewSnapshot()) {
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const target = this.describeTacticalTarget(snapshot);
+    const budget = this.getTacticalInterferenceState();
+    const targetName = target.name;
+    const activeOaths = this.oathManager?.getAllActiveOaths?.() || [];
+    const abyssRiddle = this.currentAbyssRiddle || this.cognitiveAbyss?.currentRiddle || null;
+    const corruptionLevel = this.verificationCorruption?.corruptionLevel || 0;
+    const materials = this.workshopGetMaterials?.() || {};
+    const materialCount = Object.values(materials).reduce((sum, item) => sum + (item.count || 0), 0);
+    const inventoryCount = this.workshopGetInventory?.().length || 0;
+    const hasBeastThreat = (snapshot.previews || []).some(p => p.category === 'beast' && p.threat !== 'none');
+
+    const options = [
+      {
+        id: 'refresh-intent',
+        mechanism: '敌方意图预览',
+        label: '重算下一步',
+        impact: '刷新箭头、目标格和威胁排序',
+        forecast: primary ? `考核者锁定 ${target.line}` : '当前没有迫近威胁',
+        target: target.line,
+        cost: {},
+        interference: 0,
+        risk: '只给情报，不替你解题',
+        enabled: this.gameState === 'playing',
+        tone: primary?.threat === 'high' ? 'danger' : 'ready'
+      },
+      {
+        id: 'prepare-chain',
+        mechanism: '连锁反应',
+        label: '记忆净化连锁',
+        impact: '把迷失单位改写为受引导，并发现一条真实共鸣',
+        forecast: `在 ${target.targetText} 两侧放下净化+记忆，改写 ${targetName} 的路径`,
+        target: target.line,
+        cost: { miracle: 1, entropy: 1, interference: 1 },
+        interference: 1,
+        risk: '需要在棋盘上留下两张临时造物',
+        enabled: this.canPayTacticalCost({ miracle: 1 }),
+        tone: 'ready'
+      },
+      {
+        id: 'perform-ritual',
+        mechanism: '仪式熔炉',
+        label: hasBeastThreat ? '驯兽古仪' : '净水圣仪',
+        impact: hasBeastThreat ? '用安抚+陷阱把巨兽下一步改成停滞' : '牺牲两张造物净化危险地形',
+        forecast: hasBeastThreat ? `把 ${targetName} 在 ${target.targetText} 前钉住` : `把 ${target.targetText} 的扩散灾害从路线里清出去`,
+        target: target.line,
+        cost: { miracle: 2, entropy: 1, interference: 2 },
+        interference: 2,
+        risk: '参与仪式的造物会被消耗',
+        enabled: this.canPayTacticalCost({ miracle: 2 }),
+        tone: hasBeastThreat ? 'danger' : 'ready'
+      },
+      {
+        id: 'form-oath',
+        mechanism: '言灵誓约',
+        label: activeOaths.length ? '兑现誓约护卫' : '立下守护誓约',
+        impact: '让一名居民承受风险，给关键单位护盾和免混乱',
+        forecast: `让 ${targetName} 扛过 ${target.targetText} 的下一步判定`,
+        target: target.line,
+        cost: { oath: activeOaths.length ? '消耗一次信任' : '建立背叛风险', interference: 1 },
+        interference: 1,
+        risk: '之后背弃会触发怨恨链',
+        enabled: this.gameState === 'playing',
+        tone: activeOaths.length ? 'active' : 'ready'
+      },
+      {
+        id: 'manifest-echo',
+        mechanism: '裂隙回响',
+        label: '召回旧造物',
+        impact: '把记忆里的造物投到威胁线上，立即触发一次效果',
+        forecast: `把旧造物回响砸到 ${target.targetText}，赌它正好克制 ${target.intent}`,
+        target: target.line,
+        cost: { entropy: 1, interference: 1 },
+        interference: 1,
+        risk: '高裂隙下可能召出恶意回响',
+        enabled: this.gameState === 'playing',
+        tone: (this.entropy / (this.level.entropyLimit || 7)) >= 0.6 ? 'danger' : 'ready'
+      },
+      {
+        id: abyssRiddle ? 'submit-riddle' : 'generate-riddle',
+        mechanism: '认知深渊',
+        label: abyssRiddle ? '解开深渊题' : '撕开深渊题',
+        impact: abyssRiddle ? '解码成功后全员显路并短暂免混乱' : '生成可解谜题，赌一次全局战术奖励',
+        forecast: abyssRiddle ? `把 ${targetName} 的混乱意图重新拉回可预测轨道` : `用裂隙换一次全局解题机会，当前焦点 ${target.targetText}`,
+        target: target.line,
+        cost: abyssRiddle ? {} : { entropy: 2, interference: 1 },
+        interference: abyssRiddle ? 0 : 1,
+        risk: abyssRiddle ? '答错会加深深渊' : '裂隙会立刻升高',
+        enabled: this.gameState === 'playing',
+        tone: abyssRiddle ? 'active' : 'danger'
+      },
+      {
+        id: 'trigger-corruption',
+        mechanism: '验证腐化',
+        label: '写入悖论造物',
+        impact: '制造违反规则的强力卡，并立即投放到最高威胁点',
+        forecast: `强行封住 ${targetName} 指向的 ${target.targetText}`,
+        target: target.line,
+        cost: { corruption: Math.min(4, 2 + Math.floor(corruptionLevel / 4)), interference: 2 },
+        interference: 2,
+        risk: '腐化越高，正常造物越不稳定',
+        enabled: this.gameState === 'playing' && corruptionLevel < 12,
+        tone: 'danger'
+      },
+      {
+        id: 'modify-workshop',
+        mechanism: '造物者工坊',
+        label: inventoryCount || materialCount ? '锻造战术备件' : '拆解战场残片',
+        impact: '用库存/材料做一张低耗工具，并立刻放到意图线上',
+        forecast: `给 ${targetName} 通往 ${target.targetText} 的路径补一个可控变量`,
+        target: target.line,
+        cost: { miracle: inventoryCount || materialCount ? 0 : 1, material: inventoryCount || materialCount ? 1 : 0, interference: 1, allowDraft: true },
+        interference: 1,
+        risk: inventoryCount || materialCount ? '会消耗库存或材料' : '没有库存时会增加裂隙',
+        enabled: this.canPayTacticalCost({ miracle: inventoryCount || materialCount ? 0 : 1, allowDraft: true }),
+        tone: inventoryCount || materialCount ? 'ready' : 'active'
+      }
+    ];
+
+    return options.map(option => {
+      const interference = Number(option.interference || option.cost?.interference || 0);
+      const blockedByBudget = interference > budget.remaining;
+      const enabled = option.enabled !== false && !blockedByBudget;
+      const disabledReason = option.enabled === false
+        ? option.disabledReason || '资源不足'
+        : blockedByBudget
+          ? `本回合AI干涉只剩 ${budget.remaining}`
+          : '';
+      return {
+        ...option,
+        interference,
+        enabled,
+        disabledReason,
+        budgetLabel: interference
+          ? `AI干涉 ${budget.spent}/${budget.limit}，打出后剩 ${Math.max(0, budget.remaining - interference)}`
+          : `AI干涉 ${budget.spent}/${budget.limit}，不消耗`
+      };
+    });
+  }
+
+  buildLocalTacticalBrief(snapshot, options) {
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const budget = this.getTacticalInterferenceState();
+    const pressure = primary
+      ? `${primary.unitName} 下一步会「${primary.name || primary.intentType}」${primary.targetPosition ? `到 (${primary.targetPosition.x + 1},${primary.targetPosition.y + 1})` : ''}`
+      : '这一回合没有明确的高压点';
+    const best = options.find(option => option.enabled && option.tone === 'danger') || options.find(option => option.enabled && option.id !== 'refresh-intent') || options[0];
+    const memoryNote = this.tacticalActionHistory.length
+      ? `上次你用了${this.tacticalActionHistory[0].mechanism}，这笔账已经记下。`
+      : '你还没有在这一关打破高级规则。';
+    return `${pressure}。AI干涉还剩 ${budget.remaining}/${budget.limit}。先看箭头，再考虑「${best?.label || '重算下一步'}」。${memoryNote}`;
+  }
+
+  getTacticalDirector(snapshot, options) {
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const key = [
+      this.level?.id,
+      this.turn,
+      primary?.unitId || primary?.unitName || 'none',
+      primary?.intentType || 'none',
+      this.entropy,
+      this.miraclePoints,
+      this.getTacticalInterferenceSpent(),
+      this.tacticalActionHistory[0]?.id || 'none'
+    ].join(':');
+    const localText = this.buildLocalTacticalBrief(snapshot, options);
+
+    if (this.aiTacticalBrief?.key === key) {
+      return {
+        title: this.aiTacticalBrief.source === 'ai' ? 'AI 考核者' : 'AI 考核者（本地推演）',
+        text: this.aiTacticalBrief.text,
+        source: this.aiTacticalBrief.source
+      };
+    }
+
+    this.queueTacticalDirectorBrief(key, snapshot, options, localText);
+    return {
+      title: 'AI 考核者（本地推演）',
+      text: localText,
+      source: 'local'
+    };
+  }
+
+  async queueTacticalDirectorBrief(key, snapshot, options, localText) {
+    if (this.tacticalBriefRequestKey === key) return;
+    this.tacticalBriefRequestKey = key;
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const text = await this.fetchNarrative('tactical_director', {
+      playerInput: localText,
+      levelTitle: this.level?.title || '',
+      turn: this.turn,
+      budget: this.getTacticalInterferenceState(),
+      primaryIntent: primary ? {
+        unitName: primary.unitName,
+        intent: primary.name || primary.intentType,
+        threat: primary.threat,
+        predictedAction: primary.predictedAction || primary.description || ''
+      } : null,
+      options: options.filter(option => option.enabled !== false).map(option => ({
+        mechanism: option.mechanism,
+        label: option.label,
+        impact: option.impact,
+        cost: option.cost,
+        risk: option.risk
+      })),
+      recentActions: this.tacticalActionHistory.slice(0, 3)
+    });
+    this.aiTacticalBrief = { key, text: text || localText, source: text ? 'ai' : 'local' };
+    if (this.tacticalBriefRequestKey === key) {
+      this.renderAdvancedMechanicsPanel();
+    }
+  }
+
+  getTacticalState() {
+    const snapshot = this.getIntentPreviewSnapshot();
+    const options = this.buildTacticalOptions(snapshot);
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const target = this.describeTacticalTarget(snapshot);
+    const budget = this.getTacticalInterferenceState();
+    return {
+      options,
+      director: this.getTacticalDirector(snapshot, options),
+      budget,
+      target,
+      threatLine: primary
+        ? `最高压力：${target.line} · ${primary.predictedAction || primary.description || '等待结算'} · AI干涉 ${budget.remaining}/${budget.limit}`
+        : '最高压力：暂无。先创造条件，别浪费回合。'
+    };
+  }
+
+  rememberTacticalAction(id, mechanism, summary, spentInterference = 0) {
+    this.tacticalActionHistory.unshift({
+      id,
+      mechanism,
+      summary,
+      turn: this.turn,
+      spentInterference
+    });
+    this.tacticalActionHistory = this.tacticalActionHistory.slice(0, 8);
+    this.aiTacticalBrief = null;
+  }
+
   getAdvancedMechanicsState() {
     const placed = this.creations.filter(c => c.placed && c.remaining > 0);
     const npcs = this.npcManager?.getNPCSummary?.() || [];
@@ -2579,8 +2935,17 @@ class CreatorExam3D extends GameEngine {
     const available = selectedNpc && this.oathManager
       ? this.oathManager.getAvailableOathTypes(selectedNpc.id, socialGraph)
       : [];
+    const intentSnapshot = this.getIntentPreviewSnapshot();
+    const intentPreviews = intentSnapshot.previews || [];
+    const chainStats = this.resonanceCodex?.getStats?.() || { total: 0, discovered: 0 };
+    const latestChain = this.resonanceCodex?.getDiscovered?.()?.slice(-1)[0]?.name || '';
+    const corruptionStats = this.getCorruptionStats?.() || {};
 
     return {
+      chain: {
+        ...chainStats,
+        latest: latestChain
+      },
       workshop: {
         inventory: this.workshopGetInventory?.() || [],
         materials: this.workshopGetMaterials?.() || {},
@@ -2603,6 +2968,15 @@ class CreatorExam3D extends GameEngine {
         state: this.getAbyssState?.() || { level: 'dormant', description: '深渊沉睡' },
         currentRiddle: this.currentAbyssRiddle || this.cognitiveAbyss?.currentRiddle || null
       },
+      corruption: {
+        ...corruptionStats,
+        state: this.verificationCorruption?.getStateDescription?.() || null
+      },
+      intent: {
+        previewCount: intentPreviews.length,
+        highThreatCount: intentPreviews.filter(p => p.threat === 'high').length,
+        narrative: intentSnapshot.narrative || ''
+      },
       story: {
         summary: { activeArcs: this.storyteller?.eventHistory?.length ? 1 : 0, totalBeats: this.storyteller?.eventHistory?.length || 0 },
         availableBeats: 1
@@ -2616,6 +2990,7 @@ class CreatorExam3D extends GameEngine {
         canAdvance: this.levelIndex >= 0 && this.levelIndex < LEVELS.length - 1
       },
       social: this.getSocialDemoState(),
+      tactical: this.getTacticalState(),
       logs: this.logs
     };
   }
@@ -2632,14 +3007,33 @@ class CreatorExam3D extends GameEngine {
     `).join('');
 
     this.ui.advancedActionList.innerHTML = model.actions.map(action => `
-      <button type="button" class="${action.enabled ? 'secondary' : 'secondary muted'}" data-advanced-action="${escapeHtml(action.id)}" ${action.enabled ? '' : 'disabled'}>
-        ${escapeHtml(action.label)}
+      <button type="button" class="${action.enabled ? 'secondary tactical-action' : 'secondary muted tactical-action'} ${escapeHtml(action.tone || '')}" data-advanced-action="${escapeHtml(action.id)}" ${action.enabled ? '' : 'disabled'}>
+        <strong>${escapeHtml(action.label)}</strong>
+        ${action.mechanism ? `<em>${escapeHtml(action.mechanism)}</em>` : ''}
         <span>${escapeHtml(action.hint || '')}</span>
       </button>
     `).join('') || '<div class="advanced-action-empty">暂无可执行机制</div>';
 
     if (this.ui.advancedDetail) {
-      this.ui.advancedDetail.textContent = model.detail;
+      const nextHtml = (model.next || []).length
+        ? `<div class="advanced-next-list">${model.next.map(item => `
+            <div class="advanced-next-item">
+              <strong>${escapeHtml(item.label || '')}</strong>
+              <span>${escapeHtml(item.text || '')}</span>
+            </div>
+          `).join('')}</div>`
+        : '';
+      const detailHtml = model.detail
+        ? `<div class="advanced-detail-text">${escapeHtml(model.detail)}</div>`
+        : '';
+      this.ui.advancedDetail.innerHTML = `
+        <div class="advanced-director-brief">
+          <strong>${escapeHtml(model.director?.title || 'AI 考核者')}</strong>
+          <span>${escapeHtml(model.director?.text || '')}</span>
+        </div>
+        ${nextHtml}
+        ${detailHtml}
+      `;
     }
     if (this.ui.advancedLog) {
       this.ui.advancedLog.innerHTML = model.logs.slice(0, 5).map(entry =>
@@ -2649,6 +3043,22 @@ class CreatorExam3D extends GameEngine {
   }
 
   handleAdvancedAction(actionId) {
+    const tacticalIds = new Set([
+      'refresh-intent',
+      'prepare-chain',
+      'perform-ritual',
+      'form-oath',
+      'manifest-echo',
+      'generate-riddle',
+      'submit-riddle',
+      'trigger-corruption',
+      'modify-workshop'
+    ]);
+    if (tacticalIds.has(actionId)) {
+      this.executeTacticalAction(actionId);
+      return;
+    }
+
     switch (actionId) {
       case 'trigger-story':
       case 'advance-story':
@@ -2661,7 +3071,6 @@ class CreatorExam3D extends GameEngine {
         this.triggerChainDemo();
         break;
       case 'prepare-ritual':
-      case 'perform-ritual':
         this.triggerRitualDemo();
         break;
       case 'trigger-corruption':
@@ -2723,6 +3132,61 @@ class CreatorExam3D extends GameEngine {
     this.updateUi();
   }
 
+  executeTacticalAction(actionId) {
+    const snapshot = this.getIntentPreviewSnapshot(actionId === 'refresh-intent');
+    const option = this.buildTacticalOptions(snapshot).find(item => item.id === actionId);
+    if (!option || option.enabled === false) {
+      this.showToast(option?.disabledReason || '这张战术牌现在打不出去。');
+      return;
+    }
+
+    const before = this.summarizeTacticalBoard();
+    let result = null;
+    switch (actionId) {
+      case 'refresh-intent':
+        result = this.resolveTacticalIntentRefresh();
+        break;
+      case 'prepare-chain':
+        result = this.resolveTacticalChain(snapshot);
+        break;
+      case 'perform-ritual':
+        result = this.resolveTacticalRitual(snapshot);
+        break;
+      case 'form-oath':
+        result = this.resolveTacticalOath(snapshot);
+        break;
+      case 'manifest-echo':
+        result = this.resolveTacticalEcho(snapshot);
+        break;
+      case 'generate-riddle':
+        result = this.resolveTacticalAbyssOpen();
+        break;
+      case 'submit-riddle':
+        result = this.resolveTacticalAbyssDecode();
+        break;
+      case 'trigger-corruption':
+        result = this.resolveTacticalCorruption(snapshot);
+        break;
+      case 'modify-workshop':
+        result = this.resolveTacticalWorkshop(snapshot);
+        break;
+    }
+
+    if (!result?.success) {
+      this.showToast(result?.error || '战术结算失败。');
+      this.updateUi();
+      return;
+    }
+
+    this.rememberTacticalAction(actionId, option.mechanism, result.summary || option.impact, option.interference || 0);
+    const after = this.summarizeTacticalBoard();
+    this.addLog(`【AI战术室】${option.mechanism}：${result.summary || option.impact}`, true);
+    this.addLog(`【战术验证】${before} → ${after}`);
+    this.invalidateIntentPreview();
+    this.renderWorld();
+    this.updateUi();
+  }
+
   async runBrowserDemoSmoke(options = {}) {
     const checks = [];
     const forbiddenTerms = ['第九王国', '星钥', '北方王宫', '银鸦公主', '银鸦'];
@@ -2759,7 +3223,12 @@ class CreatorExam3D extends GameEngine {
       }
       return tiles;
     };
-    const clickAdvancedAction = (actionId) => {
+    const resetTacticalBudgetForSmoke = () => {
+      this.tacticalActionHistory = this.tacticalActionHistory.filter(action => action.turn !== this.turn || (action.spentInterference || 0) <= 0);
+      this.aiTacticalBrief = null;
+    };
+    const clickAdvancedAction = (actionId, clickOptions = {}) => {
+      if (clickOptions.resetBudget) resetTacticalBudgetForSmoke();
       this.renderAdvancedMechanicsPanel();
       const button = this.ui.advancedActionList?.querySelector(`button[data-advanced-action="${actionId}"]`);
       if (!button) {
@@ -2814,12 +3283,119 @@ class CreatorExam3D extends GameEngine {
 
     this.renderAdvancedMechanicsPanel();
     const actionCount = this.ui.advancedActionList?.querySelectorAll('button[data-advanced-action]').length || 0;
-    record('advanced panel exposes real action buttons', actionCount >= 12, { actionCount });
+    record('AI tactical room exposes 8 mechanism cards', actionCount === 8, { actionCount });
+    this.miraclePoints = Math.max(this.miraclePoints, 8);
+    const budgetStart = this.getTacticalInterferenceState();
+    const budgetFirst = clickAdvancedAction('prepare-chain', { resetBudget: true });
+    const budgetSecond = clickAdvancedAction('modify-workshop');
+    const budgetBlockedOption = this.buildTacticalOptions(this.getIntentPreviewSnapshot()).find(item => item.id === 'trigger-corruption');
+    record('AI tactical room enforces per-turn interference budget', budgetFirst && budgetSecond && budgetBlockedOption?.enabled === false && this.getTacticalInterferenceState().remaining === 0, {
+      budgetStart,
+      budget: this.getTacticalInterferenceState(),
+      disabledReason: budgetBlockedOption?.disabledReason || ''
+    });
+    resetTacticalBudgetForSmoke();
+    this.miraclePoints = Math.max(this.miraclePoints, 8);
+
+    const tacticalActions = [
+      'refresh-intent',
+      'prepare-chain',
+      'perform-ritual',
+      'form-oath',
+      'manifest-echo',
+      'trigger-corruption',
+      'modify-workshop'
+    ];
+    const tacticalSignature = () => JSON.stringify({
+      summary: this.summarizeTacticalBoard(),
+      creations: this.creations.length,
+      corruption: this.verificationCorruption?.corruptionLevel || 0,
+      echoes: this.riftEchoSystem?.getActiveEchoes?.().length || 0,
+      oaths: this.oathManager?.getAllActiveOaths?.().length || 0,
+      riddle: !!(this.currentAbyssRiddle || this.cognitiveAbyss?.currentRiddle),
+      materials: Object.values(this.workshopGetMaterials?.() || {}).reduce((sum, item) => sum + (item.count || 0), 0)
+    });
+    const tacticalResults = [];
+    for (const actionId of tacticalActions) {
+      const beforeSummary = this.summarizeTacticalBoard();
+      const beforeSignature = tacticalSignature();
+      const beforeLogCount = this.logs.length;
+      const click = clickAdvancedAction(actionId, { resetBudget: true });
+      const afterSummary = this.summarizeTacticalBoard();
+      const afterSignature = tacticalSignature();
+      tacticalResults.push({
+        actionId,
+        clicked: !!click,
+        beforeSummary,
+        afterSummary,
+        stateChanged: beforeSignature !== afterSignature,
+        logDelta: this.logs.length - beforeLogCount,
+        toast: click?.toast || ''
+      });
+    }
+    const abyssAction = this.ui.advancedActionList?.querySelector('button[data-advanced-action="generate-riddle"]')
+      ? 'generate-riddle'
+      : 'submit-riddle';
+    const beforeAbyssSignature = tacticalSignature();
+    const abyssClick = clickAdvancedAction(abyssAction, { resetBudget: true });
+    tacticalResults.push({
+      actionId: abyssAction,
+      clicked: !!abyssClick,
+      beforeSummary: beforeAbyssSignature,
+      afterSummary: tacticalSignature(),
+      stateChanged: beforeAbyssSignature !== tacticalSignature(),
+      logDelta: 0,
+      toast: abyssClick?.toast || ''
+    });
+    if (this.currentAbyssRiddle || this.cognitiveAbyss?.currentRiddle) {
+      const beforeSubmitSignature = tacticalSignature();
+      const submitClick = clickAdvancedAction('submit-riddle', { resetBudget: true });
+      tacticalResults.push({
+        actionId: 'submit-riddle',
+        clicked: !!submitClick,
+        beforeSummary: beforeSubmitSignature,
+        afterSummary: tacticalSignature(),
+        stateChanged: beforeSubmitSignature !== tacticalSignature(),
+        logDelta: 0,
+        toast: submitClick?.toast || ''
+      });
+    }
+    const tacticalMechanismText = this.ui.advancedActionList?.textContent || '';
+    const requiredMechanisms = ['敌方意图预览', '连锁反应', '仪式熔炉', '言灵誓约', '裂隙回响', '认知深渊', '验证腐化', '造物者工坊'];
+    record('AI tactical room lists all 8 advanced mechanisms', requiredMechanisms.every(text => tacticalMechanismText.includes(text)), {
+      tacticalMechanismText: tacticalMechanismText.slice(0, 260)
+    });
+    record('AI tactical cards show concrete targets and budget', /目标：/.test(tacticalMechanismText) && /AI干涉/.test(tacticalMechanismText), {
+      tacticalMechanismText: tacticalMechanismText.slice(0, 260)
+    });
+    record('AI tactical cards execute through real button path and mutate state/logs', tacticalResults.filter(item => item.clicked).length >= 8 && tacticalResults.every(item => item.clicked && (item.stateChanged || item.logDelta > 0 || item.actionId === 'refresh-intent')), {
+      tacticalResults
+    });
+    record('AI tactical director is visible and contextual', !!this.ui.advancedDetail?.textContent?.includes('AI 考核者') && /最高压力|下一步|建议|箭头/.test(this.ui.advancedDetail?.textContent || ''), {
+      detail: this.ui.advancedDetail?.textContent?.slice(0, 260) || ''
+    });
+
+    this.updateUi();
+    const tacticalDebugState = readDebugState();
+    const tacticalFailed = checks.filter(item => !item.passed);
+    const tacticalResult = {
+      passed: tacticalFailed.length === 0,
+      failed: tacticalFailed.map(item => item.name),
+      checks,
+      levelId: tacticalDebugState?.levelId || this.level?.id || '',
+      turn: tacticalDebugState?.turn || this.turn,
+      actionCount
+    };
+
+    if (options.throwOnFailure && tacticalFailed.length) {
+      throw new Error(`Browser tactical smoke failed: ${tacticalFailed.map(item => item.name).join(', ')}`);
+    }
+    return tacticalResult;
 
     const storyBefore = this.storyteller?.eventHistory?.length || 0;
     const storyClick = clickAdvancedAction('trigger-story');
     const storyAfter = this.storyteller?.eventHistory?.length || 0;
-    record('advanced story action generates storyteller event', storyClick && storyAfter > storyBefore && recentLogText().includes('叙事演示'), {
+    record('advanced story action generates storyteller event', storyClick && storyAfter > storyBefore && recentLogText().includes('旁白沙盘'), {
       before: storyBefore,
       after: storyAfter
     });
@@ -2859,7 +3435,7 @@ class CreatorExam3D extends GameEngine {
     const legendClick = clickAdvancedAction('trigger-legend');
     const legendAfter = worldLegendSystem.generateWorldLegendReport?.().totalLegends || 0;
     const butterflyCount = worldLegendSystem.causalGraph?.getButterflyEffectsForLevel?.(this.level?.title || this.level?.id || '')?.length || 0;
-    record('advanced legend action writes causality and lore', legendClick && legendAfter > legendBefore && (butterflyCount > 0 || recentLogText().includes('传说演示')), {
+    record('advanced legend action writes causality and lore', legendClick && legendAfter > legendBefore && (butterflyCount > 0 || recentLogText().includes('传闻沙盘')), {
       before: legendBefore,
       after: legendAfter,
       butterflyCount
@@ -3132,14 +3708,320 @@ class CreatorExam3D extends GameEngine {
     return result;
   }
 
+  summarizeTacticalBoard() {
+    const snapshot = this.getIntentPreviewSnapshot();
+    const high = (snapshot.previews || []).filter(p => p.threat === 'high').length;
+    const guided = this.units.filter(unit => unit.status === 'active' && (unit.guidedTurns || 0) > 0).length;
+    const stunned = this.units.filter(unit => unit.status === 'active' && (unit.stunnedTurns || 0) > 0).length;
+    return `高威胁 ${high} / 受引导 ${guided} / 被牵制 ${stunned} / 裂隙 ${this.entropy}`;
+  }
+
+  getTacticalThreatUnit(snapshot = this.getIntentPreviewSnapshot()) {
+    const threat = this.getPrimaryTacticalThreat(snapshot);
+    if (threat?.unitId) {
+      const unit = this.units.find(item => item.id === threat.unitId && item.status === 'active');
+      if (unit) return unit;
+    }
+    return this.units.find(unit => unit.status === 'active' && (this.isCivilian(unit) || this.isMessenger(unit)))
+      || this.units.find(unit => unit.status === 'active' && unit.type === 'beast')
+      || this.units.find(unit => unit.status === 'active')
+      || null;
+  }
+
+  getHazardTacticalCell() {
+    const hazardTileByType = {
+      flood: TILE.WATER,
+      darkness: TILE.DARK,
+      poison: TILE.POISON,
+      swamp: TILE.SWAMP,
+      memory: TILE.FOG
+    };
+    const hazardTile = hazardTileByType[this.level?.hazard?.type] || TILE.WATER;
+    let fallback = null;
+    for (let y = 0; y < BOARD_SIZE; y += 1) {
+      for (let x = 0; x < BOARD_SIZE; x += 1) {
+        if (this.getTerrain(x, y) !== hazardTile) continue;
+        fallback = fallback || { x, y };
+        const target = this.neighbors(x, y).find(cell => {
+          const terrain = this.getTerrain(cell.x, cell.y);
+          return terrain !== hazardTile && terrain !== TILE.MOUNTAIN && terrain !== TILE.WALL;
+        });
+        if (target) return target;
+      }
+    }
+    return fallback || { x: 3, y: 3 };
+  }
+
+  getTacticalTargetCell(snapshot = this.getIntentPreviewSnapshot()) {
+    const threat = this.getPrimaryTacticalThreat(snapshot);
+    if (threat?.category === 'hazard' && !threat.targetPosition) return this.getHazardTacticalCell();
+    const unit = this.getTacticalThreatUnit(snapshot);
+    const target = threat?.targetPosition || threat?.position || (unit ? { x: unit.x, y: unit.y } : null);
+    if (!target) return { x: 3, y: 3 };
+    return {
+      x: Math.max(0, Math.min(BOARD_SIZE - 1, target.x)),
+      y: Math.max(0, Math.min(BOARD_SIZE - 1, target.y))
+    };
+  }
+
+  findOpenTacticalCell(origin, avoidUnits = true) {
+    const candidates = [
+      origin,
+      ...this.neighbors(origin.x, origin.y),
+      ...this.tilesWithin(origin.x, origin.y, 2)
+    ];
+    const unique = [];
+    const seen = new Set();
+    for (const cell of candidates) {
+      const key = `${cell.x},${cell.y}`;
+      if (seen.has(key) || !this.inBounds(cell.x, cell.y)) continue;
+      seen.add(key);
+      unique.push(cell);
+    }
+    return unique.find(cell => (!avoidUnits || !this.unitAt(cell.x, cell.y)) && this.getTerrain(cell.x, cell.y) !== TILE.MOUNTAIN && this.getTerrain(cell.x, cell.y) !== TILE.WALL)
+      || unique[0]
+      || { x: 3, y: 3 };
+  }
+
+  payTacticalCost(cost = {}) {
+    if ((cost.miracle || 0) > 0) this.miraclePoints = Math.max(0, this.miraclePoints - cost.miracle);
+    if ((cost.entropy || 0) > 0) this.entropy += cost.entropy;
+  }
+
+  deployTacticalCard(card, cell, meta = {}) {
+    const finalCard = {
+      ...card,
+      id: card.id || `tactical-card-${Date.now()}-${Math.random()}`,
+      tags: [...(card.tags || []), 'tactical'],
+      source: card.source || 'tactical'
+    };
+    const creation = {
+      id: finalCard.id,
+      card: finalCard,
+      x: cell.x,
+      y: cell.y,
+      remaining: finalCard.duration || 2,
+      restores: [],
+      placed: true,
+      tactical: true,
+      pulse: Math.random() * Math.PI * 2
+    };
+    this.creations.push(creation);
+    this.applyImmediatePlacement(creation);
+    this.recordCreationPlacement(creation, cell.x, cell.y);
+    this.memorySystem?.recordCreation?.(finalCard, this.level.id, this.turn, {
+      x: cell.x,
+      y: cell.y,
+      tactical: true,
+      mechanism: meta.mechanism || ''
+    });
+    if (this.particleSystem) {
+      const pos = this.tileToWorld(cell.x, cell.y);
+      this.particleSystem.spawnAbilityParticles(pos.x, 0.5, pos.z, finalCard.ability, finalCard.range || 1);
+      this.particleSystem.spawnFloatingText(pos.x, 1.5, pos.z, this.getCreationDisplayName(finalCard), this.particleSystem.getAbilityColor(finalCard.ability));
+    }
+    return creation;
+  }
+
+  deployTacticalAbility(ability, cell, overrides = {}, meta = {}) {
+    return this.deployTacticalCard({ ...this.demoCard(ability), ...overrides }, cell, meta);
+  }
+
+  resolveTacticalIntentRefresh() {
+    const result = this.getIntentPreviewSnapshot(true);
+    this.renderIntentArrows();
+    return {
+      success: true,
+      summary: `重算了 ${result.previews?.length || 0} 条下一步意图。`
+    };
+  }
+
+  resolveTacticalChain(snapshot) {
+    if (this.miraclePoints < 1) return { success: false, error: '奇迹点不足，无法布置连锁。' };
+    const unit = this.getTacticalThreatUnit(snapshot);
+    if (!unit) return { success: false, error: '没有可改写的单位意图。' };
+    this.payTacticalCost({ miracle: 1, entropy: 1 });
+
+    if ([TILE.LAND, TILE.FOREST, TILE.HIGH, TILE.BRIDGE].includes(this.getTerrain(unit.x, unit.y))) {
+      this.setTerrain(unit.x, unit.y, TILE.FOG);
+    }
+    const left = this.findOpenTacticalCell({ x: Math.max(0, unit.x - 1), y: unit.y });
+    const right = this.findOpenTacticalCell({ x: Math.min(BOARD_SIZE - 1, unit.x + 1), y: unit.y });
+    this.deployTacticalAbility('cleanse', left, { name: '战术净钟', range: 2, duration: 3, cost: 0, stabilityCost: 0 }, { mechanism: 'chain' });
+    this.deployTacticalAbility('memory_beacon', right, { name: '战术忆灯', range: 2, duration: 3, cost: 0, stabilityCost: 0 }, { mechanism: 'chain' });
+    this.applyChainReactions();
+    unit.guidedTurns = Math.max(unit.guidedTurns || 0, 2);
+    unit.immuneChaos = Math.max(unit.immuneChaos || 0, 1);
+    return {
+      success: true,
+      summary: `${unit.name} 的混乱意图被净化+记忆连锁改写为受引导。`
+    };
+  }
+
+  resolveTacticalRitual(snapshot) {
+    if (this.miraclePoints < 2) return { success: false, error: '奇迹点不足，无法执行仪式。' };
+    const beast = this.units.find(unit => unit.status === 'active' && unit.type === 'beast');
+    if (beast) {
+      const a = this.addDemoCreation('calm', beast.x, beast.y);
+      const b = this.addDemoCreation('trap', beast.x, beast.y);
+      this.selectedRitualCreations = new Set([a.id, b.id]);
+      const result = this.performRitual([a.id, b.id]);
+      if (!result.success) return { success: false, error: result.warnings?.join('；') || result.error || '仪式失败' };
+      beast.stunnedTurns = Math.max(beast.stunnedTurns || 0, 2);
+      beast.anger = 0;
+      return { success: true, summary: `${beast.name} 的冲锋意图被驯兽古仪改写为停滞。` };
+    }
+
+    const cell = this.getTacticalTargetCell(snapshot);
+    if ([TILE.LAND, TILE.FOREST, TILE.HIGH].includes(this.getTerrain(cell.x, cell.y))) this.setTerrain(cell.x, cell.y, TILE.WATER);
+    const a = this.addDemoCreation('absorb_water', cell.x, cell.y);
+    const b = this.addDemoCreation('cleanse', Math.max(0, cell.x - 1), cell.y);
+    this.selectedRitualCreations = new Set([a.id, b.id]);
+    const result = this.performRitual([a.id, b.id]);
+    if (!result.success) return { success: false, error: result.warnings?.join('；') || result.error || '仪式失败' };
+    return { success: true, summary: '净水圣仪清掉了关键路线上的危险地形。' };
+  }
+
+  resolveTacticalOath(snapshot) {
+    let oath = this.oathManager?.getAllActiveOaths?.()[0] || null;
+    const npc = this.npcManager?.getNPCSummary?.()[0];
+    if (!oath && npc) {
+      const type = this.oathManager.getAvailableOathTypes(npc.id, this.npcManager.socialGraph).find(item => item.canForm !== false)?.type || 'protection';
+      const result = this.bindOath(npc.id, type);
+      if (result.success) oath = result.oath;
+    }
+    if (!oath) return { success: false, error: '当前没有可立誓的居民。' };
+
+    const unit = this.getTacticalThreatUnit(snapshot);
+    if (!unit) return { success: false, error: '没有可守护的单位。' };
+    unit.shieldTurns = Math.max(unit.shieldTurns || 0, 2);
+    unit.immuneChaos = Math.max(unit.immuneChaos || 0, 2);
+    unit.guidedTurns = Math.max(unit.guidedTurns || 0, 1);
+    oath.trustLevel = Math.max(0, (oath.trustLevel ?? 50) - 8);
+    oath.recordEvent?.('tactical_guard');
+    return {
+      success: true,
+      summary: `${oath.npcName} 的誓约护住了 ${unit.name}，但信任下降。`
+    };
+  }
+
+  resolveTacticalEcho(snapshot) {
+    this.entropy += 1;
+    const beforeCount = this.riftEchoSystem?.getActiveEchoes?.().length || 0;
+    this.triggerRiftEchoDemo();
+    const echoes = this.riftEchoSystem?.getActiveEchoes?.() || [];
+    const echo = echoes[echoes.length - 1];
+    if (!echo || echoes.length <= beforeCount) return { success: false, error: '裂隙没有回应这次召唤。' };
+    const cell = this.getTacticalTargetCell(snapshot);
+    const ability = echo.getEffectiveAbility?.() || echo.originalCreation?.ability || echo.originalCreation?.card?.ability || 'memory_beacon';
+    applyAbility(this, {
+      id: echo.id,
+      card: {
+        ...(echo.originalCreation?.card || echo.originalCreation || {}),
+        name: echo.originalCreation?.name || echo.originalCreation?.card?.name || '战术回响',
+        ability,
+        range: echo.originalCreation?.card?.range || 2,
+        duration: 1
+      },
+      x: cell.x,
+      y: cell.y,
+      remaining: 1,
+      placed: true,
+      restores: []
+    }, 'active');
+    return {
+      success: true,
+      summary: `旧造物回响在 (${cell.x + 1},${cell.y + 1}) 触发了 ${ability}。`
+    };
+  }
+
+  resolveTacticalAbyssOpen() {
+    const limit = this.level.entropyLimit || 7;
+    this.entropy = Math.max(this.entropy + 2, Math.ceil(limit * 0.8));
+    this.cognitiveAbyss.update(this.entropy, limit);
+    this.suppressAbyssAutoRiddle = false;
+    this.currentAbyssRiddle = this.generateAbyssRiddle('instruction');
+    if (!this.currentAbyssRiddle) return { success: false, error: '深渊还没有给出可解谜题。' };
+    return {
+      success: true,
+      summary: `深渊提出谜题：${this.currentAbyssRiddle.displayed}`
+    };
+  }
+
+  resolveTacticalAbyssDecode() {
+    const riddle = this.currentAbyssRiddle || this.cognitiveAbyss?.currentRiddle;
+    if (!riddle) return { success: false, error: '没有待解码的深渊谜题。' };
+    this.currentAbyssRiddle = riddle;
+    if (this.ui.advancedDecodeInput) this.ui.advancedDecodeInput.value = riddle.decoded;
+    if (this.ui.abyssRiddleInput) this.ui.abyssRiddleInput.value = riddle.decoded;
+    const result = this.handleDecodeAbyss();
+    if (result?.success === false) return result;
+    return {
+      success: true,
+      summary: '深渊谜题被解开，所有可救单位获得显路和免混乱。'
+    };
+  }
+
+  resolveTacticalCorruption(snapshot) {
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const paradoxType = primary?.category === 'beast'
+      ? 'shield_spear'
+      : primary?.category === 'hazard'
+        ? 'creation_destruction'
+        : primary?.intentType === 'misjudge' || primary?.intentType === 'confused'
+          ? 'guide_mislead'
+          : 'time_stillness';
+    const result = this.createParadoxCard(paradoxType);
+    if (!result.success || !result.card) return { success: false, error: result.warnings?.join('；') || '悖论造物生成失败' };
+    const target = this.findOpenTacticalCell(this.getTacticalTargetCell(snapshot), result.card.ability === 'paradox_barrier');
+    this.deployTacticalCard(result.card, target, { mechanism: 'corruption' });
+    return {
+      success: true,
+      summary: `${this.getCreationDisplayName(result.card)} 被非法写入目标线，腐化 +${result.corruption}。`
+    };
+  }
+
+  resolveTacticalWorkshop(snapshot) {
+    const primary = this.getPrimaryTacticalThreat(snapshot);
+    const ability = primary?.category === 'beast' ? 'calm' : primary?.intentType === 'misjudge' || primary?.intentType === 'confused' ? 'cleanse' : 'illuminate';
+    let inventory = this.workshopGetInventory?.() || [];
+    if (!inventory.some(item => item.card?.ability === ability)) {
+      if (this.miraclePoints <= 0 && inventory.length === 0) return { success: false, error: '没有奇迹点或库存可供工坊拆解。' };
+      if (inventory.length === 0) {
+        this.payTacticalCost({ miracle: 1, entropy: 1 });
+      }
+      this.workshopAddCreation(this.demoCard(ability));
+    }
+    this.seedWorkshopMaterials(1);
+    inventory = this.workshopGetInventory?.() || [];
+    const item = inventory.find(entry => entry.card?.ability === ability) || inventory[0];
+    const result = this.workshopModify(item.id, 'range_boost');
+    if (!result.success) return { success: false, error: result.error || '工坊改造失败' };
+    const target = this.findOpenTacticalCell(this.getTacticalTargetCell(snapshot));
+    const creation = this.deployTacticalCard({
+      ...result.finalCard,
+      cost: 0,
+      stabilityCost: 0
+    }, target, { mechanism: 'workshop' });
+    return {
+      success: true,
+      summary: `工坊把 ${this.getCreationDisplayName(creation.card)} 锻造成战术备件并投入棋盘。`
+    };
+  }
+
   demoCard(ability) {
     const cards = {
-      illuminate: { name: '演示星灯', type: '光系', description: '为演示点亮黑暗的造物', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['demo'] },
-      absorb_water: { name: '演示潮瓶', type: '水系', description: '为演示吸纳水汽的造物', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['demo'] },
-      cleanse: { name: '演示净钟', type: '净化', description: '为演示净化污染的造物', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['demo'] },
-      grow_forest: { name: '演示种子', type: '地形', description: '为演示生长森林的造物', range: 1, duration: 3, cost: 1, stabilityCost: 0, tags: ['demo'] },
-      create_bridge: { name: '演示桥石', type: '通行', description: '为演示架桥的造物', range: 1, duration: 3, cost: 1, stabilityCost: 0, tags: ['demo'] },
-      memory_beacon: { name: '演示忆灯', type: '记忆', description: '为演示唤回记忆的造物', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['demo'] }
+      illuminate: { name: '沙盘星灯', type: '光系', description: '点亮黑暗，给矿工留一段路', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      absorb_water: { name: '沙盘潮瓶', type: '水系', description: '吸走水汽，给村口腾出一格', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      cleanse: { name: '沙盘净钟', type: '净化', description: '洗掉污染，露出能走的地', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      grow_forest: { name: '沙盘种子', type: '地形', description: '长出一小片林子，挡住灾线', range: 1, duration: 3, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      create_bridge: { name: '沙盘桥石', type: '通行', description: '在水上架一段临时路', range: 1, duration: 3, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      memory_beacon: { name: '沙盘忆灯', type: '记忆', description: '把迷路人的目标叫回来', range: 2, duration: 3, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      calm: { name: '沙盘静钟', type: '誓约', description: '让巨兽和人心同时慢下来', range: 2, duration: 2, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      trap: { name: '沙盘缚索', type: '机关', description: '把下一步冲锋钉在原地', range: 1, duration: 2, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      force_field: { name: '沙盘结界', type: '防护', description: '用可见边界改写敌人路径', range: 1, duration: 2, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      reveal_path: { name: '沙盘路光', type: '路径', description: '把关键单位的下一步照出来', range: 1, duration: 2, cost: 1, stabilityCost: 0, tags: ['沙盘'] },
+      slow_beast: { name: '沙盘眠笛', type: '控制', description: '压住巨兽下一步', range: 2, duration: 2, cost: 1, stabilityCost: 0, tags: ['沙盘'] }
     };
     return { ability, ...(cards[ability] || cards.illuminate) };
   }
@@ -3166,7 +4048,7 @@ class CreatorExam3D extends GameEngine {
     this.addDemoCreation('cleanse', 1, 2);
     this.addDemoCreation('memory_beacon', 3, 2);
     this.applyChainReactions();
-    this.showToast('已触发净化+记忆连锁反应。');
+    this.showToast('净化和记忆咬上了。');
   }
 
   triggerRitualDemo() {
@@ -3182,7 +4064,7 @@ class CreatorExam3D extends GameEngine {
     const narrative = this.storyteller.generateNarrative(event, this);
     this.storyteller.eventHistory.push({ turn: this.turn, event: event.name, effect: event.effect, narrative, tension: this.storyteller.tension });
     this.storyteller.lastEventTurn = this.turn;
-    this.addLog(`【叙事演示】${narrative}`, true);
+    this.addLog(`【旁白沙盘】${narrative}`, true);
     this.applyStorytellerEvent(event);
     this.storyteller.recordBehavior(this, 'demo_trigger');
   }
@@ -3219,7 +4101,7 @@ class CreatorExam3D extends GameEngine {
     if (npc) worldLegendSystem.enshrineNPC(npc, 'legendary_deed');
     const butterflyCount = worldLegendSystem.causalGraph.getButterflyEffectsForLevel(currentLevel).length;
     this.memorySystem?.addNarrativeMemory?.('lore', `传说记住了${creationName}与${currentLevel}的因果。`, ['造物者', creationName]);
-    this.addLog(`【传说演示】世界传说、神器、封神者与因果链已写入；蝴蝶效应 ${butterflyCount} 条。`, true);
+    this.addLog(`【传闻沙盘】传闻、物件和因果链已记下；后果 ${butterflyCount} 条。`, true);
   }
 
   triggerAbyssDemo() {
@@ -3228,7 +4110,7 @@ class CreatorExam3D extends GameEngine {
     this.suppressAbyssAutoRiddle = false;
     this.currentAbyssRiddle = this.generateAbyssRiddle('instruction');
     if (this.currentAbyssRiddle) {
-      this.addLog(`【深渊演示】谜题出现：${this.currentAbyssRiddle.displayed}`, true);
+      this.addLog(`【深渊沙盘】谜题出现：${this.currentAbyssRiddle.displayed}`, true);
       this.showToast('认知深渊已激活。');
     }
   }
@@ -3335,12 +4217,12 @@ class CreatorExam3D extends GameEngine {
         this.miraclePoints = Math.max(this.miraclePoints, result.card.cost || 0);
         this.placeCreation(target.x, target.y);
         const effect = this.creations.find(c => c.id === result.card.id)?.corruptionEffect || {};
-        this.addLog(`【腐化演示】${this.getCreationDisplayName(result.card)} 已在 (${target.x + 1}, ${target.y + 1}) 触发，腐化 +${result.corruption}，棋盘效果 ${JSON.stringify(effect)}。`, true);
+        this.addLog(`【腐化沙盘】${this.getCreationDisplayName(result.card)} 落在 (${target.x + 1}, ${target.y + 1})，腐化 +${result.corruption}，效果 ${JSON.stringify(effect)}。`, true);
       } else {
-        this.addLog(`【腐化演示】${this.getCreationDisplayName(result.card)} 已生成，腐化 +${result.corruption}。`, true);
+        this.addLog(`【腐化沙盘】${this.getCreationDisplayName(result.card)} 已备好，腐化 +${result.corruption}。`, true);
       }
     } else {
-      this.addLog(`【腐化演示】${result.warnings?.join('；') || '生成失败'}`, true);
+      this.addLog(`【腐化沙盘】${result.warnings?.join('；') || '没成'}`, true);
     }
   }
 
@@ -3417,7 +4299,7 @@ class CreatorExam3D extends GameEngine {
     this.handleWorkshopModify();
     this.selectWorkshopItems(2);
     this.handleWorkshopFuse();
-    this.addLog('【工坊演示】拆解、改造、融合流程已完成。', true);
+    this.addLog('【工坊沙盘】拆解、改造、融合跑完了。', true);
   }
 
   triggerOathDemo() {
@@ -3443,7 +4325,7 @@ class CreatorExam3D extends GameEngine {
       maxTurns: this.level.maxTurns,
       lost: this.lost
     });
-    this.addLog(`【传承演示】${legacy.name} 已写入传承，等级 ${legacy.tier}。`, true);
+    this.addLog(`【传承沙盘】${legacy.name} 已记进名单，等级 ${legacy.tier}。`, true);
   }
 
   triggerLegacyReturnDemo() {
@@ -3460,15 +4342,15 @@ class CreatorExam3D extends GameEngine {
         returned = this.integrateLegacyReturnUnits(forced);
         this.npcManager?.addUnitNPCs?.(returned, { legacyReturn: true });
         if (returned.length) {
-          this.addLog('【传承回归演示】自然概率未触发，演示已强制召回传承单位。', true);
+          this.addLog('【传承回归沙盘】自然概率没中，沙盘强制叫回一名单位。', true);
         }
       }
       if (returned.length) {
         this.showToast(`传承回归：${returned.map(unit => unit.name).join('、')} 已加入下一关`);
-        this.addLog(`【传承回归演示】已进入${this.level.shortTitle}，${returned.length} 名被救援者作为真实单位重现。`, true);
+        this.addLog(`【传承回归沙盘】已进入${this.level.shortTitle}，${returned.length} 名被救援者回到棋盘。`, true);
       } else {
         this.showToast('已进入下一关，但没有符合条件的传承单位');
-        this.addLog('【传承回归演示】未找到可在下一关重现的传承单位。', true);
+        this.addLog('【传承回归沙盘】没有能在下一关回来的单位。', true);
       }
       this.renderWorld();
       this.updateUi();
@@ -3524,7 +4406,7 @@ class CreatorExam3D extends GameEngine {
       }
     }
     if (!graph || npcs.length < 3) {
-      this.showToast('当前关卡 NPC 不足，无法形成社交图谱演示。');
+      this.showToast('这关人太少，关系网织不起来。');
       return;
     }
 
@@ -3551,7 +4433,7 @@ class CreatorExam3D extends GameEngine {
     const distance = graph.getSocialDistance(ids[0], ids[ids.length - 1], { minStrength: -50 });
     const distanceText = Number.isFinite(distance.distance) ? `${distance.distance} 跳` : '不可达';
     const groupText = cliques[0]?.names.join('、') || '尚未形成';
-    this.addLog(`【社交演示】关系类型已播种，小团体：${groupText}；${npcs[0].name} 到 ${npcs[npcs.length - 1].name} 的社交距离：${distanceText}。`, true);
+    this.addLog(`【居民沙盘】关系已落下，小团体：${groupText}；${npcs[0].name} 到 ${npcs[npcs.length - 1].name} 的距离：${distanceText}。`, true);
     this.showToast(`社交图谱：${cliques.length} 个小团体，距离 ${distanceText}`);
   }
 
@@ -3625,7 +4507,7 @@ class CreatorExam3D extends GameEngine {
   renderIntentPreview() {
     if (!this.ui.intentPreviewList || !this.level) return;
     const previews = typeof this.generateEnemyIntentPreview === 'function'
-      ? (this.generateEnemyIntentPreview()?.previews || [])
+      ? (this.getIntentPreviewSnapshot()?.previews || [])
       : [];
     this.ui.intentPreviewList.innerHTML = previews.slice(0, 5).map(preview => {
       const threat = preview.threat || 'low';
@@ -4337,7 +5219,7 @@ class CreatorExam3D extends GameEngine {
       return;
     }
 
-    const result = this.generateEnemyIntentPreview();
+    const result = this.getIntentPreviewSnapshot();
     if (!result || !result.previews || result.previews.length === 0) {
       this.ui.enemyIntentList.innerHTML = '<div class="continuity-item">当前没有可预见的行动</div>';
       this.ui.enemyIntentNarrative.innerHTML = '';
@@ -4363,7 +5245,7 @@ class CreatorExam3D extends GameEngine {
     if (!this.ui.abyssRiddleText) return;
 
     if (typeof this.generateAbyssRiddle !== 'function') {
-      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">世界裂隙尚浅，认知深渊沉睡中。</div>';
+      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">裂隙还浅，深渊没动静。</div>';
       this.ui.abyssRiddleInput.classList.add('hidden');
       this.ui.abyssDecodeBtn.classList.add('hidden');
       this.ui.abyssResult.innerHTML = '';
@@ -4376,7 +5258,7 @@ class CreatorExam3D extends GameEngine {
 
     const riddle = this.currentAbyssRiddle;
     if (!riddle) {
-      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">深渊静默，未生成谜题。</div>';
+      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">深渊没开口，暂时没有谜题。</div>';
       this.ui.abyssRiddleInput.classList.add('hidden');
       this.ui.abyssDecodeBtn.classList.add('hidden');
       return;
@@ -4384,7 +5266,7 @@ class CreatorExam3D extends GameEngine {
     const active = riddle && riddle.active !== false;
     const depth = riddle?.depth ?? 0;
     if (!active && depth < 0.8) {
-      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">世界裂隙尚浅，认知深渊沉睡中。</div>';
+      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">裂隙还浅，深渊没动静。</div>';
       this.ui.abyssRiddleInput.classList.add('hidden');
       this.ui.abyssDecodeBtn.classList.add('hidden');
       this.ui.abyssResult.innerHTML = '';
@@ -4395,7 +5277,7 @@ class CreatorExam3D extends GameEngine {
     this.ui.abyssDecodeBtn.classList.remove('hidden');
 
     if (!riddle) {
-      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">深渊静默，未生成谜题。</div>';
+      this.ui.abyssRiddleText.innerHTML = '<div class="continuity-item">深渊没开口，暂时没有谜题。</div>';
       return;
     }
 
@@ -4412,7 +5294,7 @@ class CreatorExam3D extends GameEngine {
     if (!this.ui.corruptionList) return;
 
     if (typeof this.createParadoxCard !== 'function') {
-      this.ui.corruptionList.innerHTML = '<div class="continuity-item">腐化验证系统尚未就绪。</div>';
+      this.ui.corruptionList.innerHTML = '<div class="continuity-item">腐化验证还没接上。</div>';
       this.ui.corruptionCreateBtn.disabled = true;
       return;
     }
@@ -4453,7 +5335,7 @@ class CreatorExam3D extends GameEngine {
     if (!this.ui.workshopInventoryList) return;
 
     if (typeof this.workshopGetInventory !== 'function' || typeof this.workshopGetMaterials !== 'function') {
-      this.ui.workshopInventoryList.innerHTML = '<div class="continuity-item">造物者工坊系统尚未就绪。</div>';
+      this.ui.workshopInventoryList.innerHTML = '<div class="continuity-item">工坊还没开门。</div>';
       this.ui.workshopMaterialsList.innerHTML = '';
       this.ui.workshopDismantleBtn.disabled = true;
       this.ui.workshopModifyBtn.disabled = true;
@@ -4465,7 +5347,7 @@ class CreatorExam3D extends GameEngine {
     const materials = this.workshopGetMaterials();
 
     if (inventory.length === 0) {
-      this.ui.workshopInventoryList.innerHTML = '<div class="continuity-item">工坊库存为空。胜利后可将本关造物存入工坊。</div>';
+      this.ui.workshopInventoryList.innerHTML = '<div class="continuity-item">工坊没货。赢下一关后，场上的造物会进库存。</div>';
     } else {
       this.ui.workshopInventoryList.innerHTML = inventory.map(item => `
         <label class="continuity-item workshop-item">
@@ -4524,8 +5406,8 @@ class CreatorExam3D extends GameEngine {
     if (this.ui.legacyWorldStats) {
       this.ui.legacyWorldStats.innerHTML = `
         <div class="continuity-item">
-          <strong>世界熵值</strong> ${persistentWorld.worldEntropy}
-          <br><strong>世界名望</strong> ${persistentWorld.worldRenown}
+          <strong>裂隙熵值</strong> ${persistentWorld.worldEntropy}
+          <br><strong>名望</strong> ${persistentWorld.worldRenown}
           <br><strong>已完成关卡</strong> ${persistentWorld.levelHistory.length}
         </div>
       `;
@@ -4548,7 +5430,7 @@ class CreatorExam3D extends GameEngine {
   handleStorytellerChange(personality) {
     if (defaultStoryteller.setPersonality) {
       defaultStoryteller.setPersonality(personality);
-      this.addLog(`【叙事引擎】已切换为${defaultStoryteller.personality.name}人格。`, true);
+      this.addLog(`【旁白】已切到${defaultStoryteller.personality.name}。`, true);
       this.renderStorytellerPanel();
     }
   }
@@ -4557,12 +5439,12 @@ class CreatorExam3D extends GameEngine {
     const input = this.ui.advancedDecodeInput?.value?.trim() || this.ui.abyssRiddleInput?.value?.trim();
     if (!input) {
       this.showToast('请输入解码答案。');
-      return;
+      return { success: false, error: '请输入解码答案。' };
     }
 
     if (typeof this.attemptDecodeAbyss !== 'function') {
-      this.showToast('认知深渊系统尚未就绪。');
-      return;
+      this.showToast('认知深渊还没接上。');
+      return { success: false, error: '认知深渊还没接上。' };
     }
 
     const result = this.attemptDecodeAbyss(input);
@@ -4575,6 +5457,17 @@ class CreatorExam3D extends GameEngine {
       this.suppressAbyssAutoRiddle = true;
       if (this.ui.advancedDecodeInput) this.ui.advancedDecodeInput.value = '';
       if (this.ui.abyssRiddleInput) this.ui.abyssRiddleInput.value = '';
+      let stabilized = 0;
+      for (const unit of this.units.filter(u => u.status === 'active' && (this.isCivilian(u) || this.isMessenger(u)))) {
+        unit.guidedTurns = Math.max(unit.guidedTurns || 0, 2);
+        unit.immuneChaos = Math.max(unit.immuneChaos || 0, 2);
+        unit.revealedPath = Math.max(unit.revealedPath || 0, 1);
+        unit.moveSpeed = Math.max(unit.moveSpeed || 1, 2);
+        stabilized += 1;
+      }
+      if (stabilized) {
+        this.addLog(`【认知深渊】解码成功，${stabilized} 个单位的下一步从混乱改为可预测路径。`, true);
+      }
       if (result.reward) {
         if (result.reward.type === 'knowledge') {
           this.showToast(`获得知识：${result.reward.category}`);
@@ -4585,6 +5478,7 @@ class CreatorExam3D extends GameEngine {
     }
 
     this.updateUi();
+    return result;
   }
 
   handleCreateCorruption() {
@@ -4595,7 +5489,7 @@ class CreatorExam3D extends GameEngine {
     }
 
     if (typeof this.createParadoxCard !== 'function') {
-      this.showToast('腐化验证系统尚未就绪。');
+      this.showToast('腐化验证还没接上。');
       return;
     }
 
@@ -4603,10 +5497,10 @@ class CreatorExam3D extends GameEngine {
     if (result.success && result.card) {
       this.activeCard = result.card;
       this.showCard(result.card);
-      this.addLog(`【腐化】生成悖论造物「${this.getCreationDisplayName(result.card)}」，腐化值 +${result.corruption}。`, true);
+      this.addLog(`【腐化】悖论造物「${this.getCreationDisplayName(result.card)}」到手，腐化 +${result.corruption}。`, true);
       if (result.narrative) this.addLog(result.narrative);
     } else {
-      const warning = result.warnings?.join('；') || result.narrative || '腐化造物生成失败';
+      const warning = result.warnings?.join('；') || result.narrative || '腐化造物没成';
       this.showToast(warning);
       this.addLog(`【腐化】${warning}`, true);
     }
@@ -4622,7 +5516,7 @@ class CreatorExam3D extends GameEngine {
     }
 
     if (typeof this.workshopDismantle !== 'function') {
-      this.showToast('造物者工坊系统尚未就绪。');
+      this.showToast('工坊还没开门。');
       return;
     }
 
@@ -4645,7 +5539,7 @@ class CreatorExam3D extends GameEngine {
     }
 
     if (typeof this.workshopModify !== 'function') {
-      this.showToast('造物者工坊系统尚未就绪。');
+      this.showToast('工坊还没开门。');
       return;
     }
 
@@ -4668,7 +5562,7 @@ class CreatorExam3D extends GameEngine {
     }
 
     if (typeof this.workshopFuse !== 'function') {
-      this.showToast('造物者工坊系统尚未就绪。');
+      this.showToast('工坊还没开门。');
       return;
     }
 
@@ -4948,7 +5842,7 @@ class CreatorExam3D extends GameEngine {
         trap: '藤蔓悄悄爬开，织成一张等着人的网。',
         dream_link: '两个梦缠到一块，真和假分不清了。',
         time_dilation: '跟前的东西都慢下来，就你的心跳还照旧。',
-        reveal_path: '藏着的路露出来，像世界掀开了帘子。',
+        reveal_path: '藏着的路露出来，雾幕被掀开一角。',
         sun_blessing: '阳光钻透云层，暖得像有人搂着。'
       },
       rescue: {
@@ -4957,7 +5851,7 @@ class CreatorExam3D extends GameEngine {
         'giant-city': '城还囫囵着，巨兽背上那点水，还养着往后的河。',
         'wordless-war': '使者跨过了边境，话这头的桥又搭上了。',
         'memory-plague': '圣树的光底下，忘掉的名字又叫回来了。',
-        'final-exam': '到了世界的边儿上，指望还立着。'
+        'final-exam': '防线边上，最后一盏灯还亮着。'
       },
       loss: {
         'flood-village': '洪水把什么都盖了，只剩水面上一圈圈纹。',
@@ -4973,7 +5867,7 @@ class CreatorExam3D extends GameEngine {
         fog: '雾从深处涌上来，边界和记忆都糊了。',
         war: '边境的气越来越紧，仗的影子压过来了。',
         beast: '巨兽喘得沉，地跟着抖。',
-        mixed: '几样灾一块来，世界在试你能撑到哪。'
+        mixed: '几样灾一块来，几条线都绷紧了。'
       }
     };
 

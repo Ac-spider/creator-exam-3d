@@ -2056,7 +2056,7 @@ class GameEngine {
       target: target || null,
       level: this.level?.title || '未知',
       turn: this.turn,
-      description: `${actor || '造物者'}在${this.level?.title || '未知'}${type === 'creation' ? '创造了' : type === 'rescue' ? '拯救了' : '做出了'}${target || '伟大的事迹'}`,
+      description: `${actor || '造物者'}在${this.level?.title || '未知'}${type === 'creation' ? '创造了' : type === 'rescue' ? '拯救了' : '处理了'}${target || '一件要紧事'}`,
       impact
     };
     return worldLegendSystem.recordLegendaryEvent(event);

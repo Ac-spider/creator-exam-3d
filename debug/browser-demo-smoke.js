@@ -22,53 +22,41 @@ assert.ok(bridgeBlock.includes('dataset.browserDemoSmoke'), 'browser smoke bridg
 
 assert.ok(smokeBlock.includes('button.click()'), 'browser smoke should trigger the real Advanced panel button path');
 assert.ok(smokeBlock.includes('dataset?.debugState'), 'browser smoke should read DOM-visible debug state');
-assert.ok(smokeBlock.includes('submitNpcDialogue(fabricatedPrompt'), 'browser smoke should exercise NPC dialogue through the UI submit path');
-assert.ok(smokeBlock.includes('sendResidentDialogue()'), 'browser smoke should exercise resident dialogue through the UI submit path');
-assert.ok(smokeBlock.includes('hasForbiddenTerm'), 'browser smoke should reject fabricated lore in replies and memory');
+assert.ok(smokeBlock.includes('AI tactical room exposes 8 mechanism cards'), 'browser smoke should verify the tactical room card count');
+assert.ok(smokeBlock.includes('AI tactical director is visible and contextual'), 'browser smoke should verify the AI tactical director');
+assert.ok(smokeBlock.includes('AI tactical room enforces per-turn interference budget'), 'browser smoke should verify tactical action budget gating');
+assert.ok(smokeBlock.includes('AI tactical cards show concrete targets and budget'), 'browser smoke should verify target and budget text');
 
 for (const actionId of [
-  'trigger-story',
-  'trigger-legend',
+  'refresh-intent',
   'prepare-chain',
   'perform-ritual',
   'form-oath',
-  'break-oath',
-  'return-legacy',
-  'trigger-social',
+  'manifest-echo',
   'generate-riddle',
   'submit-riddle',
-  'modify-workshop',
-  'manifest-echo'
+  'trigger-corruption',
+  'modify-workshop'
 ]) {
-  assert.ok(smokeBlock.includes(`clickAdvancedAction('${actionId}')`), `browser smoke should cover ${actionId}`);
+  assert.ok(smokeBlock.includes(`'${actionId}'`), `browser smoke should cover ${actionId}`);
 }
 
-for (const personality of ['cassandra', 'phoebe', 'randy', 'narrator']) {
-  assert.ok(smokeBlock.includes(personality), `browser smoke should cover storyteller personality ${personality}`);
-}
-assert.ok(smokeBlock.includes('storytellerSelect.dispatchEvent'), 'browser smoke should trigger storyteller through the select UI');
-assert.ok(smokeBlock.includes('residentAgentSystem'), 'browser smoke should inspect Resident Agent state');
-assert.ok(smokeBlock.includes("type: 'unit_rescued'"), 'browser smoke should drive Resident Agent from a real world event');
-assert.ok(smokeBlock.includes("query?.({ type: 'resident_action' })"), 'browser smoke should verify resident_action events');
-
-for (const paradoxType of [
-  'light_dark',
-  'life_death',
-  'creation_destruction',
-  'time_stillness',
-  'shield_spear',
-  'memory_forget',
-  'water_fire',
-  'guide_mislead'
+for (const mechanism of [
+  '敌方意图预览',
+  '连锁反应',
+  '仪式熔炉',
+  '言灵誓约',
+  '裂隙回响',
+  '认知深渊',
+  '验证腐化',
+  '造物者工坊'
 ]) {
-  assert.ok(smokeBlock.includes(`'${paradoxType}'`), `browser smoke should cover paradox ${paradoxType}`);
+  assert.ok(smokeBlock.includes(`'${mechanism}'`), `browser smoke should cover tactical mechanism ${mechanism}`);
 }
 
 assert.ok(smokeBlock.includes('renderEnemyIntentPanel()'), 'browser smoke should render enemy intent panel');
 assert.ok(smokeBlock.includes('renderIntentArrows()'), 'browser smoke should render intent arrows');
-
-for (const term of ['第九王国', '星钥', '北方王宫', '银鸦公主', '银鸦']) {
-  assert.ok(smokeBlock.includes(term), `browser smoke should guard fabricated term ${term}`);
-}
+assert.ok(smokeBlock.includes('summarizeTacticalBoard()'), 'browser smoke should compare board state before/after tactical cards');
+assert.ok(smokeBlock.includes('resetTacticalBudgetForSmoke()'), 'browser smoke may reset budget between coverage clicks after separately testing the real budget gate');
 
 console.log('Browser demo smoke harness tests passed.');

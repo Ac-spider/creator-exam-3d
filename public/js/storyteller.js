@@ -1,5 +1,5 @@
-// AI Storyteller System
-// Inspired by RimWorld's AI Storytellers
+// AI 叙事调度：根据棋盘压力和玩家选择安排事件。
+// 参考 RimWorld 的讲述节奏，但输出要落到当前棋盘。
 // Dynamically adjusts event probability based on game state
 
 export const STORYTELLER_PERSONALITIES = {
@@ -250,7 +250,7 @@ export class Storyteller {
       resonanceBoost: [
         '几个造物撞在一块，劲头反倒更大了。',
         '造物彼此应和，作用的地界宽了一圈。',
-        '世界接了你的话，奇迹往下生了。'
+        '前一个造物没散，后一个正好接住。'
       ],
       hazardRedirect: [
         '风改了向，灾往旁边歪过去了。',

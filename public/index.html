@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>创世计划：造物者考核 3D</title>
+    <title>裂隙考核：造物者 3D</title>
     <link rel="stylesheet" href="./styles.css" />
     <script type="importmap">
       {
@@ -19,17 +19,20 @@
       <canvas id="game-canvas"></canvas>
       <div id="topbar" class="glass panel-row">
         <div>
-          <div class="eyebrow">AI 造物解谜 · 3D Prototype</div>
-          <h1>创世计划：造物者考核</h1>
+          <div class="eyebrow">七格战术 · 自然语言造物</div>
+          <h1>裂隙考核：造物者</h1>
         </div>
-        <div id="level-chip" class="chip">第 1 关</div>
+        <div class="topbar-actions">
+          <a id="wiki-link" class="wiki-link" href="./wiki.html" target="_blank" rel="noopener">玩法WIKI</a>
+          <div id="level-chip" class="chip">第 1 关</div>
+        </div>
       </div>
 
       <section id="left-panel" class="glass panel">
         <div class="mission-dossier">
           <div class="mission-head">
             <div>
-              <div class="section-title">当前考核</div>
+              <div class="section-title">眼前这一关</div>
               <h2 id="level-title">加载中</h2>
             </div>
             <div id="mission-threat" class="mission-threat">读图</div>
@@ -44,9 +47,9 @@
 
         <div class="stat-grid">
           <div class="stat"><span>回合</span><strong id="turn-stat">1 / 6</strong></div>
-          <div class="stat"><span>造物次数</span><strong id="charges-stat">3</strong></div>
+          <div class="stat"><span>还能造</span><strong id="charges-stat">3</strong></div>
           <div class="stat"><span>奇迹点</span><strong id="miracle-stat">6</strong></div>
-          <div class="stat"><span>世界裂隙</span><strong id="entropy-stat">0 / 7</strong></div>
+          <div class="stat"><span>裂隙</span><strong id="entropy-stat">0 / 7</strong></div>
         </div>
 
         <div id="special-meters" class="meters"></div>
@@ -59,25 +62,25 @@
       </section>
 
       <section id="right-panel" class="glass panel">
-        <div class="section-title">AI 叙事引擎</div>
+        <div class="section-title">讲述方式</div>
         <div class="storyteller-bar">
-          <label for="storyteller-select">叙事人格：</label>
+          <label for="storyteller-select">旁白：</label>
           <select id="storyteller-select">
             <option value="cassandra">卡珊德拉（经典戏剧）</option>
-            <option value="phoebe">菲比（温和希望）</option>
+            <option value="phoebe">菲比（慢慢加压）</option>
             <option value="randy">兰迪（混沌随机）</option>
-            <option value="narrator">说书人（平衡自适应）</option>
+            <option value="narrator">说书人（看局面）</option>
           </select>
           <div id="storyteller-desc" class="storyteller-desc"></div>
         </div>
 
         <div class="section-title">造物输入</div>
-        <textarea id="creation-input" maxlength="120" placeholder="例如：创造一群会把洪水搬到天空的透明鲸鱼"></textarea>
+        <textarea id="creation-input" maxlength="120" placeholder="例如：造一群透明鲸鱼，把洪水驮到云上"></textarea>
         <div class="button-row">
           <button id="compile-btn" class="primary">生成造物卡</button>
           <button id="random-btn" class="secondary">灵感</button>
         </div>
-        <div id="ai-mode" class="hint">描述你想创造的东西，系统会把它整理成可放置的造物卡。</div>
+        <div id="ai-mode" class="hint">写清它是什么、要挡谁、放哪儿。剩下的交给编译器。</div>
 
         <div id="card-panel" class="card hidden">
           <div class="card-head">
@@ -116,7 +119,7 @@
             <button class="secondary small" type="button" data-test-level="5">第6关</button>
             <button class="secondary small" type="button" id="test-night-watch-btn">长夜守城</button>
             <button class="secondary small" type="button" id="test-air-combat-btn">空战预演</button>
-            <button class="secondary small" type="button" id="test-browser-smoke-btn">演示烟测</button>
+            <button class="secondary small" type="button" id="test-browser-smoke-btn">跑烟测</button>
           </div>
         </details>
 
@@ -141,7 +144,7 @@
         <section id="npc-dialogue-panel" class="npc-dialogue-panel hidden">
           <div class="dialogue-head">
             <div>
-              <div class="section-title">NPC 交流</div>
+              <div class="section-title">居民交谈</div>
               <h3 id="npc-dialogue-title">未选择居民</h3>
             </div>
             <button id="npc-dialogue-close" class="secondary small" type="button">关闭</button>
@@ -156,26 +159,26 @@
             <button class="secondary" type="button" data-dialogue-action="comfort" data-prompt="请相信我，我会尽量救下大家。">安抚</button>
             <button class="secondary" type="button" data-dialogue-action="group-chat">群聊</button>
           </div>
-          <textarea id="npc-dialogue-input" maxlength="160" placeholder="输入你想对这个NPC说的话"></textarea>
+          <textarea id="npc-dialogue-input" maxlength="160" placeholder="对这个人说点什么"></textarea>
           <button id="npc-dialogue-send" class="primary wide" type="button">发送回应</button>
         </section>
 
         <section id="advanced-mechanics-panel" class="advanced-mechanics-panel collapsible">
           <button type="button" class="panel-title collapse-toggle" aria-expanded="false" aria-controls="advanced-body">
-            高级世界机制
+            AI 战术室
             <span class="collapse-icon" aria-hidden="true">+</span>
           </button>
           <div id="advanced-body" class="collapse-body">
-            <div id="advanced-mechanic-list" class="advanced-mechanic-list"></div>
-            <div id="advanced-action-list" class="advanced-action-list"></div>
-            <textarea id="advanced-decode-input" maxlength="80" placeholder="输入认知深渊谜题的解码"></textarea>
             <div id="advanced-detail" class="advanced-detail"></div>
+            <div id="advanced-action-list" class="advanced-action-list"></div>
+            <div id="advanced-mechanic-list" class="advanced-mechanic-list"></div>
+            <textarea id="advanced-decode-input" maxlength="80" placeholder="输入深渊解码，或让考核者替你冒险猜一次"></textarea>
             <div id="advanced-log" class="advanced-log"></div>
           </div>
         </section>
 
         <section id="continuity-panel" class="continuity-panel">
-          <div class="panel-title">世界连续性</div>
+          <div class="panel-title">留下的事</div>
           <div class="continuity-block">
             <h3>管理压力</h3>
             <div id="continuity-pressures" class="continuity-list"></div>
@@ -191,13 +194,13 @@
         </section>
 
         <section id="legend-panel" class="continuity-panel">
-          <div class="panel-title">世界传说</div>
+          <div class="panel-title">民间说法</div>
           <div class="continuity-block">
-            <h3>最新神话</h3>
+            <h3>新传闻</h3>
             <div id="legend-myths" class="continuity-list"></div>
           </div>
           <div class="continuity-block">
-            <h3>传说神器</h3>
+            <h3>被记住的物件</h3>
             <div id="legend-artifacts" class="continuity-list"></div>
           </div>
           <div class="continuity-block">
@@ -239,7 +242,7 @@
             <div id="enemyIntentList" class="continuity-list"></div>
           </div>
           <div class="continuity-block">
-            <h3>叙事解读</h3>
+            <h3>棋盘旁白</h3>
             <div id="enemyIntentNarrative" class="continuity-list"></div>
           </div>
         </section>
@@ -285,13 +288,13 @@
         </section>
 
         <section id="legacy-panel" class="continuity-panel">
-          <div class="panel-title">传承与持久世界</div>
+          <div class="panel-title">留下的人</div>
           <div class="continuity-block">
             <h3>传承单位</h3>
             <div id="legacy-unit-list" class="continuity-list"></div>
           </div>
           <div class="continuity-block">
-            <h3>世界熵值与名望</h3>
+            <h3>裂隙与名望</h3>
             <div id="legacy-world-stats" class="continuity-list"></div>
           </div>
           <div class="continuity-block">
@@ -302,14 +305,14 @@
       </section>
 
       <section id="bottom-log" class="glass log-panel">
-        <div class="section-title">世界编年史</div>
+        <div class="section-title">回合记录</div>
         <div id="log-list" class="log-list"></div>
       </section>
 
       <section id="save-slot-panel" class="save-slot-panel">
         <header>
-          <h2>世界存档</h2>
-          <p>把这个世界存下来，下次接着玩。</p>
+          <h2>存档</h2>
+          <p>先记一份。下次从这里接着走。</p>
         </header>
         <div class="save-slot-controls">
           <input id="save-slot-name" type="text" value="main" aria-label="存档名">
@@ -326,11 +329,11 @@
       <section id="resident-dialogue-panel" class="resident-dialogue-panel">
         <header>
           <h2>常驻居民</h2>
-          <p>跟常驻的居民说话，让他们的记忆影响这个世界。</p>
+          <p>他们会记住你说过什么，也会记住你怎么救人。</p>
         </header>
         <div id="resident-dialogue-list" class="resident-dialogue-list"></div>
         <div class="resident-dialogue-compose">
-          <input id="resident-dialogue-input" type="text" aria-label="给选中的居民发话" placeholder="问问居民这个世界的事">
+          <input id="resident-dialogue-input" type="text" aria-label="给选中的居民发话" placeholder="问他还记得什么">
           <button id="resident-dialogue-send" type="button">发送</button>
         </div>
         <ol id="resident-dialogue-log" class="resident-dialogue-log"></ol>

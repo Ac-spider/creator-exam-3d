@@ -1556,8 +1556,8 @@ runner.test('Storyteller - 应与aiMemory联动生成自适应事件', async () 
   runner.assert(context.narrativeArc !== undefined, '应包含叙事弧线');
 });
 
-// 测试世界传说系统
-runner.test('世界传说 - 应记录传说事件并生成神话', async () => {
+// 测试民间说法记录
+runner.test('民间说法 - 应记录事件并生成可追溯故事', async () => {
   const { worldLegendSystem } = await import('../public/js/worldLegend.js');
   worldLegendSystem.legends = [];
   worldLegendSystem.myths.clear();
@@ -1597,7 +1597,7 @@ runner.test('世界传说 - 应记录传说事件并生成神话', async () => {
   runner.assert(figure.name === '测试英雄', '应正确记录历史人物');
   runner.assert(figure.quotes.length > 0, '历史人物应有名言');
 
-  // 测试世界传说报告
+  // 测试民间说法报告
   const report = worldLegendSystem.generateWorldLegendReport();
   runner.assert(report.totalLegends >= 1, '报告应包含传说');
   runner.assert(report.totalMyths >= 1, '报告应包含神话');
@@ -1914,16 +1914,16 @@ runner.test('因果引擎 - 应检测跨关卡蝴蝶效应', async () => {
   runner.assert(narrative.includes('night-mine') || narrative.includes('洪水'), '叙事应包含跨关卡关联');
 });
 
-runner.test('因果引擎 - 浏览器传说演示应产生跨关蝴蝶效应', async () => {
+runner.test('因果引擎 - 浏览器民间说法应产生跨关蝴蝶效应', async () => {
   const { WorldLegendSystem } = await import('../public/js/worldLegend.js');
   const world = new WorldLegendSystem();
   const source = world.recordLegendaryEvent({
     type: 'creation',
     actor: '造物者',
-    target: '演示星灯',
+    target: '沙盘星灯',
     level: '第 1 关：洪水村庄',
     turn: 1,
-    description: '造物者在第 1 关：洪水村庄用演示星灯留下光与记忆的微小选择',
+    description: '造物者在第 1 关：洪水村庄用沙盘星灯留下光与记忆的微小选择',
     impact: 'major'
   });
   world.recordLegendaryEvent({
@@ -1932,18 +1932,18 @@ runner.test('因果引擎 - 浏览器传说演示应产生跨关蝴蝶效应', a
     target: '第 2 关：永夜矿井',
     level: '第 2 关：永夜矿井',
     turn: 2,
-    description: '演示星灯的光与记忆在第 2 关：永夜矿井再次改变道路',
+    description: '沙盘星灯的光与记忆在第 2 关：永夜矿井再次改变道路',
     impact: 'world-shaking',
     causeId: source.id
   });
 
   const effects = world.causalGraph.getButterflyEffectsForLevel('第 2 关：永夜矿井');
-  runner.assert(effects.length > 0, '演示事件应产生当前关卡可查询的蝴蝶效应');
+  runner.assert(effects.length > 0, '沙盘事件应产生当前关卡可查询的蝴蝶效应');
   runner.assert(effects[0].sourceLevel.includes('洪水村庄'), '蝴蝶效应应记录来源关卡');
   runner.assert(effects[0].targetLevel.includes('永夜矿井'), '蝴蝶效应应记录目标关卡');
 });
 
-runner.test('世界传说面板 - 应渲染浏览器可见的蝴蝶效应区域', async () => {
+runner.test('民间说法面板 - 应渲染浏览器可见的蝴蝶效应区域', async () => {
   const { readFileSync } = await import('node:fs');
   const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const game = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8');
@@ -1951,8 +1951,8 @@ runner.test('世界传说面板 - 应渲染浏览器可见的蝴蝶效应区域'
   runner.assert(html.includes('id="legend-butterfly"'), 'index.html 应提供蝴蝶效应挂载点');
   runner.assert(game.includes('legendButterfly: document.getElementById'), 'game.js 应收集蝴蝶效应 DOM');
   runner.assert(game.includes('getButterflyEffectsForLevel'), 'game.js 应从因果图读取蝴蝶效应');
-  runner.assert(game.includes('蝴蝶效应'), '传说演示应记录或显示蝴蝶效应');
-  runner.assert(game.includes('序章：裂隙前夜'), '首关传说演示应使用跨关来源，不能与当前关卡相同');
+  runner.assert(game.includes('蝴蝶效应'), '民间说法应记录或显示蝴蝶效应');
+  runner.assert(game.includes('序章：裂隙前夜'), '首关民间说法应使用跨关来源，不能与当前关卡相同');
 });
 
 runner.test('因果引擎 - 序列化与统计', async () => {
