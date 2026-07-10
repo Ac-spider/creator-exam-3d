@@ -29,6 +29,7 @@ import { getAbilityVisualFamily } from './abilities.js';
 import { LevelPresentationLoader } from './levelPresentation.js';
 import { Soundscape } from './soundscape.js';
 import { LEVEL_CHAPTER_INTROS } from './chapterIntros.js';
+import { resolveNpcVisualProfile } from './npcVisualProfiles.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -2727,6 +2728,7 @@ class CreatorExam3D extends GameEngine {
   createUnitMesh(unit) {
     const group = new THREE.Group();
     const pos = this.tileToWorld(unit.x, unit.y);
+    const visualProfile = unit.type === 'beast' ? null : resolveNpcVisualProfile(unit);
     group.position.set(pos.x, 0.36, pos.z);
     group.userData = {
       unit: true,
@@ -2735,7 +2737,9 @@ class CreatorExam3D extends GameEngine {
       residentId: unit.residentId || null,
       unitType: unit.type,
       unitStatus: unit.status,
-      visualStyle: 'voxel-character-v1'
+      visualStyle: 'voxel-character-v2',
+      visualProfile: visualProfile?.id || 'beast',
+      visualRole: visualProfile?.role || 'beast'
     };
 
     const shadow = new THREE.Mesh(
@@ -2747,10 +2751,10 @@ class CreatorExam3D extends GameEngine {
     group.add(shadow);
 
     if (this.isCivilian(unit)) {
-      group.add(this.createVoxelPerson(unit));
+      group.add(this.createVoxelPerson(unit, visualProfile));
       if (unit.guidedTurns > 0) group.add(this.createHalo(0x9dffb3));
     } else if (this.isMessenger(unit)) {
-      group.add(this.createVoxelMessenger(unit));
+      group.add(this.createVoxelMessenger(unit, visualProfile));
       if (unit.met) group.add(this.createHalo(0xd4a6ff));
     } else if (unit.type === 'beast') {
       group.add(this.createVoxelBeast(unit));
@@ -2758,7 +2762,9 @@ class CreatorExam3D extends GameEngine {
     }
 
     const labelSprite = this.createLabel(unit.name);
-    labelSprite.position.y = unit.type === 'beast' ? 0.88 : 0.7;
+    labelSprite.position.y = unit.type === 'beast'
+      ? 0.88
+      : 0.68 + Math.max(0, (visualProfile?.bodyHeight || 1) - 1) * 0.4;
     group.add(labelSprite);
     return group;
   }
@@ -2774,57 +2780,223 @@ class CreatorExam3D extends GameEngine {
     return mesh;
   }
 
-  createVoxelPerson(unit) {
+  addCharacterBlock(group, key, dimensions, color, position, rotation = [0, 0, 0], options = {}) {
+    const part = this.createVoxelBlock(
+      key,
+      dimensions[0], dimensions[1], dimensions[2], color,
+      position[0], position[1], position[2], options
+    );
+    part.rotation.set(rotation[0], rotation[1], rotation[2]);
+    group.add(part);
+    return part;
+  }
+
+  addPersonHeadwear(group, profile) {
+    const trim = profile.trim;
+    const dark = profile.pack;
+    const side = profile.featureSide;
+    const add = (key, dimensions, color, position, rotation) =>
+      this.addCharacterBlock(group, `headwear-${key}`, dimensions, color, position, rotation);
+
+    if (profile.headwear === 'hood') {
+      add('hood-top', [0.23, 0.07, 0.21], dark, [0, 0.45, -0.01]);
+      add('hood-side', [0.055, 0.17, 0.2], dark, [-0.115, 0.36, -0.005]);
+      add('hood-side', [0.055, 0.17, 0.2], dark, [0.115, 0.36, -0.005]);
+      return;
+    }
+    if (profile.headwear === 'brim') {
+      add('brim', [0.31, 0.035, 0.26], trim, [0, 0.43, 0]);
+      add('brim-crown', [0.18, 0.1, 0.17], dark, [0, 0.49, -0.01]);
+      return;
+    }
+    if (profile.headwear === 'helmet' || profile.headwear === 'visor') {
+      add('helmet', [0.23, profile.headwear === 'visor' ? 0.08 : 0.11, 0.21], trim, [0, 0.45, 0]);
+      add('helmet-brim', [profile.headwear === 'visor' ? 0.31 : 0.26, 0.035, 0.25], dark, [0, 0.41, 0.025]);
+      if (profile.headwear === 'visor') add('visor', [0.18, 0.045, 0.035], profile.accent, [0, 0.405, 0.13]);
+      return;
+    }
+    if (profile.headwear === 'bun') {
+      add('hair-cap', [0.205, 0.065, 0.19], 0x3a2c2a, [0, 0.445, -0.005]);
+      add('bun', [0.09, 0.09, 0.08], 0x3a2c2a, [side * 0.1, 0.49, -0.07]);
+      return;
+    }
+    if (profile.headwear === 'braid') {
+      add('hair-cap', [0.205, 0.055, 0.19], dark, [0, 0.445, -0.005]);
+      add('braid-a', [0.05, 0.14, 0.05], dark, [side * 0.11, 0.34, -0.08], [0, 0, side * 0.16]);
+      add('braid-b', [0.045, 0.12, 0.045], trim, [side * 0.13, 0.23, -0.07], [0, 0, -side * 0.12]);
+      return;
+    }
+    if (profile.headwear === 'headband') {
+      add('hair-cap', [0.205, 0.055, 0.19], 0x3b302c, [0, 0.445, -0.005]);
+      add('headband', [0.225, 0.035, 0.205], trim, [0, 0.414, 0]);
+      add('tie', [0.04, 0.12, 0.035], trim, [-side * 0.12, 0.36, -0.09], [0, 0, side * 0.3]);
+      return;
+    }
+    if (profile.headwear === 'soft-cap') {
+      add('soft-cap', [0.22, 0.09, 0.2], trim, [0, 0.46, -0.015], [0, 0, side * 0.12]);
+      add('tassel', [0.04, 0.11, 0.04], profile.accent, [side * 0.12, 0.44, -0.035], [0, 0, -side * 0.32]);
+      return;
+    }
+    if (profile.headwear === 'crest' || profile.headwear === 'crownlet') {
+      add('crest-band', [0.22, 0.045, 0.2], dark, [0, 0.425, 0]);
+      const count = profile.headwear === 'crownlet' ? 3 : 1;
+      for (let index = 0; index < count; index += 1) {
+        const x = count === 1 ? 0 : (index - 1) * 0.07;
+        add('crest-prong', [0.035, 0.12 + (index % 2) * 0.025, 0.04], trim, [x, 0.5, 0]);
+      }
+      return;
+    }
+    add('cap', [0.23, 0.065, 0.205], trim, [0, 0.45, 0]);
+    add('cap-brim', [0.17, 0.025, 0.09], dark, [0, 0.42, 0.11]);
+  }
+
+  addPersonAccessory(group, profile) {
+    const side = profile.featureSide;
+    const x = side * 0.25;
+    const accentOptions = { emissive: profile.accent, emissiveIntensity: 0.28 };
+    const add = (key, dimensions, color, position, rotation, options) =>
+      this.addCharacterBlock(group, `accessory-${key}`, dimensions, color, position, rotation, options);
+
+    if (profile.accessory === 'basket' || profile.accessory === 'grain-basket') {
+      add('basket', [0.2, 0.14, 0.16], profile.pack, [x, -0.07, 0.02]);
+      add('basket-rim', [0.23, 0.035, 0.19], profile.trim, [x, 0.01, 0.02]);
+      if (profile.accessory === 'grain-basket') {
+        add('grain-a', [0.035, 0.14, 0.035], profile.accent, [x - 0.045, 0.1, 0.01], [0, 0, -0.14]);
+        add('grain-b', [0.035, 0.16, 0.035], profile.accent, [x + 0.04, 0.11, 0], [0, 0, 0.18]);
+      }
+      return;
+    }
+    if (profile.accessory === 'lantern' || profile.accessory === 'lamp') {
+      const handheld = profile.accessory === 'lantern';
+      const lampPosition = handheld ? [x, -0.07, 0.08] : [0, 0.475, 0.12];
+      if (handheld) add('lantern-handle', [0.035, 0.26, 0.035], profile.pack, [x, 0.07, 0.07]);
+      add('lantern-core', [0.11, 0.12, 0.09], profile.accent, lampPosition, [0, 0, 0], { emissive: profile.accent, emissiveIntensity: 0.65 });
+      add('lantern-cap', [0.13, 0.035, 0.11], profile.trim, [lampPosition[0], lampPosition[1] + 0.075, lampPosition[2]]);
+      return;
+    }
+    if (profile.accessory === 'hammer' || profile.accessory === 'pickaxe') {
+      const rotation = [0, 0, side * -0.28];
+      add('tool-handle', [0.04, 0.4, 0.04], 0x765239, [x, 0.04, 0.04], rotation);
+      add(
+        profile.accessory === 'hammer' ? 'hammer-head' : 'pick-head',
+        [profile.accessory === 'hammer' ? 0.19 : 0.25, 0.07, 0.06],
+        profile.trim,
+        [x - side * 0.05, 0.24, 0.04],
+        rotation
+      );
+      return;
+    }
+    if (profile.accessory === 'satchel' || profile.accessory === 'canteen') {
+      add('strap', [0.035, 0.42, 0.025], profile.trim, [0, 0.08, 0.105], [0, 0, -side * 0.58]);
+      const dimensions = profile.accessory === 'satchel' ? [0.18, 0.15, 0.09] : [0.13, 0.17, 0.09];
+      add(profile.accessory, dimensions, profile.pack, [side * 0.19, -0.02, 0.02]);
+      if (profile.accessory === 'canteen') add('canteen-cap', [0.055, 0.035, 0.055], profile.accent, [side * 0.19, 0.085, 0.02]);
+      return;
+    }
+    if (profile.accessory === 'survey-staff' || profile.accessory === 'branch-staff' || profile.accessory === 'staff') {
+      add('staff', [0.035, 0.68, 0.035], profile.pack, [x, 0.1, 0.03], [0, 0, side * 0.04]);
+      add('staff-top', [0.17, 0.035, 0.035], profile.accent, [x - side * 0.045, 0.43, 0.03], [0, 0, side * 0.22]);
+      if (profile.accessory === 'branch-staff') add('staff-fork', [0.035, 0.18, 0.035], profile.trim, [x + side * 0.055, 0.4, 0.03], [0, 0, -side * 0.48]);
+      return;
+    }
+    if (profile.accessory === 'tuning-fork') {
+      add('fork-stem', [0.035, 0.4, 0.035], profile.pack, [x, 0.02, 0.03]);
+      add('fork-arm', [0.035, 0.23, 0.035], profile.accent, [x - 0.055, 0.31, 0.03]);
+      add('fork-arm', [0.035, 0.23, 0.035], profile.accent, [x + 0.055, 0.31, 0.03]);
+      add('fork-bridge', [0.14, 0.035, 0.035], profile.trim, [x, 0.2, 0.03]);
+      return;
+    }
+    if (profile.accessory === 'dream-charm') {
+      add('charm-cord', [0.025, 0.3, 0.025], profile.trim, [x, 0.05, 0.04]);
+      add('charm', [0.1, 0.1, 0.055], profile.accent, [x, -0.11, 0.04], [0, 0, Math.PI / 4], accentOptions);
+      return;
+    }
+    if (profile.accessory === 'ember-spool') {
+      add('spool-core', [0.16, 0.12, 0.12], profile.pack, [x, -0.01, 0.05]);
+      add('spool-flange', [0.04, 0.19, 0.17], profile.trim, [x - side * 0.09, -0.01, 0.05]);
+      add('spool-thread', [0.11, 0.07, 0.13], profile.accent, [x, -0.01, 0.05], [0, 0, 0], accentOptions);
+      return;
+    }
+    if (profile.accessory === 'star-map' || profile.accessory === 'scroll') {
+      add('scroll', [0.28, 0.12, 0.045], 0xd8c99d, [0, -0.02, 0.14]);
+      add('scroll-edge', [0.04, 0.16, 0.06], profile.trim, [-0.16, -0.02, 0.14]);
+      add('scroll-edge', [0.04, 0.16, 0.06], profile.trim, [0.16, -0.02, 0.14]);
+      if (profile.accessory === 'star-map') add('map-star', [0.055, 0.055, 0.025], profile.accent, [0.04, -0.01, 0.17], [0, 0, Math.PI / 4], accentOptions);
+      return;
+    }
+    if (profile.accessory === 'stone-chime') {
+      add('chime-pole', [0.035, 0.58, 0.035], profile.pack, [x, 0.08, 0.03]);
+      add('chime-bar', [0.22, 0.035, 0.035], profile.trim, [x, 0.34, 0.03]);
+      for (let index = -1; index <= 1; index += 1) {
+        add('chime-stone', [0.055, 0.09 + Math.abs(index) * 0.025, 0.045], 0x8f8b7d, [x + index * 0.075, 0.23, 0.03]);
+      }
+      return;
+    }
+    if (profile.accessory === 'ore-pack') {
+      add('ore-pack', [0.27, 0.29, 0.13], profile.pack, [0, 0.05, -0.15]);
+      add('ore-a', [0.09, 0.11, 0.08], profile.accent, [-0.07, 0.24, -0.16], [0.3, 0.2, 0.2]);
+      add('ore-b', [0.08, 0.14, 0.07], profile.trim, [0.06, 0.25, -0.16], [-0.2, 0.1, -0.25]);
+    }
+  }
+
+  createVoxelPerson(unit, profile = resolveNpcVisualProfile(unit)) {
     const group = new THREE.Group();
-    const isMiner = unit.type === 'miner';
-    const cloth = isMiner ? 0xe5aa4d : 0x5eb6e8;
-    const trim = isMiner ? 0xffe08a : 0x245d85;
-    const pack = isMiner ? 0x5f432b : 0x31506c;
+    const side = profile.featureSide;
+    group.scale.set(profile.bodyWidth, profile.bodyHeight, profile.bodyWidth);
+    group.position.y = 0.24 * (profile.bodyHeight - 1);
+    group.userData = { visualProfile: profile.id, visualRole: profile.role };
 
     group.add(
       this.createVoxelBlock('person-leg', 0.08, 0.2, 0.08, 0x273044, -0.06, -0.14, 0),
       this.createVoxelBlock('person-leg', 0.08, 0.2, 0.08, 0x273044, 0.06, -0.14, 0),
-      this.createVoxelBlock('person-body', 0.24, 0.3, 0.16, cloth, 0, 0.06, 0),
-      this.createVoxelBlock('person-arm', 0.07, 0.22, 0.08, cloth, -0.18, 0.07, 0),
-      this.createVoxelBlock('person-arm', 0.07, 0.22, 0.08, cloth, 0.18, 0.07, 0),
-      this.createVoxelBlock('person-head', 0.2, 0.18, 0.18, 0xffd6ad, 0, 0.32, 0),
-      this.createVoxelBlock('person-cap', 0.22, 0.06, 0.2, trim, 0, 0.45, 0),
-      this.createVoxelBlock('person-pack', 0.2, 0.22, 0.08, pack, 0, 0.06, -0.14)
+      this.createVoxelBlock('person-body', 0.24, 0.3, 0.16, profile.cloth, 0, 0.06, 0),
+      this.createVoxelBlock('person-head', 0.2, 0.18, 0.18, profile.skin, 0, 0.32, 0),
+      this.createVoxelBlock('person-collar', 0.255, 0.045, 0.18, profile.trim, 0, 0.205, 0.005),
+      this.createVoxelBlock('person-hand', 0.06, 0.06, 0.06, profile.skin, -0.2, -0.03, 0.03),
+      this.createVoxelBlock('person-hand', 0.06, 0.06, 0.06, profile.skin, 0.2, -0.03, 0.03)
     );
-
-    if (isMiner) {
-      group.add(
-        this.createVoxelBlock('miner-lamp', 0.08, 0.06, 0.04, 0xfff39a, 0, 0.47, 0.11, { emissive: 0xffd166, emissiveIntensity: 0.45 }),
-        this.createVoxelBlock('miner-tool', 0.04, 0.28, 0.04, 0x8a6a45, 0.22, 0.06, 0.02)
-      );
-    } else {
-      group.add(
-        this.createVoxelBlock('villager-scarf', 0.24, 0.05, 0.18, 0xf5d77a, 0, 0.21, 0.01),
-        this.createVoxelBlock('villager-hand', 0.06, 0.06, 0.06, 0xffd6ad, -0.2, -0.03, 0.03),
-        this.createVoxelBlock('villager-hand', 0.06, 0.06, 0.06, 0xffd6ad, 0.2, -0.03, 0.03)
-      );
-    }
-
+    this.addCharacterBlock(group, 'person-arm', [0.07, 0.22, 0.08], profile.cloth, [-0.18, 0.07, 0], [0, 0, side > 0 ? 0.08 : -0.16]);
+    this.addCharacterBlock(group, 'person-arm', [0.07, 0.22, 0.08], profile.cloth, [0.18, 0.07, 0], [0, 0, side > 0 ? 0.16 : -0.08]);
+    this.addPersonHeadwear(group, profile);
+    this.addPersonAccessory(group, profile);
     return group;
   }
 
-  createVoxelMessenger(unit) {
+  createVoxelMessenger(unit, profile = resolveNpcVisualProfile(unit)) {
     const group = new THREE.Group();
-    const cloak = unit.type === 'tribeA' ? 0xff8f70 : 0x7aa2ff;
-    const flag = unit.type === 'tribeA' ? 0xffd166 : 0xa7c7ff;
-    const hood = unit.type === 'tribeA' ? 0x7b2f28 : 0x25386f;
+    const side = profile.featureSide;
+    const x = side * 0.25;
+    group.scale.set(profile.bodyWidth, profile.bodyHeight, profile.bodyWidth);
+    group.position.y = 0.24 * (profile.bodyHeight - 1);
+    group.userData = { visualProfile: profile.id, visualRole: profile.role };
 
     group.add(
       this.createVoxelBlock('messenger-leg', 0.08, 0.18, 0.08, 0x273044, -0.05, -0.16, 0),
       this.createVoxelBlock('messenger-leg', 0.08, 0.18, 0.08, 0x273044, 0.05, -0.16, 0),
-      this.createVoxelBlock('messenger-cloak', 0.28, 0.36, 0.18, cloak, 0, 0.06, 0),
-      this.createVoxelBlock('messenger-hood', 0.22, 0.14, 0.2, hood, 0, 0.29, 0),
-      this.createVoxelBlock('messenger-face', 0.14, 0.1, 0.04, 0xffd6ad, 0, 0.29, 0.105),
-      this.createVoxelBlock('messenger-pole', 0.035, 0.62, 0.035, 0xe9d8a6, 0.22, 0.12, 0.02),
-      this.createVoxelBlock('messenger-flag', 0.22, 0.14, 0.035, flag, 0.33, 0.36, 0.02),
-      this.createVoxelBlock('messenger-satchel', 0.16, 0.12, 0.08, 0x6b4d35, -0.18, 0.02, -0.1)
+      this.createVoxelBlock('messenger-cloak', 0.28, 0.36, 0.18, profile.cloth, 0, 0.06, 0),
+      this.createVoxelBlock('messenger-face', 0.16, 0.13, 0.15, profile.skin, 0, 0.32, 0.02),
+      this.createVoxelBlock('messenger-clasp', 0.08, 0.06, 0.04, profile.accent, 0, 0.19, 0.11, { emissive: profile.accent, emissiveIntensity: 0.2 })
     );
+    this.addPersonHeadwear(group, profile);
 
+    if (profile.accessory === 'forked-banner' || profile.accessory === 'broad-banner') {
+      this.addCharacterBlock(group, 'messenger-pole', [0.035, 0.68, 0.035], 0xd8c89b, [x, 0.12, 0.02]);
+      if (profile.accessory === 'forked-banner') {
+        this.addCharacterBlock(group, 'messenger-flag-upper', [0.2, 0.1, 0.035], profile.accent, [x + side * 0.11, 0.4, 0.02], [0, 0, -side * 0.08]);
+        this.addCharacterBlock(group, 'messenger-flag-lower', [0.14, 0.07, 0.035], profile.trim, [x + side * 0.08, 0.31, 0.02], [0, 0, side * 0.1]);
+      } else {
+        this.addCharacterBlock(group, 'messenger-flag-broad', [0.27, 0.18, 0.035], profile.accent, [x + side * 0.14, 0.35, 0.02]);
+        this.addCharacterBlock(group, 'messenger-flag-band', [0.29, 0.035, 0.045], profile.trim, [x + side * 0.14, 0.35, 0.04]);
+      }
+    } else if (profile.accessory === 'signal-lantern') {
+      this.addCharacterBlock(group, 'messenger-staff', [0.035, 0.65, 0.035], profile.pack, [x, 0.1, 0.02]);
+      this.addCharacterBlock(group, 'messenger-lantern', [0.12, 0.14, 0.1], profile.accent, [x, 0.4, 0.02], [0, 0, 0], { emissive: profile.accent, emissiveIntensity: 0.62 });
+      this.addCharacterBlock(group, 'messenger-lantern-cap', [0.15, 0.035, 0.12], profile.trim, [x, 0.49, 0.02]);
+    } else {
+      this.addCharacterBlock(group, 'messenger-scroll', [0.18, 0.1, 0.07], 0xd8c99d, [x, 0.02, 0.09], [0, 0, side * 0.12]);
+      this.addCharacterBlock(group, 'messenger-seal', [0.055, 0.055, 0.025], profile.accent, [x, 0.02, 0.14], [0, 0, Math.PI / 4], { emissive: profile.accent, emissiveIntensity: 0.24 });
+      this.addCharacterBlock(group, 'messenger-satchel', [0.18, 0.15, 0.09], profile.pack, [-x * 0.75, -0.02, -0.08]);
+    }
     return group;
   }
 
