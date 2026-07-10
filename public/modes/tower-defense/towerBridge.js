@@ -366,8 +366,21 @@
       }
     });
     overlay.addEventListener('keydown', event => {
-      if (event.key === 'Escape') close();
-      if (event.key === 'Enter' || event.key === ' ') overlay.querySelector('[data-cg-next]').click();
+      const first = overlay.querySelector('[data-cg-skip]');
+      const last = overlay.querySelector('[data-cg-next]');
+      if (event.key === 'Tab') {
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+      }
     });
     render();
     document.body.appendChild(overlay);
@@ -578,18 +591,19 @@
       }
       .night-watch-cg {
         width: min(760px, calc(100vw - 42px));
-        min-height: 380px;
+        min-height: min(380px, calc(100dvh - 56px));
+        max-height: calc(100dvh - 56px);
         display: grid;
-        grid-template-rows: auto 1fr auto;
+        grid-template-rows: minmax(0, 1fr) auto;
         border: 1px solid rgba(216, 197, 138, .34);
         background: linear-gradient(180deg, rgba(20, 24, 37, .94), rgba(8, 11, 18, .98));
         box-shadow: 0 24px 70px rgba(0, 0, 0, .58);
       }
       .night-watch-cg-frame {
         position: relative;
-        min-height: 250px;
+        min-height: 0;
         padding: 34px 38px;
-        overflow: hidden;
+        overflow-y: auto;
       }
       .night-watch-cg-frame::before {
         content: "";
@@ -665,7 +679,7 @@
         #selection-info { width: 190px; padding: 10px; }
         #tower-pool { max-height: min(280px, calc(100vh - 310px)); }
         #night-watch-buff-choices { grid-template-columns: 1fr; }
-        .night-watch-cg { min-height: 330px; }
+        .night-watch-cg { min-height: min(330px, calc(100dvh - 56px)); }
         .night-watch-cg-frame { padding: 28px; }
         .night-watch-cg h2 { font-size: 1.55rem; }
         .night-watch-cg p { font-size: 13px; }

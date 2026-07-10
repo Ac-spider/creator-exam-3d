@@ -21,6 +21,8 @@ const environmentConfigBlock = sourceBlock(gameSource, 'const LEVEL_ENVIRONMENTS
 const environmentMethodsBlock = sourceBlock(gameSource, '  clearLevelEnvironment() {', '  renderWorld() {');
 const bridgeBlock = sourceBlock(gameSource, '  bindBrowserDemoSmokeBridge() {', '  // Override loadLevel to add browser-specific initialization');
 const airResultBlock = sourceBlock(gameSource, '  applyAirCombatResult(result) {', '  renderAirCombatPanel() {');
+const cinematicKeyBlock = sourceBlock(gameSource, "    this.ui.cinematic?.addEventListener('keydown', event => {", '    for (const button of this.ui.drawerButtons) {');
+const turnPendingBlock = sourceBlock(gameSource, '  setTurnControlsPending(pending) {', '  releaseTurnResolutionLock() {');
 const shellCssStart = cssSource.indexOf('/* ===== Map-first shell and context drawers ===== */');
 assert.notEqual(shellCssStart, -1, 'missing map-first shell CSS override');
 const shellCss = cssSource.slice(shellCssStart);
@@ -30,7 +32,19 @@ for (const asset of ['cg-prologue.webp', 'cg-ending.webp']) {
 }
 assert.ok(htmlSource.includes('id="cinematic"'), 'main page should expose a fixed cinematic dialog');
 assert.ok(gameSource.includes("creatorExamPrologueSeen"), 'prologue should be session-scoped');
-assert.ok(airResultBlock.includes('showEndingCinematic(result)'), 'air result should open the ending plate');
+const airResultAdd = airResultBlock.indexOf('this.processedAirCombatResults.add(result.id)');
+const endingCall = 'this.showEndingCinematic(result)';
+assert.notEqual(airResultAdd, -1, 'air result should enter the first-result branch');
+assert.equal((airResultBlock.match(/this\.showEndingCinematic\(result\)/g) || []).length, 1, 'air result should open one ending plate');
+assert.ok(airResultBlock.indexOf(endingCall) > airResultAdd, 'ending plate should only open after first-result dedupe');
+assert.ok(
+  turnPendingBlock.includes('!pending && this.ui?.cinematic && !this.ui.cinematic.hidden')
+    && turnPendingBlock.includes('this.cinematicWasResolving = false'),
+  'cinematic lock snapshot should follow asynchronous turn unlocks'
+);
+for (const contract of ["event.key === 'Tab'", 'event.shiftKey', 'document.activeElement', 'this.ui.cinematicSkip', 'this.ui.cinematicPrimary']) {
+  assert.ok(cinematicKeyBlock.includes(contract), `main cinematic should trap focus with ${contract}`);
+}
 
 for (const levelId of ['flood-village', 'night-mine', 'giant-city', 'wordless-war', 'memory-plague', 'final-exam']) {
   assert.ok(environmentConfigBlock.includes(`'${levelId}'`), `environment config should include ${levelId}`);

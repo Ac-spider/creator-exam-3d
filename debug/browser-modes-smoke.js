@@ -13,6 +13,9 @@ const airHtml = read('public/modes/air-combat/index.html');
 const airBridge = read('public/modes/air-combat/airCombatBridge.js');
 const airGame = read('public/modes/air-combat/airCombatGame.js');
 const airCss = read('public/modes/air-combat/style.css');
+const nightWatchKeyStart = towerBridge.indexOf("overlay.addEventListener('keydown', event => {");
+const nightWatchKeyEnd = towerBridge.indexOf('    });', nightWatchKeyStart);
+const nightWatchKeyBlock = towerBridge.slice(nightWatchKeyStart, nightWatchKeyEnd);
 
 for (const id of ['test-night-watch-btn', 'test-air-combat-btn']) {
   assert.ok(mainHtml.includes(`id="${id}"`), `main page should expose #${id}`);
@@ -45,6 +48,20 @@ for (const position of ['0% 50%', '50% 50%', '100% 50%']) {
   assert.ok(towerBridge.includes(position), `Night Watch should include crop ${position}`);
 }
 assert.ok(airCss.includes('../../assets/art/cg-airspace-bridge.webp'), 'Air briefing should use the local bridge CG');
+assert.match(
+  towerBridge,
+  /\.night-watch-cg\s*\{[^}]*min-height:\s*min\(380px, calc\(100dvh - 56px\)\);[^}]*max-height:\s*calc\(100dvh - 56px\);[^}]*grid-template-rows:\s*minmax\(0, 1fr\) auto;/s,
+  'Night Watch cinematic should keep its footer inside short viewports'
+);
+assert.match(
+  towerBridge,
+  /\.night-watch-cg-frame\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;/s,
+  'Night Watch cinematic frame should scroll while the footer stays visible'
+);
+assert.ok(towerBridge.includes('min-height: min(330px, calc(100dvh - 56px));'), 'Night Watch compact height should respect short viewports');
+for (const contract of ["event.key === 'Tab'", 'event.shiftKey', 'document.activeElement', "'[data-cg-skip]'", "'[data-cg-next]'"]) {
+  assert.ok(nightWatchKeyBlock.includes(contract), `Night Watch cinematic should trap focus with ${contract}`);
+}
 
 for (const id of [
   'airspace-start',

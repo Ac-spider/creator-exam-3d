@@ -733,6 +733,16 @@ class CreatorExam3D extends GameEngine {
     this.ui.cinematicSkip?.addEventListener('click', () => this.closeCinematic());
     this.ui.cinematicPrimary?.addEventListener('click', () => this.closeCinematic());
     this.ui.cinematic?.addEventListener('keydown', event => {
+      if (event.key === 'Tab') {
+        const active = document.activeElement;
+        if (event.shiftKey && (active === this.ui.cinematicSkip || active === this.ui.cinematicTitle)) {
+          event.preventDefault();
+          this.ui.cinematicPrimary.focus();
+        } else if (!event.shiftKey && active === this.ui.cinematicPrimary) {
+          event.preventDefault();
+          this.ui.cinematicSkip.focus();
+        }
+      }
       if (event.key === 'Escape') {
         event.preventDefault();
         this.closeCinematic();
@@ -3021,6 +3031,9 @@ class CreatorExam3D extends GameEngine {
   }
 
   setTurnControlsPending(pending) {
+    if (!pending && this.ui?.cinematic && !this.ui.cinematic.hidden) {
+      this.cinematicWasResolving = false;
+    }
     this.isResolvingTurn = pending;
     if (!this.ui) return;
     if (this.ui.endTurnBtn) {

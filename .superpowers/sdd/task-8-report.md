@@ -31,3 +31,27 @@
 
 - Verification is source-contract, asset, and syntax based; no interactive browser visual pass was run in this task.
 - The prologue is marked seen when dismissed, so a reload before dismissal intentionally shows it again.
+
+## Independent review hardening
+
+Review baseline: `78d8174`.
+
+- Fixed the stale turn-lock snapshot: an asynchronous unlock while a cinematic is visible now updates the state restored on close; a genuinely active resolution still restores its lock.
+- Kept the Night Watch footer reachable on short screens with a viewport-bounded two-row grid and a scrollable frame.
+- Added local Tab/Shift+Tab loops to the main and Night Watch dialogs; Escape remains handled by each overlay. No shared focus-manager abstraction was added.
+- Narrowed the ending contract to exactly one `showEndingCinematic(result)` call after `processedAirCombatResults.add(result.id)`, excluding invalid and duplicate-result branches.
+
+Review RED:
+
+- `node debug/browser-demo-smoke.js` failed with `cinematic lock snapshot should follow asynchronous turn unlocks`.
+- `node debug/browser-modes-smoke.js` failed with `Night Watch cinematic should keep its footer inside short viewports`.
+
+Review GREEN:
+
+- `node debug/browser-demo-smoke.js` — PASS
+- `node debug/browser-modes-smoke.js` — PASS
+- `node debug/art-assets-tests.js` — PASS (`5 files, 449254 bytes`)
+- `npm run check` — PASS (`77 JS file(s)`)
+- `git diff --check` — PASS (line-ending policy warnings only)
+
+Remaining review risk: focus cycling and short-viewport reachability are protected by source contracts but were not manually exercised in a browser.
