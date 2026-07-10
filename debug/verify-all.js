@@ -18,6 +18,7 @@ const suites = [
   { label: 'narrative-reliability', command: 'node', args: ['debug/narrative-reliability-tests.js'] },
   { label: 'chapter-intro', command: 'node', args: ['debug/chapter-intro-tests.js'] },
   { label: 'level-presentation', command: 'node', args: ['debug/level-presentation-tests.js'] },
+  { label: 'board-visual-theme', command: 'node', args: ['debug/board-visual-theme-tests.js'] },
   { label: 'soundscape-reliability', command: 'node', args: ['debug/soundscape-reliability-tests.js'] },
   { label: 'art-assets', command: 'node', args: ['debug/art-assets-tests.js'] },
   { label: 'server-api', command: 'node', args: ['debug/server-api-tests.js'] },

@@ -44,6 +44,7 @@
 - `environmentGroup` 先同步安装六关程序化外圈美术，再异步加入按关卡映射的 CC0 GLB；二者都不进入 tile raycast、碰撞、寻路或胜负计算。
 - `LevelPresentationLoader` 缓存每关 image-2 背景和 GLB 请求，并用关卡／请求序号阻止旧异步结果覆盖新关卡；背景或模型加载失败时，关卡颜色与程序化几何仍可独立运行。
 - `npcVisualProfiles.js` 把居民稳定身份映射为体型、配色、头饰和随身物；关卡内 20 名已署名角色使用审定档案，动态居民使用 `residentId/name` 的稳定哈希兜底。`game.js` 只负责按档案组装低多边形角色，不把视觉差异写回回合逻辑。
+- `boardVisualThemes.js` 为六关分别提供沙盘底色、边缘、程序化纹理种子与 17 类地形材质。`game.js` 在换关时重建装饰性沙盘细节，并以分层水盆、台地、树干树冠、岩层、道路、湿地等模型组装地块；主题 ID 进入地块缓存键，防止相同 terrain 在换关后沿用旧关材质。
 - 实时造物通过 `getAbilityVisualFamily()` 归入六种视觉语法，仍由一个 `createCreationMesh()` 入口生成。
 - 固定 CG、六关背景和 CC0 纹理位于 `public/assets/art/`，外圈 GLB 和界面音效位于 `public/assets/models/`、`public/assets/audio/`；缺失时 CSS 渐变或现有程序化画面继续工作。
 - `chapterIntros.js` 为六关分别提供三镜头章节开场；同一个模态播放器负责图片、极少量 HTML 文案、进度与跳过，第三镜用收卷淡出显露已渲染的实时棋盘。首见状态按关卡版本写入 `sessionStorage`，调试入口可以按当前关或 URL 参数强制重播，不会在重试本关时重复打断玩家。
