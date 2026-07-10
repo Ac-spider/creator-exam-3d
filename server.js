@@ -68,6 +68,9 @@ const MIME = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.glb': 'model/gltf-binary',
+  '.ogg': 'audio/ogg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon'
 };

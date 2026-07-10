@@ -65,6 +65,25 @@ await withServer(async (baseUrl) => {
   assert(health.json.aiConfigured === false, '/health should report no API key in this test');
   assert(health.json.aiBudget.remainingCalls === 2, '/health should include AI budget stats');
 
+  const cgResponse = await fetch(`${baseUrl}/assets/art/cg-prologue.webp`);
+  assert(cgResponse.status === 200, 'prologue CG should be served');
+  assert(cgResponse.headers.get('content-type') === 'image/webp', 'WebP should use image/webp');
+  const cgBytes = new Uint8Array(await cgResponse.arrayBuffer());
+  assert(new TextDecoder().decode(cgBytes.slice(0, 4)) === 'RIFF', 'served CG should keep RIFF magic');
+  assert(new TextDecoder().decode(cgBytes.slice(8, 12)) === 'WEBP', 'served CG should keep WEBP magic');
+
+  const modelResponse = await fetch(`${baseUrl}/assets/models/kenney-nature/village-tent.glb`);
+  assert(modelResponse.status === 200, 'Kenney GLB should be served');
+  assert(modelResponse.headers.get('content-type') === 'model/gltf-binary', 'GLB should use model/gltf-binary');
+  const modelBytes = new Uint8Array(await modelResponse.arrayBuffer());
+  assert(new TextDecoder().decode(modelBytes.slice(0, 4)) === 'glTF', 'served model should keep glTF magic');
+
+  const soundResponse = await fetch(`${baseUrl}/assets/audio/kenney/creation-place.ogg`);
+  assert(soundResponse.status === 200, 'Kenney OGG should be served');
+  assert(soundResponse.headers.get('content-type') === 'audio/ogg', 'OGG should use audio/ogg');
+  const soundBytes = new Uint8Array(await soundResponse.arrayBuffer());
+  assert(new TextDecoder().decode(soundBytes.slice(0, 4)) === 'OggS', 'served sound should keep OggS magic');
+
   const generated = await fetchJson(`${baseUrl}/api/generate-region`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

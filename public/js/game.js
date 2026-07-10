@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { compileCreation, abilityLabel } from './aiClient.js';
 import { INSPIRATIONS, LEVELS, TILE } from './levels.js';
 import { getMemorySystem } from './aiMemory.js';
@@ -24,11 +25,17 @@ import { MemoryStore } from './memoryStore.js';
 import { WorldSession } from './worldSession.js';
 import { RiftEchoSystem } from './riftEchoes.js';
 import { normalizeCreationDisplayText, normalizeCreationName } from './creationDisplay.js';
+import { getAbilityVisualFamily } from './abilities.js';
+import { LevelPresentationLoader } from './levelPresentation.js';
+import { Soundscape } from './soundscape.js';
+import { LEVEL_CHAPTER_INTROS } from './chapterIntros.js';
+import { resolveNpcVisualProfile } from './npcVisualProfiles.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
 const MAX_LOGS = 18;
 const TURN_RESOLUTION_LOCK_MS = 300;
+const CHAPTER_TRANSITION_MS = 1150;
 
 // AI Narrative endpoint configuration
 const NARRATIVE_ENDPOINT = '/api/narrative';
@@ -59,6 +66,15 @@ const MATERIAL_COLORS = {
   [TILE.FIELD]: 0x67e8ff,
   [TILE.POISON]: 0x7ed957
 };
+
+const LEVEL_ENVIRONMENTS = Object.freeze({
+  'flood-village': { background: 0x07151b, fog: 0x102b33, near: 13, far: 30, ambient: 1.85, sun: 0xffd487, sunPower: 2.35, rim: 0x59c7a6 },
+  'night-mine': { background: 0x050609, fog: 0x090b10, near: 10, far: 24, ambient: 1.05, sun: 0xdceeff, sunPower: 1.45, rim: 0xf2e7c2 },
+  'giant-city': { background: 0x081512, fog: 0x173027, near: 14, far: 31, ambient: 1.75, sun: 0xe0b86a, sunPower: 2.4, rim: 0x59c7a6 },
+  'wordless-war': { background: 0x0d0b14, fog: 0x292338, near: 12, far: 27, ambient: 1.45, sun: 0xe6c778, sunPower: 2.05, rim: 0x8f73c8 },
+  'memory-plague': { background: 0x071310, fog: 0x241e35, near: 13, far: 29, ambient: 1.7, sun: 0xb9e8d5, sunPower: 2.25, rim: 0xa993da },
+  'final-exam': { background: 0x070a11, fog: 0x181429, near: 14, far: 32, ambient: 1.65, sun: 0xd2b86b, sunPower: 2.3, rim: 0x8f73c8 }
+});
 
 const ABILITY_COLORS = {
   absorb_water: 0x54c7ff,
@@ -149,6 +165,8 @@ class CreatorExam3D extends GameEngine {
     this.pointer = new THREE.Vector2();
     this.tileMeshes = [];
     this.worldGroup = new THREE.Group();
+    this.environmentGroup = new THREE.Group();
+    this.environmentGroup.name = 'level-environment';
     this.activeCard = null;
     this.placementMode = false;
     this.selectedRitualCreations = new Set();
@@ -193,16 +211,35 @@ class CreatorExam3D extends GameEngine {
     this.lastAirCombatResult = null;
     this.processedAirCombatResults = new Set();
     this.isResolvingTurn = false;
+    this.cinematicCloseAction = null;
+    this.cinematicPrimaryAction = null;
+    this.cinematicWasResolving = false;
+    this.activeChapterIntro = null;
+    this.chapterIntroFrameIndex = 0;
+    this.chapterIntroPreloads = new Map();
+    this.chapterTransitionTimer = null;
     this.turnUnlockTimer = null;
+    this.activeDrawer = null;
+    this.drawerFocusReturn = null;
+    this.drawerNotices = { people: [], world: [], systems: [] };
+    this.drawerUnread = { people: 0, world: 0, systems: 0 };
+    this.seenDrawerNoticeIds = new Set();
+    this.knownLegendIds = null;
+    this.knownResidentActionIds = null;
+    this.activeDrawerNoticeKey = null;
+    this.soundscape = new Soundscape();
 
     this.ui = this.collectUi();
+    this.applyDebugGate();
     window.__creatorExam3D = this;
     this.bindBrowserDemoSmokeBridge();
     this.initScene();
     this.bindEvents();
     this.bindSaveSlotUI();
     this.bindResidentDialogueUI();
+    this.preloadChapterIntro('flood-village');
     this.loadLevel(0);
+    window.requestAnimationFrame(() => this.showOpeningSequence());
     this.animate();
   }
 
@@ -258,9 +295,12 @@ class CreatorExam3D extends GameEngine {
 
   // Override loadLevel to add browser-specific initialization
   loadLevel(index) {
+    const targetLevelId = LEVELS[index]?.id;
+    if (targetLevelId) this.applyLevelEnvironment(targetLevelId);
     super.loadLevel(index);
     this.activeCard = null;
     this.placementMode = false;
+    this.ui.cardPanel.classList.remove('placement-collapsed');
     this.selectedRitualCreations.clear();
     this.selectedWorkshopItems.clear();
     this.currentAbyssRiddle = null;
@@ -301,12 +341,45 @@ class CreatorExam3D extends GameEngine {
     // Update memory system
     this.memorySystem.worldState.currentLevel = this.level.id;
 
+    this.applyLevelEnvironment(this.level.id);
     this.renderWorld();
     this.updateUi();
+    this.soundscape.play('riftPulse', { playbackRate: 0.82 + (this.levelIndex % 3) * 0.08 });
+  }
+
+  applyDebugGate(search = window.location.search) {
+    const enabled = new URLSearchParams(search).get('debug') === '1';
+    if (this.ui?.testJumpPanel) this.ui.testJumpPanel.hidden = !enabled;
+    if (this.root) this.root.dataset.debugUi = enabled ? 'true' : 'false';
+    return enabled;
   }
 
   collectUi() {
     return {
+      testJumpPanel: document.getElementById('test-jump-panel'),
+      drawer: document.getElementById('right-panel'),
+      drawerTitle: document.getElementById('drawer-title'),
+      drawerCloseBtn: document.getElementById('drawer-close-btn'),
+      drawerButtons: [...document.querySelectorAll('[data-drawer]')],
+      drawerViews: [...document.querySelectorAll('[data-drawer-view]')],
+      drawerBadges: {
+        people: document.getElementById('drawer-people-badge'),
+        world: document.getElementById('drawer-world-badge'),
+        systems: document.getElementById('drawer-systems-badge')
+      },
+      worldSignal: document.getElementById('world-signal'),
+      worldSignalOpen: document.getElementById('world-signal-open'),
+      worldSignalDismiss: document.getElementById('world-signal-dismiss'),
+      worldSignalTitle: document.getElementById('world-signal-title'),
+      worldSignalSummary: document.getElementById('world-signal-summary'),
+      cinematic: document.getElementById('cinematic'),
+      cinematicArt: document.getElementById('cinematic-art'),
+      cinematicKicker: document.getElementById('cinematic-kicker'),
+      cinematicTitle: document.getElementById('cinematic-title'),
+      cinematicText: document.getElementById('cinematic-text'),
+      cinematicProgress: document.getElementById('cinematic-progress'),
+      cinematicSkip: document.getElementById('cinematic-skip'),
+      cinematicPrimary: document.getElementById('cinematic-primary'),
       levelChip: document.getElementById('level-chip'),
       title: document.getElementById('level-title'),
       story: document.getElementById('level-story'),
@@ -338,6 +411,7 @@ class CreatorExam3D extends GameEngine {
       cardSide: document.getElementById('card-side'),
       placeBtn: document.getElementById('place-btn'),
       endTurnBtn: document.getElementById('end-turn-btn'),
+      soundToggle: document.getElementById('sound-toggle'),
       restartBtn: document.getElementById('restart-btn'),
       nextBtn: document.getElementById('next-btn'),
       nightWatchPanel: document.getElementById('night-watch-panel'),
@@ -412,8 +486,7 @@ class CreatorExam3D extends GameEngine {
       advancedLog: document.getElementById('advanced-log'),
       advancedMechanicsPanel: document.getElementById('advanced-mechanics-panel'),
       cardRune: document.getElementById('card-rune'),
-      explorationChoices: document.getElementById('exploration-choices'),
-      rightPanel: document.getElementById('right-panel')
+      explorationChoices: document.getElementById('exploration-choices')
     };
   }
 
@@ -433,6 +506,13 @@ class CreatorExam3D extends GameEngine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
+    const textureLoader = new THREE.TextureLoader();
+    const gltfLoader = new GLTFLoader();
+    this.levelPresentationLoader = new LevelPresentationLoader({
+      loadTexture: url => textureLoader.loadAsync(url),
+      loadModel: url => gltfLoader.loadAsync(url)
+    });
+
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.target.set(0, 0, 0);
@@ -440,23 +520,23 @@ class CreatorExam3D extends GameEngine {
     this.controls.minDistance = 8;
     this.controls.maxDistance = 22;
 
-    const ambient = new THREE.HemisphereLight(0xcfe8ff, 0x12162e, 2.1);
-    this.scene.add(ambient);
+    this.ambientLight = new THREE.HemisphereLight(0xcfe8ff, 0x12162e, 2.1);
+    this.scene.add(this.ambientLight);
 
-    const sun = new THREE.DirectionalLight(0xffffff, 2.8);
-    sun.position.set(6, 12, 8);
-    sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
-    sun.shadow.camera.left = -12;
-    sun.shadow.camera.right = 12;
-    sun.shadow.camera.top = 12;
-    sun.shadow.camera.bottom = -12;
-    this.scene.add(sun);
+    this.sunLight = new THREE.DirectionalLight(0xffffff, 2.8);
+    this.sunLight.position.set(6, 12, 8);
+    this.sunLight.castShadow = true;
+    this.sunLight.shadow.mapSize.width = 2048;
+    this.sunLight.shadow.mapSize.height = 2048;
+    this.sunLight.shadow.camera.left = -12;
+    this.sunLight.shadow.camera.right = 12;
+    this.sunLight.shadow.camera.top = 12;
+    this.sunLight.shadow.camera.bottom = -12;
+    this.scene.add(this.sunLight);
 
-    const rim = new THREE.PointLight(0x7c68ff, 3, 32);
-    rim.position.set(-7, 5, -6);
-    this.scene.add(rim);
+    this.rimLight = new THREE.PointLight(0x7c68ff, 3, 32);
+    this.rimLight.position.set(-7, 5, -6);
+    this.scene.add(this.rimLight);
 
     const base = new THREE.Mesh(
       new THREE.CylinderGeometry(8.8, 9.6, 0.28, 8),
@@ -466,6 +546,7 @@ class CreatorExam3D extends GameEngine {
     base.receiveShadow = true;
     this.scene.add(base);
 
+    this.scene.add(this.environmentGroup);
     this.scene.add(this.worldGroup);
     this.worldGroup.add(this.intentArrowGroup);
 
@@ -538,9 +619,149 @@ class CreatorExam3D extends GameEngine {
     return hash;
   }
 
+  notifyDrawer(name, notice) {
+    if (!this.drawerNotices[name] || !notice?.id || !notice?.targetId) return false;
+    const priority = notice.priority === 'actionable' ? 'actionable' : 'ambient';
+    const stableKey = `${name}:${notice.id}`;
+    if (this.seenDrawerNoticeIds.has(stableKey)) return false;
+    this.seenDrawerNoticeIds.add(stableKey);
+
+    const groupKey = [
+      this.level?.id || 'unknown',
+      this.turn || 0,
+      name,
+      priority,
+      notice.targetId
+    ].join(':');
+    let group = this.drawerNotices[name].find(item => item.groupKey === groupKey);
+    if (group) {
+      group.count += 1;
+      group.ids.push(notice.id);
+      group.summary = notice.summary || group.summary;
+    } else {
+      group = {
+        groupKey,
+        ids: [notice.id],
+        name,
+        priority,
+        title: notice.title || '档案有了新内容',
+        summary: notice.summary || '',
+        targetId: notice.targetId,
+        count: 1
+      };
+      this.drawerNotices[name].push(group);
+    }
+    this.drawerUnread[name] += 1;
+    this.renderDrawerSignals();
+    if (name === 'world' && notice.targetId === 'legend-panel') {
+      this.soundscape.play('legendDiscovery');
+    }
+    return true;
+  }
+
+  acknowledgeDrawer(name) {
+    if (!Object.prototype.hasOwnProperty.call(this.drawerUnread, name)) return;
+    this.drawerUnread[name] = 0;
+    this.drawerNotices[name] = this.drawerNotices[name].filter(item => item.priority === 'actionable');
+    this.renderDrawerSignals();
+  }
+
+  dismissDrawerNotice(groupKey) {
+    for (const name of Object.keys(this.drawerNotices)) {
+      const before = this.drawerNotices[name].length;
+      this.drawerNotices[name] = this.drawerNotices[name].filter(item => item.groupKey !== groupKey);
+      if (this.drawerNotices[name].length !== before) {
+        this.renderDrawerSignals();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  renderDrawerSignals() {
+    for (const [name, badge] of Object.entries(this.ui.drawerBadges || {})) {
+      const count = this.drawerUnread[name] || 0;
+      badge.textContent = String(count);
+      badge.hidden = count === 0;
+      badge.setAttribute('aria-label', count ? `${count} 条未读` : '没有未读');
+    }
+
+    const all = Object.values(this.drawerNotices).flat();
+    const selected = all.find(item => item.priority === 'actionable') || all.at(-1) || null;
+    this.activeDrawerNoticeKey = selected?.groupKey || null;
+    this.ui.worldSignal.hidden = !selected;
+    if (!selected) return;
+    this.ui.worldSignal.dataset.priority = selected.priority;
+    this.ui.worldSignal.dataset.drawer = selected.name;
+    this.ui.worldSignal.dataset.targetId = selected.targetId;
+    this.ui.worldSignalTitle.textContent = selected.count > 1 ? `${selected.title} · ${selected.count} 条` : selected.title;
+    this.ui.worldSignalSummary.textContent = selected.summary;
+  }
+
+  openDrawer(name, targetId = null, trigger = null) {
+    const titles = { people: '人物', world: '世界志', systems: '造物术' };
+    const view = this.ui.drawerViews.find(node => node.dataset.drawerView === name);
+    if (!view || !titles[name]) return false;
+
+    this.acknowledgeDrawer(name);
+    this.drawerFocusReturn = trigger || document.activeElement;
+    this.activeDrawer = name;
+    this.ui.drawer.hidden = false;
+    this.ui.drawer.setAttribute('aria-hidden', 'false');
+    this.ui.drawerTitle.textContent = titles[name];
+
+    for (const button of this.ui.drawerButtons) {
+      button.setAttribute('aria-expanded', button.dataset.drawer === name ? 'true' : 'false');
+    }
+    for (const candidate of this.ui.drawerViews) {
+      candidate.hidden = candidate !== view;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (this.activeDrawer !== name) return;
+      const target = targetId ? document.getElementById(targetId) : null;
+      if (target) {
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        target.scrollIntoView({ block: 'start', behavior: reducedMotion ? 'auto' : 'smooth' });
+        const focusable = target.querySelector('button, input, textarea, select, [tabindex]');
+        (focusable || this.ui.drawerTitle).focus({ preventScroll: true });
+      } else {
+        this.ui.drawerTitle.focus();
+      }
+    });
+    return true;
+  }
+
+  closeDrawer() {
+    if (!this.activeDrawer) return false;
+    this.activeDrawer = null;
+    this.ui.drawer.hidden = true;
+    this.ui.drawer.setAttribute('aria-hidden', 'true');
+    for (const button of this.ui.drawerButtons) button.setAttribute('aria-expanded', 'false');
+    for (const view of this.ui.drawerViews) view.hidden = true;
+    const focusReturn = this.drawerFocusReturn;
+    this.drawerFocusReturn = null;
+    focusReturn?.focus?.();
+    return true;
+  }
+
   bindEvents() {
+    this.soundscape.bindUnlock(window);
+    this.updateSoundToggle();
     window.addEventListener('resize', () => this.onResize());
     this.renderer.domElement.addEventListener('pointerdown', (event) => this.onPointerDown(event));
+
+    document.addEventListener('click', event => {
+      const control = event.target.closest?.('button, summary');
+      if (!control || control.disabled || control === this.ui.soundToggle) return;
+      this.soundscape.play('uiSelect');
+    });
+    this.ui.soundToggle?.addEventListener('click', () => {
+      const enabled = this.soundscape.toggle();
+      this.updateSoundToggle();
+      if (enabled) this.soundscape.play('uiSelect', { cooldownMs: 0 });
+      this.showToast(enabled ? '声音已开启。' : '声音已关闭。');
+    });
 
     this.ui.compileBtn.addEventListener('click', () => this.handleCompile());
     this.ui.randomBtn.addEventListener('click', () => this.insertInspiration());
@@ -551,11 +772,57 @@ class CreatorExam3D extends GameEngine {
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
     this.ui.nightWatchBtn?.addEventListener('click', () => this.openNightWatch());
     this.ui.airCombatBtn?.addEventListener('click', () => this.openAirCombatMode());
+    this.ui.cinematicSkip?.addEventListener('click', () => this.closeCinematic());
+    this.ui.cinematicPrimary?.addEventListener('click', () => this.handleCinematicPrimary());
+    this.ui.cinematic?.addEventListener('keydown', event => {
+      if (event.key === 'Tab') {
+        const active = document.activeElement;
+        if (event.shiftKey && (active === this.ui.cinematicSkip || active === this.ui.cinematicTitle)) {
+          event.preventDefault();
+          this.ui.cinematicPrimary.focus();
+        } else if (!event.shiftKey && active === this.ui.cinematicPrimary) {
+          event.preventDefault();
+          this.ui.cinematicSkip.focus();
+        }
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this.closeCinematic();
+      }
+      if (event.key === 'ArrowRight' && this.activeChapterIntro) {
+        event.preventDefault();
+        this.handleCinematicPrimary();
+      }
+    });
+    for (const button of this.ui.drawerButtons) {
+      button.addEventListener('click', () => {
+        if (this.activeDrawer === button.dataset.drawer) this.closeDrawer();
+        else this.openDrawer(button.dataset.drawer, null, button);
+      });
+    }
+    this.ui.drawerCloseBtn?.addEventListener('click', () => this.closeDrawer());
+    this.ui.worldSignalOpen?.addEventListener('click', () => {
+      const notice = Object.values(this.drawerNotices).flat().find(item => item.groupKey === this.activeDrawerNoticeKey);
+      if (!notice) return;
+      this.openDrawer(notice.name, notice.targetId, document.querySelector(`[data-drawer="${notice.name}"]`));
+      if (notice.priority === 'ambient') this.dismissDrawerNotice(notice.groupKey);
+    });
+    this.ui.worldSignalDismiss?.addEventListener('click', () => {
+      if (this.activeDrawerNoticeKey) this.dismissDrawerNotice(this.activeDrawerNoticeKey);
+    });
+    window.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && this.activeDrawer) {
+        event.preventDefault();
+        this.closeDrawer();
+      }
+    });
     document.querySelectorAll('[data-test-level]').forEach(btn => {
       btn.addEventListener('click', () => this.jumpToTestLevel(Number(btn.dataset.testLevel)));
     });
     document.getElementById('test-night-watch-btn')?.addEventListener('click', () => this.openNightWatchTestMode());
     document.getElementById('test-air-combat-btn')?.addEventListener('click', () => this.openAirCombatMode({ testEntry: true }));
+    const chapterIntroButton = document.getElementById('test-chapter-intro-btn');
+    chapterIntroButton?.addEventListener('click', () => this.showLevelChapterIntro(this.level.id, { force: true, returnFocus: chapterIntroButton }));
     this.ui.browserSmokeBtn?.addEventListener('click', () => this.handleBrowserDemoSmokeClick());
     this.ui.performRitualBtn?.addEventListener('click', () => this.handlePerformRitual());
 
@@ -712,6 +979,200 @@ class CreatorExam3D extends GameEngine {
     });
   }
 
+  showCinematic({ variant, kicker, title, text, primary = '继续', artUrl = null, progress = null, onPrimary = null, onClose = null }) {
+    if (this.chapterTransitionTimer) {
+      window.clearTimeout(this.chapterTransitionTimer);
+      this.chapterTransitionTimer = null;
+    }
+    this.ui.cinematic.classList.remove('chapter-transition');
+    this.ui.cinematicSkip.disabled = false;
+    this.ui.cinematicPrimary.disabled = false;
+    if (this.ui.cinematic.hidden) this.cinematicWasResolving = this.isResolvingTurn;
+    this.cinematicCloseAction = onClose;
+    this.cinematicPrimaryAction = onPrimary;
+    this.ui.cinematic.dataset.cinematic = variant;
+    this.ui.cinematicKicker.textContent = kicker;
+    this.ui.cinematicTitle.textContent = title;
+    this.ui.cinematicText.textContent = text;
+    this.ui.cinematicPrimary.textContent = primary;
+    if (artUrl) {
+      this.ui.cinematicArt.style.setProperty('--cinematic-image', `url("${artUrl}")`);
+      this.ui.cinematicArt.classList.remove('chapter-frame-enter');
+      void this.ui.cinematicArt.offsetWidth;
+      this.ui.cinematicArt.classList.add('chapter-frame-enter');
+    } else {
+      this.ui.cinematicArt.style.removeProperty('--cinematic-image');
+      this.ui.cinematicArt.classList.remove('chapter-frame-enter');
+    }
+    if (progress) {
+      this.ui.cinematicProgress.hidden = false;
+      this.ui.cinematicProgress.innerHTML = Array.from({ length: progress.total }, (_, index) =>
+        `<span class="${index <= progress.index ? 'active' : ''}" aria-hidden="true"></span>`
+      ).join('');
+      this.ui.cinematicProgress.setAttribute('aria-label', `章节画面 ${progress.index + 1} / ${progress.total}`);
+    } else {
+      this.ui.cinematicProgress.hidden = true;
+      this.ui.cinematicProgress.innerHTML = '';
+    }
+    this.ui.cinematic.hidden = false;
+    this.setTurnControlsPending(true);
+    window.requestAnimationFrame(() => this.ui.cinematicTitle.focus());
+  }
+
+  handleCinematicPrimary() {
+    if (this.ui.cinematic.hidden) return false;
+    if (this.cinematicPrimaryAction) {
+      this.cinematicPrimaryAction();
+      return true;
+    }
+    return this.closeCinematic();
+  }
+
+  closeCinematic() {
+    if (this.ui.cinematic.hidden) return false;
+    if (this.chapterTransitionTimer) {
+      window.clearTimeout(this.chapterTransitionTimer);
+      this.chapterTransitionTimer = null;
+    }
+    const action = this.cinematicCloseAction;
+    this.cinematicCloseAction = null;
+    this.cinematicPrimaryAction = null;
+    this.ui.cinematic.classList.remove('chapter-transition');
+    this.ui.cinematicSkip.disabled = false;
+    this.ui.cinematicPrimary.disabled = false;
+    this.ui.cinematic.hidden = true;
+    this.setTurnControlsPending(this.cinematicWasResolving);
+    action?.();
+    return true;
+  }
+
+  showOpeningSequence() {
+    const openingParams = new URLSearchParams(window.location.search);
+    const chapterPreviewIndex = Number.parseInt(openingParams.get('chapter') || '', 10) - 1;
+    if (openingParams.get('debug') === '1' && LEVELS[chapterPreviewIndex]) {
+      if (chapterPreviewIndex !== this.levelIndex) this.loadLevel(chapterPreviewIndex);
+      this.showLevelChapterIntro(this.level.id, { force: true });
+      return true;
+    }
+    this.showPrologueCinematic(() => {
+      if (!this.showLevelChapterIntro('flood-village')) this.ui.input.focus();
+    });
+  }
+
+  showPrologueCinematic(onComplete = null) {
+    let seen = false;
+    try { seen = sessionStorage.getItem('creatorExamPrologueSeen') === '1'; } catch (_error) {}
+    if (seen) {
+      onComplete?.();
+      return false;
+    }
+    this.showCinematic({
+      variant: 'prologue',
+      kicker: '考核开始',
+      title: '世界只接受能落在棋盘上的答案',
+      text: '读懂眼前的灾难，用一句话造物，再把它放到真正需要它的格子。',
+      primary: '开始造物',
+      onClose: () => {
+        try { sessionStorage.setItem('creatorExamPrologueSeen', '1'); } catch (_error) {}
+        onComplete?.();
+      }
+    });
+    return true;
+  }
+
+  preloadChapterIntro(levelId) {
+    if (this.chapterIntroPreloads.has(levelId)) return this.chapterIntroPreloads.get(levelId);
+    const intro = LEVEL_CHAPTER_INTROS[levelId];
+    if (!intro) return [];
+    const images = intro.frames.map(frame => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = frame.art;
+      return image;
+    });
+    this.chapterIntroPreloads.set(levelId, images);
+    return images;
+  }
+
+  showLevelChapterIntro(levelId, { force = false, returnFocus = null } = {}) {
+    const intro = LEVEL_CHAPTER_INTROS[levelId];
+    if (!intro) return false;
+    const storageKey = `creatorExamChapterSeen:${levelId}:v1`;
+    let seen = false;
+    try { seen = sessionStorage.getItem(storageKey) === '1'; } catch (_error) {}
+    if (seen && !force) return false;
+    this.preloadChapterIntro(levelId);
+    this.activeChapterIntro = { levelId, intro, storageKey, returnFocus };
+    this.chapterIntroFrameIndex = 0;
+    this.renderChapterIntroFrame();
+    return true;
+  }
+
+  renderChapterIntroFrame() {
+    if (!this.activeChapterIntro) return false;
+    const { levelId, intro } = this.activeChapterIntro;
+    const frame = intro.frames[this.chapterIntroFrameIndex];
+    if (!frame) return false;
+    const isLast = this.chapterIntroFrameIndex === intro.frames.length - 1;
+    this.showCinematic({
+      variant: `chapter-${levelId}`,
+      kicker: `${intro.act} · ${intro.chapter}`,
+      title: frame.title,
+      text: frame.text,
+      artUrl: frame.art,
+      progress: { index: this.chapterIntroFrameIndex, total: intro.frames.length },
+      primary: isLast ? '进入本关' : '下一页',
+      onPrimary: () => {
+        if (isLast) {
+          this.finishChapterIntroWithTransition();
+          return;
+        }
+        this.chapterIntroFrameIndex += 1;
+        this.renderChapterIntroFrame();
+      },
+      onClose: () => this.completeChapterIntro()
+    });
+    return true;
+  }
+
+  finishChapterIntroWithTransition() {
+    if (!this.activeChapterIntro || this.chapterTransitionTimer) return false;
+    this.cinematicPrimaryAction = null;
+    this.ui.cinematicSkip.disabled = true;
+    this.ui.cinematicPrimary.disabled = true;
+    this.ui.cinematic.classList.add('chapter-transition');
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    this.chapterTransitionTimer = window.setTimeout(() => {
+      this.chapterTransitionTimer = null;
+      this.closeCinematic();
+    }, reducedMotion ? 180 : CHAPTER_TRANSITION_MS);
+    return true;
+  }
+
+  completeChapterIntro() {
+    if (!this.activeChapterIntro) return false;
+    const { levelId, storageKey, returnFocus } = this.activeChapterIntro;
+    try { sessionStorage.setItem(storageKey, '1'); } catch (_error) {}
+    this.activeChapterIntro = null;
+    this.chapterIntroFrameIndex = 0;
+    this.chapterIntroPreloads.delete(levelId);
+    if (returnFocus?.isConnected) returnFocus.focus();
+    else this.ui.input.focus();
+    return true;
+  }
+
+  showEndingCinematic(result) {
+    const victory = result?.outcome === 'victory';
+    this.showCinematic({
+      variant: victory ? 'ending-victory' : 'ending-loss',
+      kicker: '第七日清算',
+      title: victory ? '世界记住了你的答案' : '裂隙记住了这次代价',
+      text: `${result?.notableMoment || '空域已经给出裁决。'} 结局修饰：${result?.endingModifier || '未命名'}`,
+      primary: '回到世界志',
+      onClose: () => this.openDrawer('world', 'air-combat-panel', document.getElementById('drawer-world-btn'))
+    });
+  }
+
   onResize() {
     const renderSize = this.getCanvasRenderSize();
     this.camera.aspect = renderSize.width / renderSize.height;
@@ -748,6 +1209,7 @@ class CreatorExam3D extends GameEngine {
       const card = await compileCreation(text, this.getGameContext());
       this.activeCard = card;
       this.showCard(card);
+      this.soundscape.play('creationCompile');
       const displayName = this.getCreationDisplayName(card);
       const compileNote = card.source === 'ai'
         ? '卡能放了。'
@@ -771,6 +1233,8 @@ class CreatorExam3D extends GameEngine {
   }
 
   showCard(card) {
+    this.placementMode = false;
+    this.ui.cardPanel.classList.remove('placement-collapsed');
     this.ui.cardPanel.classList.remove('hidden');
     this.ui.cardType.textContent = card.type;
     this.ui.cardName.textContent = this.getCreationDisplayName(card);
@@ -795,7 +1259,8 @@ class CreatorExam3D extends GameEngine {
       return;
     }
     this.placementMode = true;
-    this.showToast('点击 3D 地图上的一个格子放置造物。');
+    this.ui.cardPanel.classList.add('placement-collapsed');
+    this.showToast(`正在放置「${this.getCreationDisplayName(this.activeCard)}」：点击地图格子。`);
   }
 
   onPointerDown(event) {
@@ -832,6 +1297,7 @@ class CreatorExam3D extends GameEngine {
     };
     this.creations.push(creation);
     this.placementMode = false;
+    this.ui.cardPanel.classList.remove('placement-collapsed');
     this.activeCard = null;
     this.ui.input.value = '';
     this.ui.cardPanel.classList.add('hidden');
@@ -865,6 +1331,7 @@ class CreatorExam3D extends GameEngine {
       this.screenEffects.flash('#' + this.particleSystem.getAbilityColor(card.ability).toString(16).padStart(6, '0'), 400);
     }
 
+    this.soundscape.play('creationPlace');
     this.checkEndCondition(false);
     this.renderWorld();
     this.updateUi();
@@ -1001,6 +1468,7 @@ class CreatorExam3D extends GameEngine {
       message += `\n\n${epicEnding.text}`;
     }
 
+    this.soundscape.play('levelWin');
     this.ui.nextBtn.classList.toggle('hidden', isFinal);
     this.showModal('考核通过', message + (isFinal ? ' 防线入口已打开。' : ' 下一关已打开。'), isFinal ? '开启守城' : '继续', '重试');
   }
@@ -1028,14 +1496,17 @@ class CreatorExam3D extends GameEngine {
     this.screenEffects.shake(8, 500);
     this.screenEffects.vignette('rgba(255, 0, 50, 0.3)', 1000);
 
-    this.showModal('考核失败', message, '重试', '重试');
+    this.soundscape.play('levelLoss');
+    this.showModal('考核失败', message, '重试', null);
   }
 
   showModal(title, text, primary, secondary) {
+    const showSecondary = Boolean(secondary && secondary !== primary);
     this.ui.modalTitle.textContent = title;
     this.ui.modalText.textContent = text;
     this.ui.modalPrimary.textContent = primary;
-    this.ui.modalSecondary.textContent = secondary;
+    this.ui.modalSecondary.textContent = showSecondary ? secondary : '';
+    this.ui.modalSecondary.hidden = !showSecondary;
     this.ui.modal.classList.remove('hidden');
   }
 
@@ -1045,6 +1516,7 @@ class CreatorExam3D extends GameEngine {
       return;
     }
     this.loadLevel(this.levelIndex + 1);
+    window.requestAnimationFrame(() => this.showLevelChapterIntro(this.level.id));
   }
 
   jumpToTestLevel(index) {
@@ -1320,6 +1792,7 @@ class CreatorExam3D extends GameEngine {
     if (result.notableMoment) this.addLog(`【空域裁决】${result.notableMoment}`);
     this.memoryStore?.saveWorld?.(this.worldSession.worldSimulation);
     this.updateUi();
+    this.showEndingCinematic(result);
   }
 
   renderAirCombatPanel() {
@@ -1672,7 +2145,8 @@ class CreatorExam3D extends GameEngine {
   }
 
   handleLose(message) {
-    this.showModal('考核失败', message, '重试', '重试');
+    this.soundscape.play('levelLoss');
+    this.showModal('考核失败', message, '重试', null);
   }
 
   handleRescue(unit) {
@@ -1708,6 +2182,156 @@ class CreatorExam3D extends GameEngine {
   recordGameEvent(event) {
     if (this.worldSession?.recordTacticalEvent) {
       this.worldSession.recordTacticalEvent(event);
+    }
+  }
+
+  clearLevelEnvironment() {
+    this.environmentGroup.clear();
+    this.environmentGroup.userData.levelId = null;
+    delete this.environmentGroup.userData.backgroundAsset;
+  }
+
+  addEnvironmentPrimitive(kind, color, position, scale, rotation = [0, 0, 0], materialOptions = {}) {
+    const factories = {
+      box: () => new THREE.BoxGeometry(1, 1, 1),
+      cone: () => new THREE.ConeGeometry(0.5, 1, 7),
+      cylinder: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 16),
+      rock: () => new THREE.DodecahedronGeometry(0.5, 0),
+      crown: () => new THREE.IcosahedronGeometry(0.5, 1),
+      ring: () => new THREE.RingGeometry(5.5, 9.2, 64)
+    };
+    const factory = factories[kind];
+    if (!factory) return null;
+    const mesh = new THREE.Mesh(
+      this.getCachedGeometry(`environment-${kind}`, factory),
+      this.material(color, { roughness: 0.88, metalness: 0.02, ...materialOptions })
+    );
+    mesh.position.set(...position);
+    mesh.scale.set(...scale);
+    mesh.rotation.set(...rotation);
+    mesh.castShadow = kind !== 'ring' && materialOptions.transparent !== true;
+    mesh.receiveShadow = kind !== 'cone';
+    mesh.userData.decorative = true;
+    this.environmentGroup.add(mesh);
+    return mesh;
+  }
+
+  createProceduralEnvironment(levelId) {
+    const add = (...args) => this.addEnvironmentPrimitive(...args);
+    const squarePoint = (angle, radius) => {
+      const x = Math.cos(angle);
+      const z = Math.sin(angle);
+      const scale = radius / Math.max(Math.abs(x), Math.abs(z));
+      return [x * scale, z * scale];
+    };
+    const circle = (count, radius, callback) => {
+      for (let i = 0; i < count; i += 1) {
+        const angle = i * Math.PI * 2 / count;
+        const [x, z] = squarePoint(angle, radius);
+        callback(i, angle, x, z);
+      }
+    };
+
+    if (levelId === 'flood-village') {
+      add('ring', 0x28758a, [0, -0.18, 0], [1, 1, 1], [-Math.PI / 2, 0, 0], { transparent: true, opacity: 0.58, side: THREE.DoubleSide });
+      for (const [x, z] of [[-6.4, -2.8], [-6.1, 2.6], [6.3, -3.1], [6.5, 2.4]]) {
+        add('box', 0x8e633f, [x, 0.1, z], [0.72, 0.42, 0.72]);
+        add('cone', 0x5a3045, [x, 0.58, z], [0.88, 0.52, 0.88], [0, Math.PI / 4, 0]);
+      }
+      circle(18, 6.8, (i, angle, x, z) => add('box', 0x9cdde5, [x, 2.1 + (i % 3) * 0.35, z], [0.018, 0.65, 0.018], [0, angle, 0.28], { transparent: true, opacity: 0.34 }));
+    } else if (levelId === 'night-mine') {
+      circle(14, 7.1, (i, angle, x, z) => add('rock', i % 2 ? 0x252832 : 0x343741, [x, 0.35, z], [1.2, 1 + (i % 3) * 0.22, 1.1], [i * 0.2, angle, 0]));
+      add('box', 0x5f4a37, [0, -0.02, -6.0], [8.5, 0.06, 0.08]);
+      add('box', 0x5f4a37, [0, -0.02, 6.0], [8.5, 0.06, 0.08]);
+      circle(6, 6.2, (_i, angle, x, z) => add('cylinder', 0xe8dfc2, [x, 0.72, z], [0.16, 0.7, 0.16], [0, angle, 0], { emissive: 0xe8dfc2, emissiveIntensity: 0.75 }));
+    } else if (levelId === 'giant-city') {
+      circle(12, 7.0, (i, angle, x, z) => {
+        add('cylinder', 0x5a4130, [x, 0.45, z], [0.22, 0.9, 0.22]);
+        add('cone', i % 2 ? 0x2f7259 : 0x3e8767, [x, 1.25, z], [0.82, 1.4, 0.82], [0, angle, 0]);
+      });
+      for (let i = -4; i <= 4; i += 1) add('box', 0x7b7162, [i * 1.2, 0.42, -6.1], [1.05, 0.9, 0.48]);
+      add('cylinder', 0x111713, [6.5, -0.08, -1.6], [1.5, 0.05, 0.72], [Math.PI / 2, 0.2, 0], { transparent: true, opacity: 0.45 });
+      add('cylinder', 0x111713, [6.5, -0.08, 1.8], [1.8, 0.05, 0.8], [Math.PI / 2, -0.15, 0], { transparent: true, opacity: 0.45 });
+    } else if (levelId === 'wordless-war') {
+      for (const side of [-1, 1]) {
+        for (const z of [-3, 0, 3]) {
+          add('cylinder', 0x6e665b, [side * 6.25, 0.7, z], [0.09, 1.4, 0.09]);
+          add('box', side < 0 ? 0x8d5466 : 0x675b92, [side * 6.05, 1.12, z], [0.48, 0.52, 0.035]);
+        }
+      }
+      for (let i = -4; i <= 4; i += 1) add('rock', 0x7a746c, [i * 1.25, 0.18, 5.8], [0.42, 0.55, 0.42], [0, i * 0.3, 0]);
+      add('box', 0x7e7396, [-5.7, 1.0, 0], [0.3, 2.2, 5.6], [0, 0, 0], { transparent: true, opacity: 0.12, depthWrite: false });
+      add('box', 0xd4c07c, [5.7, 1.0, 0], [0.3, 2.2, 5.6], [0, 0, 0], { transparent: true, opacity: 0.08, depthWrite: false });
+    } else if (levelId === 'memory-plague') {
+      add('cylinder', 0x62462f, [0, 1.1, -6.65], [0.72, 2.2, 0.72]);
+      add('crown', 0x58c99d, [0, 2.75, -6.65], [2.15, 1.55, 2.15], [0, 0, 0], { emissive: 0x173e32, emissiveIntensity: 0.35 });
+      circle(18, 6.1, (i, angle, x, z) => add('box', i % 2 ? 0xaa94d3 : 0xd7ca93, [x, 1.0 + (i % 4) * 0.4, z], [0.035, 0.28, 0.08], [0.2, angle, i * 0.12], { transparent: true, opacity: 0.62, emissive: 0x6f579c, emissiveIntensity: 0.2 }));
+    } else if (levelId === 'final-exam') {
+      const fragments = [
+        ['cone', 0x5a3045, 0.8], ['rock', 0x343741, 1.0], ['cone', 0x3e8767, 1.2],
+        ['box', 0x675b92, 0.85], ['crown', 0x58c99d, 1.05]
+      ];
+      fragments.forEach(([kind, color, scale], index) => {
+        const angle = index * Math.PI * 2 / fragments.length;
+        const [x, z] = squarePoint(angle, 6.6);
+        add(kind, color, [x, 0.72, z], [scale, scale, scale], [0.2, -angle, 0.15]);
+      });
+      add('ring', 0x8f73c8, [0, 0.02, 0], [0.76, 0.76, 0.76], [-Math.PI / 2, 0, 0], { transparent: true, opacity: 0.32, emissive: 0x8f73c8, emissiveIntensity: 0.35, side: THREE.DoubleSide });
+    }
+  }
+
+  applyLevelEnvironment(levelId) {
+    const preset = LEVEL_ENVIRONMENTS[levelId] || LEVEL_ENVIRONMENTS['final-exam'];
+    this.clearLevelEnvironment();
+    this.scene.background = new THREE.Color(preset.background);
+    this.scene.fog.color.setHex(preset.fog);
+    this.scene.fog.near = preset.near;
+    this.scene.fog.far = preset.far;
+    this.ambientLight.intensity = preset.ambient;
+    this.sunLight.color.setHex(preset.sun);
+    this.sunLight.intensity = preset.sunPower;
+    this.rimLight.color.setHex(preset.rim);
+    this.createProceduralEnvironment(levelId);
+    this.environmentGroup.userData.levelId = levelId;
+    this.pendingLevelPresentation = this.loadLevelPresentationAssets(levelId);
+  }
+
+  loadLevelPresentationAssets(levelId) {
+    if (!this.levelPresentationLoader) return Promise.resolve([]);
+    return this.levelPresentationLoader.apply(levelId, {
+      onBackground: (texture, entry) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.needsUpdate = true;
+        this.scene.background = texture;
+        this.environmentGroup.userData.backgroundAsset = entry.background;
+      },
+      onModel: (gltf, entry) => {
+        this.installPresentationModel(levelId, gltf?.scene || gltf, entry);
+      },
+      onError: (kind, error, entry) => {
+        console.warn(`Level presentation ${kind} fallback: ${entry[kind] || levelId}`, error);
+      }
+    });
+  }
+
+  installPresentationModel(levelId, modelScene, entry) {
+    if (this.environmentGroup.userData.levelId !== levelId || !modelScene?.clone) return;
+    for (const transform of entry.instances) {
+      const root = modelScene.clone(true);
+      root.name = `presentation-${levelId}`;
+      root.position.set(...transform.position);
+      root.rotation.set(...transform.rotation);
+      root.scale.set(...transform.scale);
+      root.userData.decorative = true;
+      root.userData.presentationAsset = entry.model;
+      root.traverse(object => {
+        object.userData.decorative = true;
+        if (object.isMesh) {
+          object.castShadow = false;
+          object.receiveShadow = true;
+        }
+      });
+      this.environmentGroup.add(root);
     }
   }
 
@@ -2104,6 +2728,7 @@ class CreatorExam3D extends GameEngine {
   createUnitMesh(unit) {
     const group = new THREE.Group();
     const pos = this.tileToWorld(unit.x, unit.y);
+    const visualProfile = unit.type === 'beast' ? null : resolveNpcVisualProfile(unit);
     group.position.set(pos.x, 0.36, pos.z);
     group.userData = {
       unit: true,
@@ -2112,7 +2737,9 @@ class CreatorExam3D extends GameEngine {
       residentId: unit.residentId || null,
       unitType: unit.type,
       unitStatus: unit.status,
-      visualStyle: 'voxel-character-v1'
+      visualStyle: 'voxel-character-v2',
+      visualProfile: visualProfile?.id || 'beast',
+      visualRole: visualProfile?.role || 'beast'
     };
 
     const shadow = new THREE.Mesh(
@@ -2124,10 +2751,10 @@ class CreatorExam3D extends GameEngine {
     group.add(shadow);
 
     if (this.isCivilian(unit)) {
-      group.add(this.createVoxelPerson(unit));
+      group.add(this.createVoxelPerson(unit, visualProfile));
       if (unit.guidedTurns > 0) group.add(this.createHalo(0x9dffb3));
     } else if (this.isMessenger(unit)) {
-      group.add(this.createVoxelMessenger(unit));
+      group.add(this.createVoxelMessenger(unit, visualProfile));
       if (unit.met) group.add(this.createHalo(0xd4a6ff));
     } else if (unit.type === 'beast') {
       group.add(this.createVoxelBeast(unit));
@@ -2135,7 +2762,9 @@ class CreatorExam3D extends GameEngine {
     }
 
     const labelSprite = this.createLabel(unit.name);
-    labelSprite.position.y = unit.type === 'beast' ? 0.88 : 0.7;
+    labelSprite.position.y = unit.type === 'beast'
+      ? 0.88
+      : 0.68 + Math.max(0, (visualProfile?.bodyHeight || 1) - 1) * 0.4;
     group.add(labelSprite);
     return group;
   }
@@ -2151,57 +2780,223 @@ class CreatorExam3D extends GameEngine {
     return mesh;
   }
 
-  createVoxelPerson(unit) {
+  addCharacterBlock(group, key, dimensions, color, position, rotation = [0, 0, 0], options = {}) {
+    const part = this.createVoxelBlock(
+      key,
+      dimensions[0], dimensions[1], dimensions[2], color,
+      position[0], position[1], position[2], options
+    );
+    part.rotation.set(rotation[0], rotation[1], rotation[2]);
+    group.add(part);
+    return part;
+  }
+
+  addPersonHeadwear(group, profile) {
+    const trim = profile.trim;
+    const dark = profile.pack;
+    const side = profile.featureSide;
+    const add = (key, dimensions, color, position, rotation) =>
+      this.addCharacterBlock(group, `headwear-${key}`, dimensions, color, position, rotation);
+
+    if (profile.headwear === 'hood') {
+      add('hood-top', [0.23, 0.07, 0.21], dark, [0, 0.45, -0.01]);
+      add('hood-side', [0.055, 0.17, 0.2], dark, [-0.115, 0.36, -0.005]);
+      add('hood-side', [0.055, 0.17, 0.2], dark, [0.115, 0.36, -0.005]);
+      return;
+    }
+    if (profile.headwear === 'brim') {
+      add('brim', [0.31, 0.035, 0.26], trim, [0, 0.43, 0]);
+      add('brim-crown', [0.18, 0.1, 0.17], dark, [0, 0.49, -0.01]);
+      return;
+    }
+    if (profile.headwear === 'helmet' || profile.headwear === 'visor') {
+      add('helmet', [0.23, profile.headwear === 'visor' ? 0.08 : 0.11, 0.21], trim, [0, 0.45, 0]);
+      add('helmet-brim', [profile.headwear === 'visor' ? 0.31 : 0.26, 0.035, 0.25], dark, [0, 0.41, 0.025]);
+      if (profile.headwear === 'visor') add('visor', [0.18, 0.045, 0.035], profile.accent, [0, 0.405, 0.13]);
+      return;
+    }
+    if (profile.headwear === 'bun') {
+      add('hair-cap', [0.205, 0.065, 0.19], 0x3a2c2a, [0, 0.445, -0.005]);
+      add('bun', [0.09, 0.09, 0.08], 0x3a2c2a, [side * 0.1, 0.49, -0.07]);
+      return;
+    }
+    if (profile.headwear === 'braid') {
+      add('hair-cap', [0.205, 0.055, 0.19], dark, [0, 0.445, -0.005]);
+      add('braid-a', [0.05, 0.14, 0.05], dark, [side * 0.11, 0.34, -0.08], [0, 0, side * 0.16]);
+      add('braid-b', [0.045, 0.12, 0.045], trim, [side * 0.13, 0.23, -0.07], [0, 0, -side * 0.12]);
+      return;
+    }
+    if (profile.headwear === 'headband') {
+      add('hair-cap', [0.205, 0.055, 0.19], 0x3b302c, [0, 0.445, -0.005]);
+      add('headband', [0.225, 0.035, 0.205], trim, [0, 0.414, 0]);
+      add('tie', [0.04, 0.12, 0.035], trim, [-side * 0.12, 0.36, -0.09], [0, 0, side * 0.3]);
+      return;
+    }
+    if (profile.headwear === 'soft-cap') {
+      add('soft-cap', [0.22, 0.09, 0.2], trim, [0, 0.46, -0.015], [0, 0, side * 0.12]);
+      add('tassel', [0.04, 0.11, 0.04], profile.accent, [side * 0.12, 0.44, -0.035], [0, 0, -side * 0.32]);
+      return;
+    }
+    if (profile.headwear === 'crest' || profile.headwear === 'crownlet') {
+      add('crest-band', [0.22, 0.045, 0.2], dark, [0, 0.425, 0]);
+      const count = profile.headwear === 'crownlet' ? 3 : 1;
+      for (let index = 0; index < count; index += 1) {
+        const x = count === 1 ? 0 : (index - 1) * 0.07;
+        add('crest-prong', [0.035, 0.12 + (index % 2) * 0.025, 0.04], trim, [x, 0.5, 0]);
+      }
+      return;
+    }
+    add('cap', [0.23, 0.065, 0.205], trim, [0, 0.45, 0]);
+    add('cap-brim', [0.17, 0.025, 0.09], dark, [0, 0.42, 0.11]);
+  }
+
+  addPersonAccessory(group, profile) {
+    const side = profile.featureSide;
+    const x = side * 0.25;
+    const accentOptions = { emissive: profile.accent, emissiveIntensity: 0.28 };
+    const add = (key, dimensions, color, position, rotation, options) =>
+      this.addCharacterBlock(group, `accessory-${key}`, dimensions, color, position, rotation, options);
+
+    if (profile.accessory === 'basket' || profile.accessory === 'grain-basket') {
+      add('basket', [0.2, 0.14, 0.16], profile.pack, [x, -0.07, 0.02]);
+      add('basket-rim', [0.23, 0.035, 0.19], profile.trim, [x, 0.01, 0.02]);
+      if (profile.accessory === 'grain-basket') {
+        add('grain-a', [0.035, 0.14, 0.035], profile.accent, [x - 0.045, 0.1, 0.01], [0, 0, -0.14]);
+        add('grain-b', [0.035, 0.16, 0.035], profile.accent, [x + 0.04, 0.11, 0], [0, 0, 0.18]);
+      }
+      return;
+    }
+    if (profile.accessory === 'lantern' || profile.accessory === 'lamp') {
+      const handheld = profile.accessory === 'lantern';
+      const lampPosition = handheld ? [x, -0.07, 0.08] : [0, 0.475, 0.12];
+      if (handheld) add('lantern-handle', [0.035, 0.26, 0.035], profile.pack, [x, 0.07, 0.07]);
+      add('lantern-core', [0.11, 0.12, 0.09], profile.accent, lampPosition, [0, 0, 0], { emissive: profile.accent, emissiveIntensity: 0.65 });
+      add('lantern-cap', [0.13, 0.035, 0.11], profile.trim, [lampPosition[0], lampPosition[1] + 0.075, lampPosition[2]]);
+      return;
+    }
+    if (profile.accessory === 'hammer' || profile.accessory === 'pickaxe') {
+      const rotation = [0, 0, side * -0.28];
+      add('tool-handle', [0.04, 0.4, 0.04], 0x765239, [x, 0.04, 0.04], rotation);
+      add(
+        profile.accessory === 'hammer' ? 'hammer-head' : 'pick-head',
+        [profile.accessory === 'hammer' ? 0.19 : 0.25, 0.07, 0.06],
+        profile.trim,
+        [x - side * 0.05, 0.24, 0.04],
+        rotation
+      );
+      return;
+    }
+    if (profile.accessory === 'satchel' || profile.accessory === 'canteen') {
+      add('strap', [0.035, 0.42, 0.025], profile.trim, [0, 0.08, 0.105], [0, 0, -side * 0.58]);
+      const dimensions = profile.accessory === 'satchel' ? [0.18, 0.15, 0.09] : [0.13, 0.17, 0.09];
+      add(profile.accessory, dimensions, profile.pack, [side * 0.19, -0.02, 0.02]);
+      if (profile.accessory === 'canteen') add('canteen-cap', [0.055, 0.035, 0.055], profile.accent, [side * 0.19, 0.085, 0.02]);
+      return;
+    }
+    if (profile.accessory === 'survey-staff' || profile.accessory === 'branch-staff' || profile.accessory === 'staff') {
+      add('staff', [0.035, 0.68, 0.035], profile.pack, [x, 0.1, 0.03], [0, 0, side * 0.04]);
+      add('staff-top', [0.17, 0.035, 0.035], profile.accent, [x - side * 0.045, 0.43, 0.03], [0, 0, side * 0.22]);
+      if (profile.accessory === 'branch-staff') add('staff-fork', [0.035, 0.18, 0.035], profile.trim, [x + side * 0.055, 0.4, 0.03], [0, 0, -side * 0.48]);
+      return;
+    }
+    if (profile.accessory === 'tuning-fork') {
+      add('fork-stem', [0.035, 0.4, 0.035], profile.pack, [x, 0.02, 0.03]);
+      add('fork-arm', [0.035, 0.23, 0.035], profile.accent, [x - 0.055, 0.31, 0.03]);
+      add('fork-arm', [0.035, 0.23, 0.035], profile.accent, [x + 0.055, 0.31, 0.03]);
+      add('fork-bridge', [0.14, 0.035, 0.035], profile.trim, [x, 0.2, 0.03]);
+      return;
+    }
+    if (profile.accessory === 'dream-charm') {
+      add('charm-cord', [0.025, 0.3, 0.025], profile.trim, [x, 0.05, 0.04]);
+      add('charm', [0.1, 0.1, 0.055], profile.accent, [x, -0.11, 0.04], [0, 0, Math.PI / 4], accentOptions);
+      return;
+    }
+    if (profile.accessory === 'ember-spool') {
+      add('spool-core', [0.16, 0.12, 0.12], profile.pack, [x, -0.01, 0.05]);
+      add('spool-flange', [0.04, 0.19, 0.17], profile.trim, [x - side * 0.09, -0.01, 0.05]);
+      add('spool-thread', [0.11, 0.07, 0.13], profile.accent, [x, -0.01, 0.05], [0, 0, 0], accentOptions);
+      return;
+    }
+    if (profile.accessory === 'star-map' || profile.accessory === 'scroll') {
+      add('scroll', [0.28, 0.12, 0.045], 0xd8c99d, [0, -0.02, 0.14]);
+      add('scroll-edge', [0.04, 0.16, 0.06], profile.trim, [-0.16, -0.02, 0.14]);
+      add('scroll-edge', [0.04, 0.16, 0.06], profile.trim, [0.16, -0.02, 0.14]);
+      if (profile.accessory === 'star-map') add('map-star', [0.055, 0.055, 0.025], profile.accent, [0.04, -0.01, 0.17], [0, 0, Math.PI / 4], accentOptions);
+      return;
+    }
+    if (profile.accessory === 'stone-chime') {
+      add('chime-pole', [0.035, 0.58, 0.035], profile.pack, [x, 0.08, 0.03]);
+      add('chime-bar', [0.22, 0.035, 0.035], profile.trim, [x, 0.34, 0.03]);
+      for (let index = -1; index <= 1; index += 1) {
+        add('chime-stone', [0.055, 0.09 + Math.abs(index) * 0.025, 0.045], 0x8f8b7d, [x + index * 0.075, 0.23, 0.03]);
+      }
+      return;
+    }
+    if (profile.accessory === 'ore-pack') {
+      add('ore-pack', [0.27, 0.29, 0.13], profile.pack, [0, 0.05, -0.15]);
+      add('ore-a', [0.09, 0.11, 0.08], profile.accent, [-0.07, 0.24, -0.16], [0.3, 0.2, 0.2]);
+      add('ore-b', [0.08, 0.14, 0.07], profile.trim, [0.06, 0.25, -0.16], [-0.2, 0.1, -0.25]);
+    }
+  }
+
+  createVoxelPerson(unit, profile = resolveNpcVisualProfile(unit)) {
     const group = new THREE.Group();
-    const isMiner = unit.type === 'miner';
-    const cloth = isMiner ? 0xe5aa4d : 0x5eb6e8;
-    const trim = isMiner ? 0xffe08a : 0x245d85;
-    const pack = isMiner ? 0x5f432b : 0x31506c;
+    const side = profile.featureSide;
+    group.scale.set(profile.bodyWidth, profile.bodyHeight, profile.bodyWidth);
+    group.position.y = 0.24 * (profile.bodyHeight - 1);
+    group.userData = { visualProfile: profile.id, visualRole: profile.role };
 
     group.add(
       this.createVoxelBlock('person-leg', 0.08, 0.2, 0.08, 0x273044, -0.06, -0.14, 0),
       this.createVoxelBlock('person-leg', 0.08, 0.2, 0.08, 0x273044, 0.06, -0.14, 0),
-      this.createVoxelBlock('person-body', 0.24, 0.3, 0.16, cloth, 0, 0.06, 0),
-      this.createVoxelBlock('person-arm', 0.07, 0.22, 0.08, cloth, -0.18, 0.07, 0),
-      this.createVoxelBlock('person-arm', 0.07, 0.22, 0.08, cloth, 0.18, 0.07, 0),
-      this.createVoxelBlock('person-head', 0.2, 0.18, 0.18, 0xffd6ad, 0, 0.32, 0),
-      this.createVoxelBlock('person-cap', 0.22, 0.06, 0.2, trim, 0, 0.45, 0),
-      this.createVoxelBlock('person-pack', 0.2, 0.22, 0.08, pack, 0, 0.06, -0.14)
+      this.createVoxelBlock('person-body', 0.24, 0.3, 0.16, profile.cloth, 0, 0.06, 0),
+      this.createVoxelBlock('person-head', 0.2, 0.18, 0.18, profile.skin, 0, 0.32, 0),
+      this.createVoxelBlock('person-collar', 0.255, 0.045, 0.18, profile.trim, 0, 0.205, 0.005),
+      this.createVoxelBlock('person-hand', 0.06, 0.06, 0.06, profile.skin, -0.2, -0.03, 0.03),
+      this.createVoxelBlock('person-hand', 0.06, 0.06, 0.06, profile.skin, 0.2, -0.03, 0.03)
     );
-
-    if (isMiner) {
-      group.add(
-        this.createVoxelBlock('miner-lamp', 0.08, 0.06, 0.04, 0xfff39a, 0, 0.47, 0.11, { emissive: 0xffd166, emissiveIntensity: 0.45 }),
-        this.createVoxelBlock('miner-tool', 0.04, 0.28, 0.04, 0x8a6a45, 0.22, 0.06, 0.02)
-      );
-    } else {
-      group.add(
-        this.createVoxelBlock('villager-scarf', 0.24, 0.05, 0.18, 0xf5d77a, 0, 0.21, 0.01),
-        this.createVoxelBlock('villager-hand', 0.06, 0.06, 0.06, 0xffd6ad, -0.2, -0.03, 0.03),
-        this.createVoxelBlock('villager-hand', 0.06, 0.06, 0.06, 0xffd6ad, 0.2, -0.03, 0.03)
-      );
-    }
-
+    this.addCharacterBlock(group, 'person-arm', [0.07, 0.22, 0.08], profile.cloth, [-0.18, 0.07, 0], [0, 0, side > 0 ? 0.08 : -0.16]);
+    this.addCharacterBlock(group, 'person-arm', [0.07, 0.22, 0.08], profile.cloth, [0.18, 0.07, 0], [0, 0, side > 0 ? 0.16 : -0.08]);
+    this.addPersonHeadwear(group, profile);
+    this.addPersonAccessory(group, profile);
     return group;
   }
 
-  createVoxelMessenger(unit) {
+  createVoxelMessenger(unit, profile = resolveNpcVisualProfile(unit)) {
     const group = new THREE.Group();
-    const cloak = unit.type === 'tribeA' ? 0xff8f70 : 0x7aa2ff;
-    const flag = unit.type === 'tribeA' ? 0xffd166 : 0xa7c7ff;
-    const hood = unit.type === 'tribeA' ? 0x7b2f28 : 0x25386f;
+    const side = profile.featureSide;
+    const x = side * 0.25;
+    group.scale.set(profile.bodyWidth, profile.bodyHeight, profile.bodyWidth);
+    group.position.y = 0.24 * (profile.bodyHeight - 1);
+    group.userData = { visualProfile: profile.id, visualRole: profile.role };
 
     group.add(
       this.createVoxelBlock('messenger-leg', 0.08, 0.18, 0.08, 0x273044, -0.05, -0.16, 0),
       this.createVoxelBlock('messenger-leg', 0.08, 0.18, 0.08, 0x273044, 0.05, -0.16, 0),
-      this.createVoxelBlock('messenger-cloak', 0.28, 0.36, 0.18, cloak, 0, 0.06, 0),
-      this.createVoxelBlock('messenger-hood', 0.22, 0.14, 0.2, hood, 0, 0.29, 0),
-      this.createVoxelBlock('messenger-face', 0.14, 0.1, 0.04, 0xffd6ad, 0, 0.29, 0.105),
-      this.createVoxelBlock('messenger-pole', 0.035, 0.62, 0.035, 0xe9d8a6, 0.22, 0.12, 0.02),
-      this.createVoxelBlock('messenger-flag', 0.22, 0.14, 0.035, flag, 0.33, 0.36, 0.02),
-      this.createVoxelBlock('messenger-satchel', 0.16, 0.12, 0.08, 0x6b4d35, -0.18, 0.02, -0.1)
+      this.createVoxelBlock('messenger-cloak', 0.28, 0.36, 0.18, profile.cloth, 0, 0.06, 0),
+      this.createVoxelBlock('messenger-face', 0.16, 0.13, 0.15, profile.skin, 0, 0.32, 0.02),
+      this.createVoxelBlock('messenger-clasp', 0.08, 0.06, 0.04, profile.accent, 0, 0.19, 0.11, { emissive: profile.accent, emissiveIntensity: 0.2 })
     );
+    this.addPersonHeadwear(group, profile);
 
+    if (profile.accessory === 'forked-banner' || profile.accessory === 'broad-banner') {
+      this.addCharacterBlock(group, 'messenger-pole', [0.035, 0.68, 0.035], 0xd8c89b, [x, 0.12, 0.02]);
+      if (profile.accessory === 'forked-banner') {
+        this.addCharacterBlock(group, 'messenger-flag-upper', [0.2, 0.1, 0.035], profile.accent, [x + side * 0.11, 0.4, 0.02], [0, 0, -side * 0.08]);
+        this.addCharacterBlock(group, 'messenger-flag-lower', [0.14, 0.07, 0.035], profile.trim, [x + side * 0.08, 0.31, 0.02], [0, 0, side * 0.1]);
+      } else {
+        this.addCharacterBlock(group, 'messenger-flag-broad', [0.27, 0.18, 0.035], profile.accent, [x + side * 0.14, 0.35, 0.02]);
+        this.addCharacterBlock(group, 'messenger-flag-band', [0.29, 0.035, 0.045], profile.trim, [x + side * 0.14, 0.35, 0.04]);
+      }
+    } else if (profile.accessory === 'signal-lantern') {
+      this.addCharacterBlock(group, 'messenger-staff', [0.035, 0.65, 0.035], profile.pack, [x, 0.1, 0.02]);
+      this.addCharacterBlock(group, 'messenger-lantern', [0.12, 0.14, 0.1], profile.accent, [x, 0.4, 0.02], [0, 0, 0], { emissive: profile.accent, emissiveIntensity: 0.62 });
+      this.addCharacterBlock(group, 'messenger-lantern-cap', [0.15, 0.035, 0.12], profile.trim, [x, 0.49, 0.02]);
+    } else {
+      this.addCharacterBlock(group, 'messenger-scroll', [0.18, 0.1, 0.07], 0xd8c99d, [x, 0.02, 0.09], [0, 0, side * 0.12]);
+      this.addCharacterBlock(group, 'messenger-seal', [0.055, 0.055, 0.025], profile.accent, [x, 0.02, 0.14], [0, 0, Math.PI / 4], { emissive: profile.accent, emissiveIntensity: 0.24 });
+      this.addCharacterBlock(group, 'messenger-satchel', [0.18, 0.15, 0.09], profile.pack, [-x * 0.75, -0.02, -0.08]);
+    }
     return group;
   }
 
@@ -2234,28 +3029,75 @@ class CreatorExam3D extends GameEngine {
   }
 
   getCreationVisualStyle(card) {
+    const family = getAbilityVisualFamily(card?.ability);
     const baseColor = ABILITY_COLORS[card?.ability] || 0xffffff;
+    const familyStyles = {
+      water: { coreColor: 0x55cfe3, ringColor: 0x8ee8ef, accentColor: 0x3aa6c4 },
+      light: { coreColor: 0xf1d47b, ringColor: 0xffefb0, accentColor: 0xffd36a },
+      terrain: { coreColor: 0x74906c, ringColor: 0xb59a68, accentColor: 0x59c77f },
+      defense: { coreColor: 0x69cdb2, ringColor: 0xa8ead8, accentColor: 0x4f8f83 },
+      mind: { coreColor: 0x987bc9, ringColor: 0xc1a5e8, accentColor: 0x7b63b2 },
+      special: { coreColor: baseColor, ringColor: 0xf0e4c1, accentColor: 0xd2b86b }
+    };
+    const style = familyStyles[family];
     if (card?.ability === 'consume_light') {
       return {
-        coreColor: 0x4b275d,
-        ringColor: 0xffd166,
-        coreEmissive: 0x14051d,
-        ringEmissive: 0xffa64d,
-        coreEmissiveIntensity: 0.08,
-        ringEmissiveIntensity: 0.95,
-        accentColor: 0xfff0a8,
-        shadowColor: 0x09040d,
-        absorption: true
+        family: 'special', coreColor: 0x4b275d, ringColor: 0xffd166,
+        coreEmissive: 0x14051d, ringEmissive: 0xffa64d,
+        coreEmissiveIntensity: 0.08, ringEmissiveIntensity: 0.95,
+        accentColor: 0xfff0a8, shadowColor: 0x09040d, absorption: true
       };
     }
     return {
-      coreColor: baseColor,
-      ringColor: baseColor,
-      coreEmissive: baseColor,
-      ringEmissive: baseColor,
-      coreEmissiveIntensity: 0.18,
-      ringEmissiveIntensity: 0.25
+      family,
+      ...style,
+      coreEmissive: style.coreColor,
+      ringEmissive: style.ringColor,
+      coreEmissiveIntensity: family === 'light' ? 0.38 : 0.18,
+      ringEmissiveIntensity: family === 'special' ? 0.42 : 0.25
     };
+  }
+
+  addCreationFamilyAccent(group, visual, range) {
+    const material = this.material(visual.accentColor, {
+      transparent: true, opacity: 0.72,
+      emissive: visual.accentColor, emissiveIntensity: 0.28,
+      roughness: 0.5, side: THREE.DoubleSide
+    });
+    const add = (key, factory, position, rotation = [0, 0, 0], scale = [1, 1, 1]) => {
+      const mesh = new THREE.Mesh(this.getCachedGeometry(`creation-${key}`, factory), material);
+      mesh.position.set(...position);
+      mesh.rotation.set(...rotation);
+      mesh.scale.set(...scale);
+      group.add(mesh);
+    };
+
+    if (visual.family === 'water') {
+      add('water-ripple-a', () => new THREE.TorusGeometry(0.46, 0.018, 6, 32), [0, 0.08, 0], [Math.PI / 2, 0, 0]);
+      add('water-ripple-b', () => new THREE.TorusGeometry(0.62, 0.012, 6, 32), [0, 0.02, 0], [Math.PI / 2, 0, 0]);
+    } else if (visual.family === 'light') {
+      add('light-beam', () => new THREE.CylinderGeometry(0.035, 0.08, 0.72, 10), [0, 0.34, 0]);
+    } else if (visual.family === 'terrain') {
+      for (let i = 0; i < 3; i += 1) {
+        const angle = i * Math.PI * 2 / 3;
+        add('terrain-rock', () => new THREE.DodecahedronGeometry(0.12, 0), [Math.cos(angle) * 0.34, 0.02, Math.sin(angle) * 0.34], [i * 0.3, angle, 0]);
+      }
+    } else if (visual.family === 'defense') {
+      for (let i = 0; i < 4; i += 1) {
+        const angle = i * Math.PI / 2;
+        add('defense-wall', () => new THREE.BoxGeometry(0.28, 0.18, 0.06), [Math.cos(angle) * 0.44, 0.12, Math.sin(angle) * 0.44], [0, -angle, 0]);
+      }
+    } else if (visual.family === 'mind') {
+      add('mind-link', () => new THREE.TorusGeometry(0.34, 0.014, 6, 32), [0, 0.28, 0], [0, 0, Math.PI / 2]);
+      add('mind-link', () => new THREE.TorusGeometry(0.34, 0.014, 6, 32), [0, 0.28, 0], [Math.PI / 2, 0, 0]);
+    } else {
+      for (let i = 0; i < 3; i += 1) {
+        const angle = i * Math.PI * 2 / 3;
+        add('special-fracture', () => new THREE.BoxGeometry(0.035, 0.42, 0.035), [Math.cos(angle) * 0.34, 0.24, Math.sin(angle) * 0.34], [0.2, angle, -0.3]);
+      }
+    }
+    group.userData.visualFamily = visual.family;
+    group.userData.visualRange = range;
   }
 
   createCreationMesh(creation) {
@@ -2267,7 +3109,7 @@ class CreatorExam3D extends GameEngine {
     const visual = this.getCreationVisualStyle(card);
     const range = Math.max(0, card.range || 0);
     const core = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.25, 1),
+      this.getCachedGeometry('creation-core', () => new THREE.IcosahedronGeometry(0.25, 1)),
       this.material(visual.coreColor, { emissive: visual.coreEmissive, emissiveIntensity: visual.coreEmissiveIntensity, roughness: 0.45 })
     );
     core.castShadow = true;
@@ -2275,28 +3117,32 @@ class CreatorExam3D extends GameEngine {
     group.add(core);
 
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.38 + range * 0.08, 0.025, 8, 32),
+      this.getCachedGeometry('creation-range-ring', () => new THREE.TorusGeometry(0.38, 0.025, 8, 32)),
       this.material(visual.ringColor, { transparent: true, opacity: 0.72, emissive: visual.ringEmissive, emissiveIntensity: visual.ringEmissiveIntensity })
     );
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.02;
+    ring.scale.setScalar(1 + range * 0.16);
     group.add(ring);
+    this.addCreationFamilyAccent(group, visual, range);
 
     if (visual.absorption) {
       const warningRing = new THREE.Mesh(
-        new THREE.TorusGeometry(0.48 + range * 0.08, 0.018, 8, 40),
+        this.getCachedGeometry('creation-warning-ring', () => new THREE.TorusGeometry(0.48, 0.018, 8, 40)),
         this.material(visual.accentColor, { transparent: true, opacity: 0.86, emissive: visual.accentColor, emissiveIntensity: 0.75, roughness: 0.35 })
       );
       warningRing.rotation.x = Math.PI / 2;
       warningRing.position.y = 0.16;
+      warningRing.scale.setScalar(1 + range / 6);
       group.add(warningRing);
 
       const shadowPool = new THREE.Mesh(
-        new THREE.CircleGeometry(0.32 + range * 0.04, 32),
+        this.getCachedGeometry('creation-shadow-pool', () => new THREE.CircleGeometry(0.32, 32)),
         this.material(visual.shadowColor, { transparent: true, opacity: 0.5, depthWrite: false, roughness: 1, side: THREE.DoubleSide })
       );
       shadowPool.rotation.x = -Math.PI / 2;
       shadowPool.position.y = -0.04;
+      shadowPool.scale.setScalar(1 + range * 0.125);
       group.add(shadowPool);
 
       for (let i = 0; i < 3; i += 1) {
@@ -2438,6 +3284,36 @@ class CreatorExam3D extends GameEngine {
     }
   }
 
+  syncActionableSignals() {
+    const actions = this.worldSimulation?.eventBus?.query?.({ type: 'resident_action' }) || [];
+    if (this.knownResidentActionIds === null) {
+      this.knownResidentActionIds = new Set(actions.map(event => event.id));
+    } else {
+      for (const event of actions) {
+        if (this.knownResidentActionIds.has(event.id) || event.payload?.type === 'idle') continue;
+        this.knownResidentActionIds.add(event.id);
+        this.notifyDrawer('people', {
+          id: event.id,
+          priority: 'actionable',
+          title: `${event.payload?.residentName || '居民'}需要回应`,
+          summary: event.payload?.reason || event.payload?.type || '有人正在等你的决定。',
+          targetId: 'resident-dialogue-panel'
+        });
+      }
+    }
+
+    const ritualReady = this.creations.filter(creation => creation.placed && creation.remaining > 0).length >= 2;
+    if (ritualReady) {
+      this.notifyDrawer('systems', {
+        id: `ritual-ready:${this.level?.id}:${this.turn}`,
+        priority: 'actionable',
+        title: '仪式熔炼已经可用',
+        summary: '至少两件造物可以组合；打开造物术查看或明确忽略。',
+        targetId: 'ritual-panel'
+      });
+    }
+  }
+
   updateUi() {
     this.ui.levelChip.textContent = `第 ${this.levelIndex + 1} / ${LEVELS.length} 关`;
     this.ui.title.textContent = this.level.title;
@@ -2492,6 +3368,7 @@ class CreatorExam3D extends GameEngine {
     this.renderNightWatchPanel();
     this.renderAirCombatPanel();
     this.renderIntentArrows();
+    this.syncActionableSignals();
     this.updateDebugDataset();
   }
 
@@ -2568,6 +3445,9 @@ class CreatorExam3D extends GameEngine {
   }
 
   setTurnControlsPending(pending) {
+    if (!pending && this.ui?.cinematic && !this.ui.cinematic.hidden) {
+      this.cinematicWasResolving = false;
+    }
     this.isResolvingTurn = pending;
     if (!this.ui) return;
     if (this.ui.endTurnBtn) {
@@ -3279,6 +4159,73 @@ class CreatorExam3D extends GameEngine {
       unitCount: initialDebugState?.units?.length || 0
     });
 
+    const familyMeshes = Object.entries({
+      absorb_water: 'water',
+      illuminate: 'light',
+      raise_earth: 'terrain',
+      force_field: 'defense',
+      memory_beacon: 'mind',
+      time_dilation: 'special'
+    }).map(([ability, family]) => ({
+      ability,
+      family,
+      mesh: this.createCreationMesh({
+        card: { ability, name: ability, range: 2 },
+        x: 0,
+        y: 0,
+        remaining: 1
+      })
+    }));
+    record('all six ability families render through creation mesh',
+      familyMeshes.every(({ family, mesh }) => mesh.userData.visualFamily === family),
+      { families: familyMeshes.map(({ mesh }) => mesh.userData.visualFamily) }
+    );
+    record('family creations retain one icosahedron core',
+      familyMeshes.every(({ mesh }) => mesh.children.filter(child => child.geometry?.type === 'IcosahedronGeometry').length === 1)
+    );
+    const absorptionVisual = this.getCreationVisualStyle({ ability: 'consume_light' });
+    record('consume_light preserves absorption visual override',
+      absorptionVisual.family === 'special'
+      && absorptionVisual.absorption === true
+      && absorptionVisual.coreColor === 0x4b275d
+      && absorptionVisual.ringColor === 0xffd166
+    );
+    for (const { mesh } of familyMeshes) {
+      mesh.traverse(child => {
+        if (!child.isSprite) return;
+        child.material?.map?.dispose();
+        child.material?.dispose();
+      });
+    }
+
+    const signalA = this.notifyDrawer('world', {
+      id: 'smoke-myth-a', priority: 'ambient', title: '新的传说正在流传',
+      summary: '烟测传说甲', targetId: 'legend-panel'
+    });
+    const duplicateA = this.notifyDrawer('world', {
+      id: 'smoke-myth-a', priority: 'ambient', title: '新的传说正在流传',
+      summary: '烟测传说甲', targetId: 'legend-panel'
+    });
+    const signalB = this.notifyDrawer('world', {
+      id: 'smoke-myth-b', priority: 'ambient', title: '新的传说正在流传',
+      summary: '烟测传说乙', targetId: 'legend-panel'
+    });
+    const mythGroup = this.drawerNotices.world.find(item => item.ids.includes('smoke-myth-a'));
+    record('drawer notifications dedupe stable ids', signalA && !duplicateA);
+    record('drawer notifications merge by turn and target', signalB && mythGroup?.count === 2);
+    this.ui.worldSignalOpen.click();
+    record('world signal opens legend and clears unread', this.activeDrawer === 'world' && this.drawerUnread.world === 0);
+
+    this.notifyDrawer('systems', {
+      id: 'smoke-action-a', priority: 'actionable', title: '烟测行动',
+      summary: '需要明确处理', targetId: 'ritual-panel'
+    });
+    this.ui.worldSignalOpen.click();
+    record('actionable drawer notice survives opening until ignored',
+      this.drawerNotices.systems.some(item => item.ids.includes('smoke-action-a'))
+    );
+    this.ui.worldSignalDismiss.click();
+
     this.renderAdvancedMechanicsPanel();
     const actionCount = this.ui.advancedActionList?.querySelectorAll('button[data-advanced-action]').length || 0;
     record('AI tactical room exposes 8 mechanism cards', actionCount === 8, { actionCount });
@@ -3371,6 +4318,109 @@ class CreatorExam3D extends GameEngine {
     });
     record('AI tactical director is visible and contextual', !!this.ui.advancedDetail?.textContent?.includes('AI 考核者') && /最高压力|下一步|建议|箭头/.test(this.ui.advancedDetail?.textContent || ''), {
       detail: this.ui.advancedDetail?.textContent?.slice(0, 260) || ''
+    });
+
+    const peopleButton = document.getElementById('drawer-people-btn');
+    const systemsButton = document.getElementById('drawer-systems-btn');
+    peopleButton.focus();
+    peopleButton.click();
+    systemsButton.click();
+    record('context drawers are mutually exclusive',
+      this.activeDrawer === 'systems'
+      && document.getElementById('drawer-people').hidden
+      && !document.getElementById('drawer-systems').hidden
+    );
+    systemsButton.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    record('drawer Escape restores focus', this.activeDrawer === null && document.activeElement === systemsButton);
+
+    const normalDebug = this.applyDebugGate('');
+    const explicitDebug = this.applyDebugGate('?debug=1');
+    record('debug gate hides normal URL and shows ?debug=1',
+      normalDebug === false && explicitDebug === true && !this.ui.testJumpPanel.hidden
+    );
+    this.applyDebugGate(window.location.search);
+
+    const boardHalfExtent = BOARD_SIZE * TILE_SIZE / 2;
+    const originalLevelIndex = this.levelIndex;
+    const originalRenderWorld = this.renderWorld;
+    const environmentChecks = [];
+    const environmentBoundsChecks = [];
+    const environmentBoundsFailures = [];
+    const loadOrderingChecks = [];
+    const publicModelChecks = [];
+    let firstRenderState = null;
+    try {
+      this.renderWorld = (...args) => {
+        if (!firstRenderState) {
+          firstRenderState = {
+            levelId: this.level?.id,
+            environmentLevelId: this.environmentGroup.userData.levelId
+          };
+        }
+        return originalRenderWorld.apply(this, args);
+      };
+      for (const [index, level] of LEVELS.entries()) {
+        firstRenderState = null;
+        this.loadLevel(index);
+        await this.pendingLevelPresentation;
+        const raycastTargets = Array.from(this.tileMeshPool.values());
+        environmentChecks.push(
+          this.environmentGroup.userData.levelId === level.id
+          && this.environmentGroup.children.length > 0
+          && this.environmentGroup.children.every(child => child.userData.decorative === true)
+          && this.environmentGroup.children.every(child => !raycastTargets.includes(child))
+        );
+        loadOrderingChecks.push({
+          levelId: level.id,
+          firstRenderState,
+          passed: firstRenderState?.levelId === level.id && firstRenderState?.environmentLevelId === level.id
+        });
+        publicModelChecks.push(
+          this.environmentGroup.children.some(child => child.userData.presentationAsset)
+        );
+
+        this.environmentGroup.updateMatrixWorld(true);
+        let levelBoundsPassed = true;
+        for (const child of this.environmentGroup.children) {
+          if (child.geometry?.type === 'RingGeometry') continue;
+          const bounds = new THREE.Box3().setFromObject(child);
+          const outsideBoard = bounds.max.x < -boardHalfExtent
+            || bounds.min.x > boardHalfExtent
+            || bounds.max.z < -boardHalfExtent
+            || bounds.min.z > boardHalfExtent;
+          if (!outsideBoard) {
+            levelBoundsPassed = false;
+            environmentBoundsFailures.push({
+              levelId: level.id,
+              geometry: child.geometry?.type || '',
+              bounds: {
+                minX: bounds.min.x,
+                maxX: bounds.max.x,
+                minZ: bounds.min.z,
+                maxZ: bounds.max.z
+              }
+            });
+          }
+        }
+        environmentBoundsChecks.push(levelBoundsPassed);
+      }
+    } finally {
+      this.renderWorld = originalRenderWorld;
+      this.loadLevel(originalLevelIndex);
+      await this.pendingLevelPresentation;
+    }
+    record('all six level environments install decorative geometry', environmentChecks.every(Boolean), {
+      levelIds: LEVELS.map(level => level.id)
+    });
+    record('solid level environment props stay outside the board', environmentBoundsChecks.every(Boolean), {
+      boardHalfExtent,
+      failures: environmentBoundsFailures
+    });
+    record('level loads apply environments before first render', loadOrderingChecks.every(item => item.passed), {
+      loadOrderingChecks
+    });
+    record('all six level environments load public 3D props', publicModelChecks.every(Boolean), {
+      levelIds: LEVELS.map(level => level.id)
     });
 
     this.updateUi();
@@ -4524,13 +5574,11 @@ class CreatorExam3D extends GameEngine {
     if (!this.ui?.npcDialoguePanel) return;
     if (!this.selectedDialogueUnit && !this.selectedDialogueGroup) {
       this.ui.npcDialoguePanel.classList.add('hidden');
-      this.ui.rightPanel?.classList.remove('dialogue-active');
       return;
     }
     const unit = this.selectedDialogueUnit;
     const npc = this.selectedDialogueNpc;
     this.ui.npcDialoguePanel.classList.remove('hidden');
-    this.ui.rightPanel?.classList.add('dialogue-active');
     this.ui.npcDialogueTitle.textContent = this.selectedDialogueGroup ? '救援群聊' : (unit?.name || 'NPC');
     if (this.ui.npcDialogueMeta) {
       const trust = npc?.dynamicTraits?.trustLevel;
@@ -4677,7 +5725,6 @@ class CreatorExam3D extends GameEngine {
     this.selectedDialogueGroup = false;
     this.dialogueMessages = [];
     this.ui?.npcDialoguePanel?.classList.add('hidden');
-    this.ui?.rightPanel?.classList.remove('dialogue-active');
   }
 
   getDialogueParticipants() {
@@ -5078,6 +6125,7 @@ class CreatorExam3D extends GameEngine {
       this.showToast(`${unit.name} 暂时无法交谈。`);
       return;
     }
+    this.openDrawer('people', 'npc-dialogue-panel', document.getElementById('drawer-people-btn'));
     const npcId = unit.residentId || unit.name;
     const npc = this.npcManager?.getNPC(npcId);
     this.openNpcDialogue(unit, npc);
@@ -5086,6 +6134,23 @@ class CreatorExam3D extends GameEngine {
 
   renderLegendPanel() {
     if (!this.ui.legendMyths) return;
+
+    const allMyths = Array.from(worldLegendSystem.myths.values()).flat();
+    if (this.knownLegendIds === null) {
+      this.knownLegendIds = new Set(allMyths.map(myth => myth.id));
+    } else {
+      for (const myth of allMyths) {
+        if (this.knownLegendIds.has(myth.id)) continue;
+        this.knownLegendIds.add(myth.id);
+        this.notifyDrawer('world', {
+          id: myth.id,
+          priority: 'ambient',
+          title: '新的传说正在流传',
+          summary: myth.text,
+          targetId: 'legend-panel'
+        });
+      }
+    }
 
     const myths = worldLegendSystem.getTopMyths(3);
     this.ui.legendMyths.innerHTML = myths.length
@@ -5720,6 +6785,14 @@ class CreatorExam3D extends GameEngine {
     this.ui.toast.classList.remove('hidden');
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => this.ui.toast.classList.add('hidden'), 2400);
+  }
+
+  updateSoundToggle() {
+    if (!this.ui?.soundToggle) return;
+    const enabled = this.soundscape.enabled;
+    this.ui.soundToggle.textContent = enabled ? '声音：开' : '声音：关';
+    this.ui.soundToggle.setAttribute('aria-pressed', String(enabled));
+    this.ui.soundToggle.setAttribute('aria-label', enabled ? '关闭游戏声音' : '开启游戏声音');
   }
 
   getGameContext() {
