@@ -73,4 +73,11 @@ assert.ok(serverSource.includes("'.webp': 'image/webp'"), 'server MIME table mus
 assert.ok(attribution.includes('CC0 1.0'), 'attribution must record the public asset license');
 assert.ok(attribution.includes('11AE4A4057C81FAADC0F8BBE8E1C230BC939DCC3DF9222CEC83BD107B1D7C8C4'), 'Paper002 hash must be pinned');
 
+const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+const architecture = readFileSync(new URL('../docs/systems/architecture.md', import.meta.url), 'utf8');
+assert.ok(readme.includes('?debug=1'), 'README should document the hidden examiner sandbox');
+assert.ok(readme.includes('public/assets/art'), 'README should document local art assets');
+assert.ok(architecture.includes('environmentGroup'), 'architecture should document the decorative environment boundary');
+assert.ok(architecture.includes('prepareStages(current, next)'), 'architecture should document staged air assets');
+
 console.log(`Art asset tests passed (${assetFiles.length} files, ${totalBytes} bytes).`);

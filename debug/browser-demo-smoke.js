@@ -101,7 +101,9 @@ const missingShellContracts = [
   ['mobile drawer resets legacy height', /@media \(max-width: 760px\)\s*\{[\s\S]*?#right-panel\s*\{[^}]*height:\s*auto;[^}]*max-height:\s*none;[^}]*\}/],
   ['desktop drawer reserves creation dock space', /#right-panel\s*\{[^}]*bottom:\s*calc\(var\(--dock-height\)\s*\+\s*28px\);[^}]*height:\s*auto;[^}]*max-height:\s*none;/],
   ['topbar menu escapes clipping', /#topbar\s*\{[^}]*overflow:\s*visible;[^}]*clip-path:\s*none;/],
-  ['glass override clears legacy effects', /\.glass\s*\{[^}]*background:\s*rgba\(21,\s*25,\s*35,\s*\.96\);[^}]*box-shadow:\s*none;[^}]*backdrop-filter:\s*none;[^}]*-webkit-backdrop-filter:\s*none;/]
+  ['glass override clears legacy effects', /\.glass\s*\{[^}]*background:\s*rgba\(21,\s*25,\s*35,\s*\.96\);[^}]*box-shadow:\s*none;[^}]*backdrop-filter:\s*none;[^}]*-webkit-backdrop-filter:\s*none;/],
+  ['desktop creation dock permits the card preview to escape', /@media \(min-width: 761px\)\s*\{[\s\S]*?#creation-dock\s*\{[^}]*overflow:\s*visible;[^}]*clip-path:\s*none;[^}]*\}/],
+  ['desktop card preview remains usable above the dock', /@media \(min-width: 761px\)\s*\{[\s\S]*?#creation-dock #card-panel\s*\{[^}]*position:\s*absolute;[^}]*bottom:\s*calc\(100%\s*\+\s*10px\);[^}]*max-height:\s*calc\(100vh\s*-\s*var\(--dock-height\)\s*-\s*112px\);[^}]*overflow:\s*auto;[^}]*pointer-events:\s*none;[^}]*\}[\s\S]*?#creation-dock #place-btn\s*\{[^}]*pointer-events:\s*auto;[^}]*\}/]
 ].filter(([, pattern]) => !pattern.test(shellCss)).map(([name]) => name);
 
 assert.deepEqual(missingShellContracts, [], `missing map-first CSS contracts: ${missingShellContracts.join(', ')}`);

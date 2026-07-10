@@ -36,6 +36,15 @@
 
 **继承**：extends GameEngine
 
+### 2.0.1 地图优先呈现层
+
+- `#creation-dock` 常驻自然语言输入、造物卡、放置和结束回合；`人 / 志 / 术` 共用一个 `#right-panel` 情境抽屉。
+- `notifyDrawer(name, notice)` 只保存会话内未读与定位信息；传说、居民、工坊和世界状态仍由既有系统持久化。
+- 关键胜负、守夜、空域和不可逆节点继续使用 modal／固定 CG，优先级高于抽屉信号。
+- `environmentGroup` 只承载六关外圈程序化美术，不进入 tile raycast、碰撞、寻路或胜负计算；`loadLevel()` 先同步安装程序化环境再渲染棋盘。
+- 实时造物通过 `getAbilityVisualFamily()` 归入六种视觉语法，仍由一个 `createCreationMesh()` 入口生成。
+- 固定 CG 和 CC0 纹理全部位于 `public/assets/art/`；缺失时 CSS 渐变或现有程序化画面继续工作。
+
 ### 2.1 长夜守城模式 (public/modes/tower-defense/)
 **职责**：第6到第7天之间的塔防过场、造物防线化、守夜结果回写
 **关键功能**：
@@ -70,6 +79,12 @@
 - 不迁入外部空战仓库的无尽模式外壳；只吸收可解释、可测试、可由前序流程触发的 Boss 机制和素材
 - 不把实时战斗逻辑放入 `GameEngine` 回合制核心
 - 不在每帧或每次射击时调用AI；AI只进入低频叙事节点，实时数值、碰撞、胜负保持本地可验证
+
+### 2.2.1 空战资产阶段计划
+
+- `AirCombatAssets.prepareStages(current, next)` 只保留当前段和下一段的飞船、Boss、背景、可达敌机与实际使用效果。
+- 当前段请求使用高优先级，下一段预取使用低优先级；阶段推进时释放旧段仅有的 JS 图片引用。
+- `ready()` 在未完成或失败时返回 `null`，Canvas 继续使用原有程序化绘制；加载不阻塞 briefing 或战斗循环。
 
 ### 3. DebugGame (debug/debugGame.js)
 **职责**：CLI调试工具、自动化测试
@@ -472,5 +487,5 @@ GameEngine.endTurn()
 
 ---
 
-*文档版本：v16*
-*最后更新：2026-06-27*
+*文档版本：v17*
+*最后更新：2026-07-10*
