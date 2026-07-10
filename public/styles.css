@@ -2155,6 +2155,11 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
   border: 1px solid color-mix(in srgb, var(--narrative) 24%, transparent);
   border-radius: 6px;
   background: rgba(21, 25, 35, .96);
+  background-image:
+    linear-gradient(rgba(21, 25, 35, .95), rgba(21, 25, 35, .98)),
+    url('./assets/art/textures/paper002-ui-grain.webp');
+  background-blend-mode: normal, soft-light;
+  background-size: auto, 512px 512px;
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;

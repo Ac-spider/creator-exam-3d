@@ -65,6 +65,13 @@ await withServer(async (baseUrl) => {
   assert(health.json.aiConfigured === false, '/health should report no API key in this test');
   assert(health.json.aiBudget.remainingCalls === 2, '/health should include AI budget stats');
 
+  const cgResponse = await fetch(`${baseUrl}/assets/art/cg-prologue.webp`);
+  assert(cgResponse.status === 200, 'prologue CG should be served');
+  assert(cgResponse.headers.get('content-type') === 'image/webp', 'WebP should use image/webp');
+  const cgBytes = new Uint8Array(await cgResponse.arrayBuffer());
+  assert(new TextDecoder().decode(cgBytes.slice(0, 4)) === 'RIFF', 'served CG should keep RIFF magic');
+  assert(new TextDecoder().decode(cgBytes.slice(8, 12)) === 'WEBP', 'served CG should keep WEBP magic');
+
   const generated = await fetchJson(`${baseUrl}/api/generate-region`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
