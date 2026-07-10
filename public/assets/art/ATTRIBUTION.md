@@ -56,3 +56,61 @@ All files are stored locally. The running game does not request any image-genera
 - Dimensions: 512×512
 - Modification: renamed only; rendered at low opacity as a local matte-paper UI overlay
 - SHA-256: `11AE4A4057C81FAADC0F8BBE8E1C230BC939DCC3DF9222CEC83BD107B1D7C8C4`
+
+## Six level backplates
+
+All six files are development-time generated fixed images. They are loaded behind the live Three.js scene; the running game never calls an image-generation service. Each approved source image was visually checked before conversion. Two first attempts (`memory-plague` and `final-exam`) were rejected for an over-bright upper HUD area and regenerated with stricter composition constraints.
+
+### backgrounds/level-01-flood-village.webp
+
+- Model: OpenAI image-2
+- Generated: 2026-07-10
+- Dimensions: 1920×1080
+- Final prompt: Create a fixed 16:9 environment backplate for a live Three.js tactical board: a mythic flooded village after three days of rain, with half-submerged faceted roofs, broken footbridges, reeds, piers, rain curtains, a swollen river and tiny warm shelter windows. Use an elevated oblique establishing view. Keep the central 48% dark, low-detail and free of silhouettes; put landmarks at the far edges and horizon, with a calm upper HUD band. Matte gouache fused with elegant low-poly facets; deep navy, charcoal, desaturated flood teal, restrained jade and antique gold. Wet timber, slate, rippling dark water and rain-softened earth. No board, grid, gameplay unit, foreground character, identifiable summoned object, words, UI, logo, signature or watermark.
+- Post-processing: Sharp attention crop to 1920×1080, WebP quality 82, effort 6, smart subsample
+- SHA-256: `93A46526E6E9DACA955C1A81166B0805A7D80816A0E7905A6BDFCF7E8697967E`
+
+### backgrounds/level-02-night-mine.webp
+
+- Model: OpenAI image-2
+- Generated: 2026-07-10
+- Dimensions: 1920×1080
+- Final prompt: Create a fixed 16:9 environment backplate for a live Three.js tactical board: an eternal-night stepped quarry and mine basin whose lights are failing, with a cave mouth in dark mountains, sparse curving rails, timber braces, carts, mineral seams and isolated lamps leading toward a pale northern exit. Reserve the central 48% as a subdued charcoal basin with minimal contrast; cluster rock and cave silhouettes at outer edges and keep the top HUD band quiet. Matte gouache with clean low-poly facets; blue-black, graphite, muted steel, chalky stone, tiny ivory and antique-gold lights, restrained jade. No board, grid, tile pattern, central hero, monster, weapon, concrete player creation, text, UI, neon machinery, logo, signature or watermark.
+- Post-processing: Sharp attention crop to 1920×1080, WebP quality 82, effort 6, smart subsample
+- SHA-256: `534F1AF6F09B630F06D5E89F2CAB7F27C76EC6BD4B00B8380ECED303AFBC2947`
+
+### backgrounds/level-03-giant-city.webp
+
+- Model: OpenAI image-2
+- Generated: 2026-07-10
+- Dimensions: 1920×1080
+- Final prompt: Create a fixed 16:9 environment backplate for a live Three.js tactical board: an ancient forest city preparing for a colossal unseen beast, with a long weathered wall, watchtowers, drying aqueducts, giant footprints, bent treetops, distant farms and a strained pale reservoir. The beast stays offscreen. Use an elevated oblique panorama whose center is dark and structurally simple; wall, canopy, footprints and reservoir occupy only the perimeter and horizon, while the HUD strip remains calm. Painterly matte low-poly facets in deep forest green, blue-black, stone gray, dry ochre, antique-gold beacons and restrained jade. No board, tiles, foreground combat, central giant, weapon, defense piece, player creation, words, UI, logo, signature or watermark.
+- Post-processing: Sharp attention crop to 1920×1080, WebP quality 82, effort 6, smart subsample
+- SHA-256: `3BCCA9BDD3778E9CAC9DDF1A19ED52B0C5FEAB14FFC934C7F46EA74E0E5A80F1`
+
+### backgrounds/level-04-wordless-war.webp
+
+- Model: OpenAI image-2
+- Generated: 2026-07-10
+- Dimensions: 1920×1080
+- Final prompt: Create a fixed 16:9 environment backplate for a live Three.js tactical board: a silent divided border where two exhausted factions face each other across foggy no-man's-land, with distant opposing camps, muted banners, abandoned road markers, broken negotiation tables, shallow trenches and a blocked gate. Keep the central 48% as calm dark ground and soft fog; camps stay at opposite extreme edges and the top HUD zone is low-detail. Restrained matte gouache and sophisticated low-poly facets; charcoal navy, muted plum and rust, fog gray, antique-gold fires and restrained jade path hints. No board, grid, active battle, focal weapon, central soldier, concrete player creation, readable emblem, real flag, words, UI, logo, signature or watermark.
+- Post-processing: Sharp attention crop to 1920×1080, WebP quality 82, effort 6, smart subsample
+- SHA-256: `732DFDB9FA3E9C298A06FDBED7FD7ED7EED9EF25285C9A48C5DDBABE7C9E1D20`
+
+### backgrounds/level-05-memory-plague.webp
+
+- Model: OpenAI image-2
+- Generated: 2026-07-10; regenerated after visual QA
+- Dimensions: 1920×1080
+- Final prompt: Create a fixed 16:9 environment backplate for a live Three.js tactical board: a village fading under a memory plague, with rooflines and paths dissolving into mist, a few abstract unreadable fragments, memory stones, mirrored pools and one distant sacred tree. Matte gouache with elegant faceted low-poly forms; blue-black, muted jade, pale ivory, antique gold and desaturated lavender cracks. Keep the central 48% as low-contrast fog ground. The sacred tree must sit on the far upper-left horizon, no more than 18% of image height, with restrained low-saturation light. The top 25% across the entire frame and the upper-right must remain dark, quiet and low-detail; fragments are sparse and confined to edges. No readable writing, symbols, runes, board, grid, character, ghost, concrete creation, UI, logo, signature or watermark.
+- Post-processing: Sharp attention crop to 1920×1080, WebP quality 82, effort 6, smart subsample
+- SHA-256: `55F43477A273BC1C9033DCD5B830230E7D506FF1FDB5C34579BD75D0D754AEAD`
+
+### backgrounds/level-06-final-exam.webp
+
+- Model: OpenAI image-2
+- Generated: 2026-07-10; regenerated after visual QA
+- Dimensions: 1920×1080
+- Final prompt: Create a fixed 16:9 final-exam environment backplate for a live Three.js tactical board. Unify distant, low-contrast echoes of flooded roofs, a quarry mouth and lamp trail, a forest wall, two faded border camps and a sacred tree around a restrained world rift. Use a premium matte painterly low-poly style with deep navy, charcoal, antique gold, jade and muted violet. Preserve a broad dark low-detail central 48% and lower center for the live board. The rift is only a remote, narrow, low-brightness horizon crack, never the subject; the sacred tree is tiny in the far corner; all five landscape echoes stay at the outer edges. The top 25% across the frame is a dark low-detail HUD-safe sky. No board, grid, hero, boss, aircraft, specific player creation, words, UI, logo, signature or watermark.
+- Post-processing: Sharp attention crop to 1920×1080, WebP quality 82, effort 6, smart subsample
+- SHA-256: `4F8625C9F340A72EA51D93538D50C685B2449D94B8ADDC7FBC5881746259DD37`

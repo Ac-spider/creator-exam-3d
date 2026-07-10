@@ -41,9 +41,11 @@
 - `#creation-dock` 常驻自然语言输入、造物卡、放置和结束回合；`人 / 志 / 术` 共用一个 `#right-panel` 情境抽屉。
 - `notifyDrawer(name, notice)` 只保存会话内未读与定位信息；传说、居民、工坊和世界状态仍由既有系统持久化。
 - 关键胜负、守夜、空域和不可逆节点继续使用 modal／固定 CG，优先级高于抽屉信号。
-- `environmentGroup` 只承载六关外圈程序化美术，不进入 tile raycast、碰撞、寻路或胜负计算；`loadLevel()` 先同步安装程序化环境再渲染棋盘。
+- `environmentGroup` 先同步安装六关程序化外圈美术，再异步加入按关卡映射的 CC0 GLB；二者都不进入 tile raycast、碰撞、寻路或胜负计算。
+- `LevelPresentationLoader` 缓存每关 image-2 背景和 GLB 请求，并用关卡／请求序号阻止旧异步结果覆盖新关卡；背景或模型加载失败时，关卡颜色与程序化几何仍可独立运行。
 - 实时造物通过 `getAbilityVisualFamily()` 归入六种视觉语法，仍由一个 `createCreationMesh()` 入口生成。
-- 固定 CG 和 CC0 纹理全部位于 `public/assets/art/`；缺失时 CSS 渐变或现有程序化画面继续工作。
+- 固定 CG、六关背景和 CC0 纹理位于 `public/assets/art/`，外圈 GLB 和界面音效位于 `public/assets/models/`、`public/assets/audio/`；缺失时 CSS 渐变或现有程序化画面继续工作。
+- `Soundscape` 只在指针或键盘手势后解锁短音效，覆盖轻量按钮反馈、造物编译／落地、新传说和胜负；不使用自动播放或循环背景音，静音偏好保存在本地。
 
 ### 2.1 长夜守城模式 (public/modes/tower-defense/)
 **职责**：第6到第7天之间的塔防过场、造物防线化、守夜结果回写

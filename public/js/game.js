@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { compileCreation, abilityLabel } from './aiClient.js';
 import { INSPIRATIONS, LEVELS, TILE } from './levels.js';
 import { getMemorySystem } from './aiMemory.js';
@@ -25,6 +26,8 @@ import { WorldSession } from './worldSession.js';
 import { RiftEchoSystem } from './riftEchoes.js';
 import { normalizeCreationDisplayText, normalizeCreationName } from './creationDisplay.js';
 import { getAbilityVisualFamily } from './abilities.js';
+import { LevelPresentationLoader } from './levelPresentation.js';
+import { Soundscape } from './soundscape.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -216,6 +219,7 @@ class CreatorExam3D extends GameEngine {
     this.knownLegendIds = null;
     this.knownResidentActionIds = null;
     this.activeDrawerNoticeKey = null;
+    this.soundscape = new Soundscape();
 
     this.ui = this.collectUi();
     this.applyDebugGate();
@@ -331,6 +335,7 @@ class CreatorExam3D extends GameEngine {
     this.applyLevelEnvironment(this.level.id);
     this.renderWorld();
     this.updateUi();
+    this.soundscape.play('riftPulse', { playbackRate: 0.82 + (this.levelIndex % 3) * 0.08 });
   }
 
   applyDebugGate(search = window.location.search) {
@@ -395,6 +400,7 @@ class CreatorExam3D extends GameEngine {
       cardSide: document.getElementById('card-side'),
       placeBtn: document.getElementById('place-btn'),
       endTurnBtn: document.getElementById('end-turn-btn'),
+      soundToggle: document.getElementById('sound-toggle'),
       restartBtn: document.getElementById('restart-btn'),
       nextBtn: document.getElementById('next-btn'),
       nightWatchPanel: document.getElementById('night-watch-panel'),
@@ -488,6 +494,13 @@ class CreatorExam3D extends GameEngine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    const textureLoader = new THREE.TextureLoader();
+    const gltfLoader = new GLTFLoader();
+    this.levelPresentationLoader = new LevelPresentationLoader({
+      loadTexture: url => textureLoader.loadAsync(url),
+      loadModel: url => gltfLoader.loadAsync(url)
+    });
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
@@ -629,6 +642,9 @@ class CreatorExam3D extends GameEngine {
     }
     this.drawerUnread[name] += 1;
     this.renderDrawerSignals();
+    if (name === 'world' && notice.targetId === 'legend-panel') {
+      this.soundscape.play('legendDiscovery');
+    }
     return true;
   }
 
@@ -719,8 +735,22 @@ class CreatorExam3D extends GameEngine {
   }
 
   bindEvents() {
+    this.soundscape.bindUnlock(window);
+    this.updateSoundToggle();
     window.addEventListener('resize', () => this.onResize());
     this.renderer.domElement.addEventListener('pointerdown', (event) => this.onPointerDown(event));
+
+    document.addEventListener('click', event => {
+      const control = event.target.closest?.('button, summary');
+      if (!control || control.disabled || control === this.ui.soundToggle) return;
+      this.soundscape.play('uiSelect');
+    });
+    this.ui.soundToggle?.addEventListener('click', () => {
+      const enabled = this.soundscape.toggle();
+      this.updateSoundToggle();
+      if (enabled) this.soundscape.play('uiSelect', { cooldownMs: 0 });
+      this.showToast(enabled ? '声音已开启。' : '声音已关闭。');
+    });
 
     this.ui.compileBtn.addEventListener('click', () => this.handleCompile());
     this.ui.randomBtn.addEventListener('click', () => this.insertInspiration());
@@ -1020,6 +1050,7 @@ class CreatorExam3D extends GameEngine {
       const card = await compileCreation(text, this.getGameContext());
       this.activeCard = card;
       this.showCard(card);
+      this.soundscape.play('creationCompile');
       const displayName = this.getCreationDisplayName(card);
       const compileNote = card.source === 'ai'
         ? '卡能放了。'
@@ -1141,6 +1172,7 @@ class CreatorExam3D extends GameEngine {
       this.screenEffects.flash('#' + this.particleSystem.getAbilityColor(card.ability).toString(16).padStart(6, '0'), 400);
     }
 
+    this.soundscape.play('creationPlace');
     this.checkEndCondition(false);
     this.renderWorld();
     this.updateUi();
@@ -1277,6 +1309,7 @@ class CreatorExam3D extends GameEngine {
       message += `\n\n${epicEnding.text}`;
     }
 
+    this.soundscape.play('levelWin');
     this.ui.nextBtn.classList.toggle('hidden', isFinal);
     this.showModal('考核通过', message + (isFinal ? ' 防线入口已打开。' : ' 下一关已打开。'), isFinal ? '开启守城' : '继续', '重试');
   }
@@ -1304,6 +1337,7 @@ class CreatorExam3D extends GameEngine {
     this.screenEffects.shake(8, 500);
     this.screenEffects.vignette('rgba(255, 0, 50, 0.3)', 1000);
 
+    this.soundscape.play('levelLoss');
     this.showModal('考核失败', message, '重试', null);
   }
 
@@ -1951,6 +1985,7 @@ class CreatorExam3D extends GameEngine {
   }
 
   handleLose(message) {
+    this.soundscape.play('levelLoss');
     this.showModal('考核失败', message, '重试', null);
   }
 
@@ -1993,6 +2028,7 @@ class CreatorExam3D extends GameEngine {
   clearLevelEnvironment() {
     this.environmentGroup.clear();
     this.environmentGroup.userData.levelId = null;
+    delete this.environmentGroup.userData.backgroundAsset;
   }
 
   addEnvironmentPrimitive(kind, color, position, scale, rotation = [0, 0, 0], materialOptions = {}) {
@@ -2087,7 +2123,7 @@ class CreatorExam3D extends GameEngine {
   applyLevelEnvironment(levelId) {
     const preset = LEVEL_ENVIRONMENTS[levelId] || LEVEL_ENVIRONMENTS['final-exam'];
     this.clearLevelEnvironment();
-    this.scene.background.setHex(preset.background);
+    this.scene.background = new THREE.Color(preset.background);
     this.scene.fog.color.setHex(preset.fog);
     this.scene.fog.near = preset.near;
     this.scene.fog.far = preset.far;
@@ -2097,6 +2133,46 @@ class CreatorExam3D extends GameEngine {
     this.rimLight.color.setHex(preset.rim);
     this.createProceduralEnvironment(levelId);
     this.environmentGroup.userData.levelId = levelId;
+    this.pendingLevelPresentation = this.loadLevelPresentationAssets(levelId);
+  }
+
+  loadLevelPresentationAssets(levelId) {
+    if (!this.levelPresentationLoader) return Promise.resolve([]);
+    return this.levelPresentationLoader.apply(levelId, {
+      onBackground: (texture, entry) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.needsUpdate = true;
+        this.scene.background = texture;
+        this.environmentGroup.userData.backgroundAsset = entry.background;
+      },
+      onModel: (gltf, entry) => {
+        this.installPresentationModel(levelId, gltf?.scene || gltf, entry);
+      },
+      onError: (kind, error, entry) => {
+        console.warn(`Level presentation ${kind} fallback: ${entry[kind] || levelId}`, error);
+      }
+    });
+  }
+
+  installPresentationModel(levelId, modelScene, entry) {
+    if (this.environmentGroup.userData.levelId !== levelId || !modelScene?.clone) return;
+    for (const transform of entry.instances) {
+      const root = modelScene.clone(true);
+      root.name = `presentation-${levelId}`;
+      root.position.set(...transform.position);
+      root.rotation.set(...transform.rotation);
+      root.scale.set(...transform.scale);
+      root.userData.decorative = true;
+      root.userData.presentationAsset = entry.model;
+      root.traverse(object => {
+        object.userData.decorative = true;
+        if (object.isMesh) {
+          object.castShadow = false;
+          object.receiveShadow = true;
+        }
+      });
+      this.environmentGroup.add(root);
+    }
   }
 
   renderWorld() {
@@ -3940,6 +4016,7 @@ class CreatorExam3D extends GameEngine {
     const environmentBoundsChecks = [];
     const environmentBoundsFailures = [];
     const loadOrderingChecks = [];
+    const publicModelChecks = [];
     let firstRenderState = null;
     try {
       this.renderWorld = (...args) => {
@@ -3951,9 +4028,10 @@ class CreatorExam3D extends GameEngine {
         }
         return originalRenderWorld.apply(this, args);
       };
-      LEVELS.forEach((level, index) => {
+      for (const [index, level] of LEVELS.entries()) {
         firstRenderState = null;
         this.loadLevel(index);
+        await this.pendingLevelPresentation;
         const raycastTargets = Array.from(this.tileMeshPool.values());
         environmentChecks.push(
           this.environmentGroup.userData.levelId === level.id
@@ -3966,6 +4044,9 @@ class CreatorExam3D extends GameEngine {
           firstRenderState,
           passed: firstRenderState?.levelId === level.id && firstRenderState?.environmentLevelId === level.id
         });
+        publicModelChecks.push(
+          this.environmentGroup.children.some(child => child.userData.presentationAsset)
+        );
 
         this.environmentGroup.updateMatrixWorld(true);
         let levelBoundsPassed = true;
@@ -3991,10 +4072,11 @@ class CreatorExam3D extends GameEngine {
           }
         }
         environmentBoundsChecks.push(levelBoundsPassed);
-      });
+      }
     } finally {
       this.renderWorld = originalRenderWorld;
       this.loadLevel(originalLevelIndex);
+      await this.pendingLevelPresentation;
     }
     record('all six level environments install decorative geometry', environmentChecks.every(Boolean), {
       levelIds: LEVELS.map(level => level.id)
@@ -4005,6 +4087,9 @@ class CreatorExam3D extends GameEngine {
     });
     record('level loads apply environments before first render', loadOrderingChecks.every(item => item.passed), {
       loadOrderingChecks
+    });
+    record('all six level environments load public 3D props', publicModelChecks.every(Boolean), {
+      levelIds: LEVELS.map(level => level.id)
     });
 
     this.updateUi();
@@ -6369,6 +6454,14 @@ class CreatorExam3D extends GameEngine {
     this.ui.toast.classList.remove('hidden');
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => this.ui.toast.classList.add('hidden'), 2400);
+  }
+
+  updateSoundToggle() {
+    if (!this.ui?.soundToggle) return;
+    const enabled = this.soundscape.enabled;
+    this.ui.soundToggle.textContent = enabled ? '声音：开' : '声音：关';
+    this.ui.soundToggle.setAttribute('aria-pressed', String(enabled));
+    this.ui.soundToggle.setAttribute('aria-label', enabled ? '关闭游戏声音' : '开启游戏声音');
   }
 
   getGameContext() {

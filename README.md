@@ -43,7 +43,8 @@
 - 屏幕特效（闪光、震动、暗角、颜色分级）
 - 动态路径可视化
 - **地图优先界面**：任务、棋盘与造物坞常驻；人物、世界志和高级造物术按需从情境抽屉打开，新传说会留下可回看的未读信号。
-- **六关环境与固定过场**：每关使用不参与规则计算的实时 3D 环境；序章、长夜、空域和终局使用本地固定 CG，素材缺失时自动回退到程序化画面。
+- **六关环境与固定过场**：每关都有独立的 image-2 背景、程序化 3D 氛围和 CC0 外圈模型；序章、长夜、空域和终局使用本地固定 CG，素材缺失时自动回退到程序化画面。
+- **本地声音反馈**：按钮、造物编译、落地、新传说与胜负使用本地 CC0 音效；声音只在首次玩家操作后解锁，可从“更多”中持久化关闭。
 
 ---
 
@@ -68,7 +69,7 @@ http://localhost:3000
 
 普通玩家入口不会显示考官沙盘。需要关卡跳转、守城／空战预演或浏览器烟测时，使用 `http://localhost:3000/?debug=1`。
 
-固定 CG、CC0 纹理和完整来源记录位于 `public/assets/art/`；运行时不会调用图像生成服务，也不会热链第三方图片。
+固定 CG、六关背景和 CC0 纹理位于 `public/assets/art/`，CC0 模型与音效分别位于 `public/assets/models/`、`public/assets/audio/`。完整来源记录见 `public/assets/ATTRIBUTION.md` 与 `public/assets/art/ATTRIBUTION.md`；运行时不会调用图像生成服务，也不会热链第三方素材。
 
 > 项目无npm依赖，`npm start` 直接执行 `node server.js`。Three.js通过CDN加载。
 
@@ -144,7 +145,7 @@ creator_exam_3d/
 ├── public/                   # 前端资源
 │   ├── index.html            # 游戏主页面
 │   ├── styles.css            # UI样式
-│   ├── assets/art/           # 本地固定 CG、CC0 纹理与 ATTRIBUTION.md
+│   ├── assets/               # 固定 CG、关卡背景、CC0 纹理／模型／音效及来源记录
 │   ├── modes/                # 独立桥接模式
 │   │   ├── tower-defense/    # 长夜守城
 │   │   └── air-combat/       # 第七天裂隙空域

@@ -77,7 +77,8 @@ assert.ok(!environmentMethodsBlock.includes('.dispose('), 'environment clearing 
 
 for (const check of [
   'solid level environment props stay outside the board',
-  'level loads apply environments before first render'
+  'level loads apply environments before first render',
+  'all six level environments load public 3D props'
 ]) {
   assert.ok(smokeBlock.includes(`'${check}'`), `missing live smoke check: ${check}`);
   assert.ok(smokeBlock.indexOf(`'${check}'`) < smokeBlock.indexOf('return tacticalResult'), `${check} must run before the reachable tactical smoke return`);
