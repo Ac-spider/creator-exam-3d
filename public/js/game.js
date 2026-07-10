@@ -1043,6 +1043,7 @@ class CreatorExam3D extends GameEngine {
   }
 
   showCard(card) {
+    this.placementMode = false;
     delete this.ui.cardPanel.dataset.placing;
     this.ui.cardPanel.classList.remove('hidden');
     this.ui.cardType.textContent = card.type;

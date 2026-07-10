@@ -20,6 +20,7 @@ const loadLevelBlock = sourceBlock(gameSource, '  loadLevel(index) {', '  applyD
 const environmentConfigBlock = sourceBlock(gameSource, 'const LEVEL_ENVIRONMENTS = Object.freeze({', 'const ABILITY_COLORS = {');
 const environmentMethodsBlock = sourceBlock(gameSource, '  clearLevelEnvironment() {', '  renderWorld() {');
 const bridgeBlock = sourceBlock(gameSource, '  bindBrowserDemoSmokeBridge() {', '  // Override loadLevel to add browser-specific initialization');
+const showCardBlock = sourceBlock(gameSource, '  showCard(card) {', '  startPlacement() {');
 const airResultBlock = sourceBlock(gameSource, '  applyAirCombatResult(result) {', '  renderAirCombatPanel() {');
 const cinematicKeyBlock = sourceBlock(gameSource, "    this.ui.cinematic?.addEventListener('keydown', event => {", '    for (const button of this.ui.drawerButtons) {');
 const turnPendingBlock = sourceBlock(gameSource, '  setTurnControlsPending(pending) {', '  releaseTurnResolutionLock() {');
@@ -109,7 +110,8 @@ const missingShellContracts = [
 
 assert.deepEqual(missingShellContracts, [], `missing map-first CSS contracts: ${missingShellContracts.join(', ')}`);
 assert.ok(gameSource.includes("this.ui.cardPanel.dataset.placing = 'true'"), 'placement mode should publish card click-through state');
-assert.ok(gameSource.includes('delete this.ui.cardPanel.dataset.placing'), 'card click-through state should be cleared outside placement');
+assert.ok(showCardBlock.includes('this.placementMode = false'), 'compiling a new card should exit the previous placement mode');
+assert.ok(showCardBlock.includes('delete this.ui.cardPanel.dataset.placing'), 'a new card should clear click-through state');
 
 for (const id of [
   'creation-input', 'compile-btn', 'place-btn', 'end-turn-btn',

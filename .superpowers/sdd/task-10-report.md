@@ -33,6 +33,7 @@ During inspection, the Codex image-preview transport intermittently painted alte
 - GREEN: the card now receives pointer and scroll input before placement, then publishes `data-placing="true"` so clicks pass through only while the player is choosing a board tile. The state clears on successful placement, a new card, or a level load.
 - Live 1280×500 browser probe: wheel changed `scrollTop` from 0 to 79, the placement button became fully visible, placement mode published the click-through state, board placement completed, and no page errors occurred.
 - The browser source smoke now requires both the scrollable default state and the placement-only click-through state. Trailing Markdown whitespace found by review was removed.
+- Follow-up review found that compiling a replacement card cleared only the visual attribute. `showCard()` now also exits `placementMode`, and the smoke scopes both requirements to that method so a replacement card cannot be placed before its own placement confirmation.
 
 ## Full verification
 
