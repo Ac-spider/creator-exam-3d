@@ -47,6 +47,18 @@ for (const check of [
   assert.ok(smokeBlock.includes(`'${check}'`), `missing live smoke check: ${check}`);
 }
 
+for (const check of [
+  'drawer notifications dedupe stable ids',
+  'drawer notifications merge by turn and target',
+  'world signal opens legend and clears unread',
+  'actionable drawer notice survives opening until ignored'
+]) {
+  assert.ok(smokeBlock.includes(`'${check}'`), `missing live smoke check: ${check}`);
+}
+
+assert.ok(gameSource.includes('notifyDrawer(name, notice)'), 'game should expose the drawer notice helper');
+assert.ok(gameSource.includes('worldLegendSystem.myths.values()'), 'legend notifications must scan every myth, not only the top three');
+
 assert.ok(cssSource.includes('@media (max-width: 760px)'), 'UI should define the approved mobile breakpoint');
 assert.match(
   cssSource,

@@ -2201,6 +2201,18 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
 .drawer-view > section, .drawer-view > .drawer-section { margin-top: 12px; border-radius: 4px; }
 .drawer-view > .log-panel { position: static; width: auto; max-height: none; }
 .world-signal { position: fixed; z-index: 43; right: 78px; bottom: 198px; width: min(360px, calc(100vw - 32px)); }
+.world-signal {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px;
+  border: 1px solid rgba(210, 184, 107, .64); border-radius: 4px;
+  background: rgba(21, 25, 35, .98); box-shadow: 0 18px 48px rgba(0, 0, 0, .38);
+}
+.world-signal[hidden] { display: none; }
+.world-signal[data-priority="actionable"] { border-color: var(--interactive); }
+#world-signal-open { display: grid; gap: 3px; padding: 12px; text-align: left; color: var(--text-main); border: 0; background: transparent; }
+#world-signal-kicker { color: var(--narrative); font-size: 11px; letter-spacing: .12em; }
+#world-signal-summary { color: rgba(240, 228, 193, .76); font-size: 12px; }
+#world-signal-dismiss { align-self: start; margin: 6px; color: var(--text-main); border: 0; background: transparent; }
+.modal { z-index: 100; }
 
 @media (max-width: 760px) {
   :root { --dock-height: 190px; }

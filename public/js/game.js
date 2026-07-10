@@ -196,6 +196,12 @@ class CreatorExam3D extends GameEngine {
     this.turnUnlockTimer = null;
     this.activeDrawer = null;
     this.drawerFocusReturn = null;
+    this.drawerNotices = { people: [], world: [], systems: [] };
+    this.drawerUnread = { people: 0, world: 0, systems: 0 };
+    this.seenDrawerNoticeIds = new Set();
+    this.knownLegendIds = null;
+    this.knownResidentActionIds = null;
+    this.activeDrawerNoticeKey = null;
 
     this.ui = this.collectUi();
     this.applyDebugGate();
@@ -563,11 +569,88 @@ class CreatorExam3D extends GameEngine {
     return hash;
   }
 
+  notifyDrawer(name, notice) {
+    if (!this.drawerNotices[name] || !notice?.id || !notice?.targetId) return false;
+    const priority = notice.priority === 'actionable' ? 'actionable' : 'ambient';
+    const stableKey = `${name}:${notice.id}`;
+    if (this.seenDrawerNoticeIds.has(stableKey)) return false;
+    this.seenDrawerNoticeIds.add(stableKey);
+
+    const groupKey = [
+      this.level?.id || 'unknown',
+      this.turn || 0,
+      name,
+      priority,
+      notice.targetId
+    ].join(':');
+    let group = this.drawerNotices[name].find(item => item.groupKey === groupKey);
+    if (group) {
+      group.count += 1;
+      group.ids.push(notice.id);
+      group.summary = notice.summary || group.summary;
+    } else {
+      group = {
+        groupKey,
+        ids: [notice.id],
+        name,
+        priority,
+        title: notice.title || '档案有了新内容',
+        summary: notice.summary || '',
+        targetId: notice.targetId,
+        count: 1
+      };
+      this.drawerNotices[name].push(group);
+    }
+    this.drawerUnread[name] += 1;
+    this.renderDrawerSignals();
+    return true;
+  }
+
+  acknowledgeDrawer(name) {
+    if (!Object.prototype.hasOwnProperty.call(this.drawerUnread, name)) return;
+    this.drawerUnread[name] = 0;
+    this.drawerNotices[name] = this.drawerNotices[name].filter(item => item.priority === 'actionable');
+    this.renderDrawerSignals();
+  }
+
+  dismissDrawerNotice(groupKey) {
+    for (const name of Object.keys(this.drawerNotices)) {
+      const before = this.drawerNotices[name].length;
+      this.drawerNotices[name] = this.drawerNotices[name].filter(item => item.groupKey !== groupKey);
+      if (this.drawerNotices[name].length !== before) {
+        this.renderDrawerSignals();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  renderDrawerSignals() {
+    for (const [name, badge] of Object.entries(this.ui.drawerBadges || {})) {
+      const count = this.drawerUnread[name] || 0;
+      badge.textContent = String(count);
+      badge.hidden = count === 0;
+      badge.setAttribute('aria-label', count ? `${count} 条未读` : '没有未读');
+    }
+
+    const all = Object.values(this.drawerNotices).flat();
+    const selected = all.find(item => item.priority === 'actionable') || all.at(-1) || null;
+    this.activeDrawerNoticeKey = selected?.groupKey || null;
+    this.ui.worldSignal.hidden = !selected;
+    if (!selected) return;
+    this.ui.worldSignal.dataset.priority = selected.priority;
+    this.ui.worldSignal.dataset.drawer = selected.name;
+    this.ui.worldSignal.dataset.targetId = selected.targetId;
+    this.ui.worldSignalTitle.textContent = selected.count > 1 ? `${selected.title} · ${selected.count} 条` : selected.title;
+    this.ui.worldSignalSummary.textContent = selected.summary;
+  }
+
   openDrawer(name, targetId = null, trigger = null) {
     const titles = { people: '人物', world: '世界志', systems: '造物术' };
     const view = this.ui.drawerViews.find(node => node.dataset.drawerView === name);
     if (!view || !titles[name]) return false;
 
+    this.acknowledgeDrawer(name);
     this.drawerFocusReturn = trigger || document.activeElement;
     this.activeDrawer = name;
     this.ui.drawer.hidden = false;
@@ -629,6 +712,15 @@ class CreatorExam3D extends GameEngine {
       });
     }
     this.ui.drawerCloseBtn?.addEventListener('click', () => this.closeDrawer());
+    this.ui.worldSignalOpen?.addEventListener('click', () => {
+      const notice = Object.values(this.drawerNotices).flat().find(item => item.groupKey === this.activeDrawerNoticeKey);
+      if (!notice) return;
+      this.openDrawer(notice.name, notice.targetId, document.querySelector(`[data-drawer="${notice.name}"]`));
+      if (notice.priority === 'ambient') this.dismissDrawerNotice(notice.groupKey);
+    });
+    this.ui.worldSignalDismiss?.addEventListener('click', () => {
+      if (this.activeDrawerNoticeKey) this.dismissDrawerNotice(this.activeDrawerNoticeKey);
+    });
     window.addEventListener('keydown', event => {
       if (event.key === 'Escape' && this.activeDrawer) {
         event.preventDefault();
@@ -2522,6 +2614,36 @@ class CreatorExam3D extends GameEngine {
     }
   }
 
+  syncActionableSignals() {
+    const actions = this.worldSimulation?.eventBus?.query?.({ type: 'resident_action' }) || [];
+    if (this.knownResidentActionIds === null) {
+      this.knownResidentActionIds = new Set(actions.map(event => event.id));
+    } else {
+      for (const event of actions) {
+        if (this.knownResidentActionIds.has(event.id) || event.payload?.type === 'idle') continue;
+        this.knownResidentActionIds.add(event.id);
+        this.notifyDrawer('people', {
+          id: event.id,
+          priority: 'actionable',
+          title: `${event.payload?.residentName || '居民'}需要回应`,
+          summary: event.payload?.reason || event.payload?.type || '有人正在等你的决定。',
+          targetId: 'resident-dialogue-panel'
+        });
+      }
+    }
+
+    const ritualReady = this.creations.filter(creation => creation.placed && creation.remaining > 0).length >= 2;
+    if (ritualReady) {
+      this.notifyDrawer('systems', {
+        id: `ritual-ready:${this.level?.id}:${this.turn}`,
+        priority: 'actionable',
+        title: '仪式熔炼已经可用',
+        summary: '至少两件造物可以组合；打开造物术查看或明确忽略。',
+        targetId: 'ritual-panel'
+      });
+    }
+  }
+
   updateUi() {
     this.ui.levelChip.textContent = `第 ${this.levelIndex + 1} / ${LEVELS.length} 关`;
     this.ui.title.textContent = this.level.title;
@@ -2576,6 +2698,7 @@ class CreatorExam3D extends GameEngine {
     this.renderNightWatchPanel();
     this.renderAirCombatPanel();
     this.renderIntentArrows();
+    this.syncActionableSignals();
     this.updateDebugDataset();
   }
 
@@ -3362,6 +3485,34 @@ class CreatorExam3D extends GameEngine {
       levelId: initialDebugState?.levelId || '',
       unitCount: initialDebugState?.units?.length || 0
     });
+
+    const signalA = this.notifyDrawer('world', {
+      id: 'smoke-myth-a', priority: 'ambient', title: '新的传说正在流传',
+      summary: '烟测传说甲', targetId: 'legend-panel'
+    });
+    const duplicateA = this.notifyDrawer('world', {
+      id: 'smoke-myth-a', priority: 'ambient', title: '新的传说正在流传',
+      summary: '烟测传说甲', targetId: 'legend-panel'
+    });
+    const signalB = this.notifyDrawer('world', {
+      id: 'smoke-myth-b', priority: 'ambient', title: '新的传说正在流传',
+      summary: '烟测传说乙', targetId: 'legend-panel'
+    });
+    const mythGroup = this.drawerNotices.world.find(item => item.ids.includes('smoke-myth-a'));
+    record('drawer notifications dedupe stable ids', signalA && !duplicateA);
+    record('drawer notifications merge by turn and target', signalB && mythGroup?.count === 2);
+    this.ui.worldSignalOpen.click();
+    record('world signal opens legend and clears unread', this.activeDrawer === 'world' && this.drawerUnread.world === 0);
+
+    this.notifyDrawer('systems', {
+      id: 'smoke-action-a', priority: 'actionable', title: '烟测行动',
+      summary: '需要明确处理', targetId: 'ritual-panel'
+    });
+    this.ui.worldSignalOpen.click();
+    record('actionable drawer notice survives opening until ignored',
+      this.drawerNotices.systems.some(item => item.ids.includes('smoke-action-a'))
+    );
+    this.ui.worldSignalDismiss.click();
 
     this.renderAdvancedMechanicsPanel();
     const actionCount = this.ui.advancedActionList?.querySelectorAll('button[data-advanced-action]').length || 0;
@@ -5188,6 +5339,23 @@ class CreatorExam3D extends GameEngine {
 
   renderLegendPanel() {
     if (!this.ui.legendMyths) return;
+
+    const allMyths = Array.from(worldLegendSystem.myths.values()).flat();
+    if (this.knownLegendIds === null) {
+      this.knownLegendIds = new Set(allMyths.map(myth => myth.id));
+    } else {
+      for (const myth of allMyths) {
+        if (this.knownLegendIds.has(myth.id)) continue;
+        this.knownLegendIds.add(myth.id);
+        this.notifyDrawer('world', {
+          id: myth.id,
+          priority: 'ambient',
+          title: '新的传说正在流传',
+          summary: myth.text,
+          targetId: 'legend-panel'
+        });
+      }
+    }
 
     const myths = worldLegendSystem.getTopMyths(3);
     this.ui.legendMyths.innerHTML = myths.length
