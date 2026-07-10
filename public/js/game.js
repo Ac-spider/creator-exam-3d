@@ -279,6 +279,8 @@ class CreatorExam3D extends GameEngine {
 
   // Override loadLevel to add browser-specific initialization
   loadLevel(index) {
+    const targetLevelId = LEVELS[index]?.id;
+    if (targetLevelId) this.applyLevelEnvironment(targetLevelId);
     super.loadLevel(index);
     this.activeCard = null;
     this.placementMode = false;
@@ -1933,10 +1935,17 @@ class CreatorExam3D extends GameEngine {
 
   createProceduralEnvironment(levelId) {
     const add = (...args) => this.addEnvironmentPrimitive(...args);
+    const squarePoint = (angle, radius) => {
+      const x = Math.cos(angle);
+      const z = Math.sin(angle);
+      const scale = radius / Math.max(Math.abs(x), Math.abs(z));
+      return [x * scale, z * scale];
+    };
     const circle = (count, radius, callback) => {
       for (let i = 0; i < count; i += 1) {
         const angle = i * Math.PI * 2 / count;
-        callback(i, angle, Math.cos(angle) * radius, Math.sin(angle) * radius);
+        const [x, z] = squarePoint(angle, radius);
+        callback(i, angle, x, z);
       }
     };
 
@@ -1958,8 +1967,8 @@ class CreatorExam3D extends GameEngine {
         add('cone', i % 2 ? 0x2f7259 : 0x3e8767, [x, 1.25, z], [0.82, 1.4, 0.82], [0, angle, 0]);
       });
       for (let i = -4; i <= 4; i += 1) add('box', 0x7b7162, [i * 1.2, 0.42, -6.1], [1.05, 0.9, 0.48]);
-      add('cylinder', 0x111713, [6.2, -0.08, -1.6], [1.5, 0.05, 0.72], [Math.PI / 2, 0.2, 0], { transparent: true, opacity: 0.45 });
-      add('cylinder', 0x111713, [6.0, -0.08, 1.8], [1.8, 0.05, 0.8], [Math.PI / 2, -0.15, 0], { transparent: true, opacity: 0.45 });
+      add('cylinder', 0x111713, [6.5, -0.08, -1.6], [1.5, 0.05, 0.72], [Math.PI / 2, 0.2, 0], { transparent: true, opacity: 0.45 });
+      add('cylinder', 0x111713, [6.5, -0.08, 1.8], [1.8, 0.05, 0.8], [Math.PI / 2, -0.15, 0], { transparent: true, opacity: 0.45 });
     } else if (levelId === 'wordless-war') {
       for (const side of [-1, 1]) {
         for (const z of [-3, 0, 3]) {
@@ -1971,8 +1980,8 @@ class CreatorExam3D extends GameEngine {
       add('box', 0x7e7396, [-5.7, 1.0, 0], [0.3, 2.2, 5.6], [0, 0, 0], { transparent: true, opacity: 0.12, depthWrite: false });
       add('box', 0xd4c07c, [5.7, 1.0, 0], [0.3, 2.2, 5.6], [0, 0, 0], { transparent: true, opacity: 0.08, depthWrite: false });
     } else if (levelId === 'memory-plague') {
-      add('cylinder', 0x62462f, [0, 1.1, -6.45], [0.72, 2.2, 0.72]);
-      add('crown', 0x58c99d, [0, 2.75, -6.45], [2.15, 1.55, 2.15], [0, 0, 0], { emissive: 0x173e32, emissiveIntensity: 0.35 });
+      add('cylinder', 0x62462f, [0, 1.1, -6.65], [0.72, 2.2, 0.72]);
+      add('crown', 0x58c99d, [0, 2.75, -6.65], [2.15, 1.55, 2.15], [0, 0, 0], { emissive: 0x173e32, emissiveIntensity: 0.35 });
       circle(18, 6.1, (i, angle, x, z) => add('box', i % 2 ? 0xaa94d3 : 0xd7ca93, [x, 1.0 + (i % 4) * 0.4, z], [0.035, 0.28, 0.08], [0.2, angle, i * 0.12], { transparent: true, opacity: 0.62, emissive: 0x6f579c, emissiveIntensity: 0.2 }));
     } else if (levelId === 'final-exam') {
       const fragments = [
@@ -1981,7 +1990,8 @@ class CreatorExam3D extends GameEngine {
       ];
       fragments.forEach(([kind, color, scale], index) => {
         const angle = index * Math.PI * 2 / fragments.length;
-        add(kind, color, [Math.cos(angle) * 6.6, 0.72, Math.sin(angle) * 6.6], [scale, scale, scale], [0.2, -angle, 0.15]);
+        const [x, z] = squarePoint(angle, 6.6);
+        add(kind, color, [x, 0.72, z], [scale, scale, scale], [0.2, -angle, 0.15]);
       });
       add('ring', 0x8f73c8, [0, 0.02, 0], [0.76, 0.76, 0.76], [-Math.PI / 2, 0, 0], { transparent: true, opacity: 0.32, emissive: 0x8f73c8, emissiveIntensity: 0.35, side: THREE.DoubleSide });
     }
@@ -3833,17 +3843,78 @@ class CreatorExam3D extends GameEngine {
     );
     this.applyDebugGate(window.location.search);
 
-    const raycastTargets = Array.from(this.tileMeshPool.values());
-    const environmentChecks = LEVELS.map(level => {
-      this.applyLevelEnvironment(level.id);
-      return this.environmentGroup.userData.levelId === level.id
-        && this.environmentGroup.children.length > 0
-        && this.environmentGroup.children.every(child => child.userData.decorative === true)
-        && this.environmentGroup.children.every(child => !raycastTargets.includes(child));
-    });
-    this.applyLevelEnvironment(this.level.id);
+    const boardHalfExtent = BOARD_SIZE * TILE_SIZE / 2;
+    const originalLevelIndex = this.levelIndex;
+    const originalRenderWorld = this.renderWorld;
+    const environmentChecks = [];
+    const environmentBoundsChecks = [];
+    const environmentBoundsFailures = [];
+    const loadOrderingChecks = [];
+    let firstRenderState = null;
+    try {
+      this.renderWorld = (...args) => {
+        if (!firstRenderState) {
+          firstRenderState = {
+            levelId: this.level?.id,
+            environmentLevelId: this.environmentGroup.userData.levelId
+          };
+        }
+        return originalRenderWorld.apply(this, args);
+      };
+      LEVELS.forEach((level, index) => {
+        firstRenderState = null;
+        this.loadLevel(index);
+        const raycastTargets = Array.from(this.tileMeshPool.values());
+        environmentChecks.push(
+          this.environmentGroup.userData.levelId === level.id
+          && this.environmentGroup.children.length > 0
+          && this.environmentGroup.children.every(child => child.userData.decorative === true)
+          && this.environmentGroup.children.every(child => !raycastTargets.includes(child))
+        );
+        loadOrderingChecks.push({
+          levelId: level.id,
+          firstRenderState,
+          passed: firstRenderState?.levelId === level.id && firstRenderState?.environmentLevelId === level.id
+        });
+
+        this.environmentGroup.updateMatrixWorld(true);
+        let levelBoundsPassed = true;
+        for (const child of this.environmentGroup.children) {
+          if (child.geometry?.type === 'RingGeometry') continue;
+          const bounds = new THREE.Box3().setFromObject(child);
+          const outsideBoard = bounds.max.x < -boardHalfExtent
+            || bounds.min.x > boardHalfExtent
+            || bounds.max.z < -boardHalfExtent
+            || bounds.min.z > boardHalfExtent;
+          if (!outsideBoard) {
+            levelBoundsPassed = false;
+            environmentBoundsFailures.push({
+              levelId: level.id,
+              geometry: child.geometry?.type || '',
+              bounds: {
+                minX: bounds.min.x,
+                maxX: bounds.max.x,
+                minZ: bounds.min.z,
+                maxZ: bounds.max.z
+              }
+            });
+          }
+        }
+        environmentBoundsChecks.push(levelBoundsPassed);
+      });
+    } finally {
+      this.renderWorld = originalRenderWorld;
+      this.loadLevel(originalLevelIndex);
+    }
     record('all six level environments install decorative geometry', environmentChecks.every(Boolean), {
       levelIds: LEVELS.map(level => level.id)
+    });
+    record('solid level environment props stay outside the board', environmentBoundsChecks.every(Boolean), {
+      boardHalfExtent,
+      failures: environmentBoundsFailures
+    });
+    record('level loads apply environments before first render', loadOrderingChecks.every(item => item.passed), {
+      loadOrderingChecks
     });
 
     this.updateUi();

@@ -16,6 +16,7 @@ const htmlSource = readFileSync(new URL('../public/index.html', import.meta.url)
 const cssSource = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
 const smokeBlock = sourceBlock(gameSource, '  async runBrowserDemoSmoke(options = {}) {', '  demoCard(ability) {');
 const pointerBlock = sourceBlock(gameSource, '  onPointerDown(event) {', '  placeCreation(x, y) {');
+const loadLevelBlock = sourceBlock(gameSource, '  loadLevel(index) {', '  applyDebugGate(search = window.location.search) {');
 const environmentConfigBlock = sourceBlock(gameSource, 'const LEVEL_ENVIRONMENTS = Object.freeze({', 'const ABILITY_COLORS = {');
 const environmentMethodsBlock = sourceBlock(gameSource, '  clearLevelEnvironment() {', '  renderWorld() {');
 const bridgeBlock = sourceBlock(gameSource, '  bindBrowserDemoSmokeBridge() {', '  // Override loadLevel to add browser-specific initialization');
@@ -26,7 +27,16 @@ const shellCss = cssSource.slice(shellCssStart);
 for (const levelId of ['flood-village', 'night-mine', 'giant-city', 'wordless-war', 'memory-plague', 'final-exam']) {
   assert.ok(environmentConfigBlock.includes(`'${levelId}'`), `environment config should include ${levelId}`);
 }
-assert.ok(gameSource.includes('applyLevelEnvironment(this.level.id)'), 'loadLevel should apply its environment');
+assert.ok(
+  loadLevelBlock.indexOf('this.applyLevelEnvironment(this.level.id)') > loadLevelBlock.indexOf('super.loadLevel(index)'),
+  'loadLevel should reconcile clamped or invalid indexes after super'
+);
+assert.ok(loadLevelBlock.includes('const targetLevelId = LEVELS[index]?.id'), 'loadLevel should safely resolve the requested environment');
+assert.ok(
+  loadLevelBlock.indexOf('if (targetLevelId) this.applyLevelEnvironment(targetLevelId)') >= 0
+    && loadLevelBlock.indexOf('if (targetLevelId) this.applyLevelEnvironment(targetLevelId)') < loadLevelBlock.indexOf('super.loadLevel(index)'),
+  'loadLevel should apply valid environments before the first super callback render'
+);
 assert.ok(gameSource.includes('this.environmentGroup.userData.levelId = levelId'), 'environment should publish the active level id');
 assert.ok(smokeBlock.includes("'all six level environments install decorative geometry'"), 'live smoke should inspect all six environments');
 assert.ok(
@@ -37,6 +47,14 @@ assert.ok(pointerBlock.includes('Array.from(this.tileMeshPool.values())'), 'poin
 assert.ok(!pointerBlock.includes('environmentGroup'), 'decorative environments must stay out of pointer raycasts');
 assert.doesNotMatch(environmentMethodsBlock, /\b(?:tileMeshes|tileMeshPool|unitMeshPool|creationMeshPool)\b/, 'environment methods must stay out of gameplay mesh pools');
 assert.ok(!environmentMethodsBlock.includes('.dispose('), 'environment clearing must preserve shared cached resources');
+
+for (const check of [
+  'solid level environment props stay outside the board',
+  'level loads apply environments before first render'
+]) {
+  assert.ok(smokeBlock.includes(`'${check}'`), `missing live smoke check: ${check}`);
+  assert.ok(smokeBlock.indexOf(`'${check}'`) < smokeBlock.indexOf('return tacticalResult'), `${check} must run before the reachable tactical smoke return`);
+}
 
 for (const family of ['water', 'light', 'terrain', 'defense', 'mind', 'special']) {
   assert.ok(abilitySource.includes(`'${family}'`), `ability map should include ${family}`);
