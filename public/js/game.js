@@ -287,6 +287,7 @@ class CreatorExam3D extends GameEngine {
     super.loadLevel(index);
     this.activeCard = null;
     this.placementMode = false;
+    delete this.ui.cardPanel.dataset.placing;
     this.selectedRitualCreations.clear();
     this.selectedWorkshopItems.clear();
     this.currentAbyssRiddle = null;
@@ -1042,6 +1043,7 @@ class CreatorExam3D extends GameEngine {
   }
 
   showCard(card) {
+    delete this.ui.cardPanel.dataset.placing;
     this.ui.cardPanel.classList.remove('hidden');
     this.ui.cardType.textContent = card.type;
     this.ui.cardName.textContent = this.getCreationDisplayName(card);
@@ -1066,6 +1068,7 @@ class CreatorExam3D extends GameEngine {
       return;
     }
     this.placementMode = true;
+    this.ui.cardPanel.dataset.placing = 'true';
     this.showToast('点击 3D 地图上的一个格子放置造物。');
   }
 
@@ -1103,6 +1106,7 @@ class CreatorExam3D extends GameEngine {
     };
     this.creations.push(creation);
     this.placementMode = false;
+    delete this.ui.cardPanel.dataset.placing;
     this.activeCard = null;
     this.ui.input.value = '';
     this.ui.cardPanel.classList.add('hidden');

@@ -1,6 +1,6 @@
 # Task 10 Report: Documentation and Visual QA
 
-Date: 2026-07-10  
+Date: 2026-07-10
 Baseline: `89ad262`
 
 ## RED / GREEN
@@ -26,6 +26,13 @@ Final directory: `%TEMP%\creator-exam-art-ui-qa-final` (not committed).
 All 16 images were visually inspected at original detail. The six environments are distinct, their decorative props stay outside playable tiles, unit/path/intent cues remain legible, and the mobile/accessibility/fallback views retain the required controls.
 
 During inspection, the Codex image-preview transport intermittently painted alternate previews black. The same unchanged PNG displayed cleanly on the next `view_image` call, and DOM hit-testing/computed styles were normal; this was isolated to preview transport, not the saved screenshots or page. Clean previews were used for every acceptance decision.
+
+## Review fix
+
+- RED: independent review reproduced a true overflow failure at 1280×500. The card had `clientHeight=210` and `scrollHeight=289`, but `pointer-events: none` kept `scrollTop=0` and left the placement button with zero visible height.
+- GREEN: the card now receives pointer and scroll input before placement, then publishes `data-placing="true"` so clicks pass through only while the player is choosing a board tile. The state clears on successful placement, a new card, or a level load.
+- Live 1280×500 browser probe: wheel changed `scrollTop` from 0 to 79, the placement button became fully visible, placement mode published the click-through state, board placement completed, and no page errors occurred.
+- The browser source smoke now requires both the scrollable default state and the placement-only click-through state. Trailing Markdown whitespace found by review was removed.
 
 ## Full verification
 
