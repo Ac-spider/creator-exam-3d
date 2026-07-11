@@ -420,6 +420,9 @@ class CreatorExam3D extends GameEngine {
       endTurnBtn: document.getElementById('end-turn-btn'),
       soundToggle: document.getElementById('sound-toggle'),
       restartBtn: document.getElementById('restart-btn'),
+      restartConfirm: document.getElementById('restart-confirm'),
+      restartConfirmOk: document.getElementById('restart-confirm-ok'),
+      restartConfirmCancel: document.getElementById('restart-confirm-cancel'),
       nextBtn: document.getElementById('next-btn'),
       nightWatchPanel: document.getElementById('night-watch-panel'),
       nightWatchTitle: document.getElementById('night-watch-title'),
@@ -781,7 +784,20 @@ class CreatorExam3D extends GameEngine {
     this.ui.storytellerSelect?.addEventListener('change', (e) => this.handleStorytellerChange(e.target.value));
     this.ui.placeBtn.addEventListener('click', () => this.startPlacement());
     this.ui.endTurnBtn.addEventListener('click', () => this.endTurn());
-    this.ui.restartBtn.addEventListener('click', () => this.loadLevel(this.levelIndex));
+    this.ui.restartBtn.addEventListener('click', () => this.showRestartConfirm());
+    this.ui.restartConfirmOk.addEventListener('click', () => {
+      this.hideRestartConfirm();
+      this.loadLevel(this.levelIndex);
+    });
+    this.ui.restartConfirmCancel.addEventListener('click', () => this.hideRestartConfirm());
+    this.ui.restartConfirm?.addEventListener('click', (event) => {
+      if (event.target === this.ui.restartConfirm) this.hideRestartConfirm();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !this.ui.restartConfirm.classList.contains('hidden')) {
+        this.hideRestartConfirm();
+      }
+    });
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
     this.ui.nightWatchBtn?.addEventListener('click', () => this.openNightWatch());
     this.ui.airCombatBtn?.addEventListener('click', () => this.openAirCombatMode());
@@ -1545,6 +1561,16 @@ class CreatorExam3D extends GameEngine {
     this.ui.modalSecondary.textContent = showSecondary ? secondary : '';
     this.ui.modalSecondary.hidden = !showSecondary;
     this.ui.modal.classList.remove('hidden');
+  }
+
+  showRestartConfirm() {
+    if (this.gameState !== 'playing') return;
+    this.ui.restartConfirm.classList.remove('hidden');
+    this.ui.restartConfirmOk.focus();
+  }
+
+  hideRestartConfirm() {
+    this.ui.restartConfirm.classList.add('hidden');
   }
 
   nextLevel() {

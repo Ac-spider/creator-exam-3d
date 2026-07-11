@@ -135,20 +135,26 @@ class GameEngine {
     this.log(`考核开始：${this.level.shortTitle}。`, true);
     for (const tip of this.level.tips || []) this.log(`提示：${tip}`);
 
-    // 加载传承NPC
-    const legacyNPCs = legacySystem.getNPCsForNextLevel(this.level.id);
-    if (legacyNPCs && legacyNPCs.length > 0) {
-      this.log(`【传承】${legacyNPCs.length} 位故人出现在此关卡`, true);
-      for (const npc of legacyNPCs) {
-        this.log(`  ${npc.name} - ${npc.lore}`);
+    // 第三关"巨兽困城"中不出现传承居民，仅保留救援记录
+    const skipLegacyForLevel = this.level.id === 'giant-city';
+    if (skipLegacyForLevel) {
+      this.log(`【传承】本关没有故人出现。`, true);
+    } else {
+      // 加载传承NPC
+      const legacyNPCs = legacySystem.getNPCsForNextLevel(this.level.id);
+      if (legacyNPCs && legacyNPCs.length > 0) {
+        this.log(`【传承】${legacyNPCs.length} 位故人出现在此关卡`, true);
+        for (const npc of legacyNPCs) {
+          this.log(`  ${npc.name} - ${npc.lore}`);
+        }
       }
-    }
-    this.legacyUnits = legacyNPCs;
-    this.applyLegacyUnitEffects(this.legacyUnits);
+      this.legacyUnits = legacyNPCs;
+      this.applyLegacyUnitEffects(this.legacyUnits);
 
-    // 加载会作为真实棋盘单位回归的传承角色，而不只是 NPC 面板展示。
-    const legacyReturnUnits = legacySystem.getUnitsForNextLevel(this.level.id);
-    this.integrateLegacyReturnUnits(legacyReturnUnits);
+      // 加载会作为真实棋盘单位回归的传承角色，而不只是 NPC 面板展示。
+      const legacyReturnUnits = legacySystem.getUnitsForNextLevel(this.level.id);
+      this.integrateLegacyReturnUnits(legacyReturnUnits);
+    }
 
     this.hooks.onStateChange();
   }

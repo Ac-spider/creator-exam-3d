@@ -22,19 +22,11 @@
           <div class="eyebrow">七格战术 · 自然语言造物</div>
           <h1>裂隙考核：造物者</h1>
         </div>
-        <div class="topbar-status" aria-label="当前关卡状态">
-          <div class="stat"><span>回合</span><strong id="turn-stat">1 / 6</strong></div>
-          <div class="stat"><span>还能造</span><strong id="charges-stat">3</strong></div>
-          <div class="stat"><span>奇迹点</span><strong id="miracle-stat">6</strong></div>
-          <div class="stat"><span>裂隙</span><strong id="entropy-stat">0 / 7</strong></div>
+        <div class="topbar-actions" aria-label="顶部快捷操作">
           <div id="level-chip" class="chip">第 1 关</div>
-        </div>
-        <details class="secondary-menu">
-          <summary>更多</summary>
           <a id="wiki-link" class="wiki-link" href="./wiki.html" target="_blank" rel="noopener">玩法 WIKI</a>
           <button id="sound-toggle" class="secondary" type="button" aria-pressed="true">声音：开</button>
-          <button id="restart-btn" class="secondary" type="button">重开本关</button>
-        </details>
+        </div>
       </header>
 
       <section id="npc-status-strip" class="npc-status-strip" aria-label="本关人物状态"></section>
@@ -52,6 +44,12 @@
           <div class="objective-box">
             <div class="objective-label">本关目标</div>
             <div id="level-objective"></div>
+          </div>
+          <div class="stat-grid" aria-label="当前状态">
+            <div class="stat"><span>回合</span><strong id="turn-stat">1 / 6</strong></div>
+            <div class="stat"><span>还能造</span><strong id="charges-stat">3</strong></div>
+            <div class="stat"><span>奇迹点</span><strong id="miracle-stat">6</strong></div>
+            <div class="stat"><span>裂隙</span><strong id="entropy-stat">0 / 7</strong></div>
           </div>
           <div id="mission-goals" class="mission-goals" hidden aria-hidden="true"></div>
         </div>
@@ -88,6 +86,7 @@
 
         <div class="button-row with-margin">
           <button id="end-turn-btn" class="primary">结束回合</button>
+          <button id="restart-btn" class="secondary" type="button">重开本关</button>
         </div>
         <button id="next-btn" class="secondary wide hidden">进入下一关</button>
       </section>
@@ -383,6 +382,18 @@
           <div class="button-row center">
             <button id="modal-primary" class="primary">继续</button>
             <button id="modal-secondary" class="secondary">重试</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="restart-confirm" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="restart-confirm-title">
+        <div class="modal-box glass restart-confirm-box">
+          <div class="eyebrow">请确认</div>
+          <h2 id="restart-confirm-title">重开本关？</h2>
+          <p>当前关卡进度将被清空，无法恢复。</p>
+          <div class="button-row center">
+            <button id="restart-confirm-ok" class="primary" type="button">确认</button>
+            <button id="restart-confirm-cancel" class="secondary" type="button">取消</button>
           </div>
         </div>
       </div>

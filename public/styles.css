@@ -1452,6 +1452,26 @@ button.small {
   display: none !important;
 }
 
+#restart-confirm {
+  z-index: 70;
+}
+
+.restart-confirm-box {
+  width: min(380px, calc(100vw - 32px));
+  padding: 24px;
+  border-radius: 24px;
+}
+
+.restart-confirm-box h2 {
+  font-size: 22px;
+  margin: 6px 0 10px;
+}
+
+.restart-confirm-box p {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
 /* Focus states for accessibility */
 button:focus-visible,
 textarea:focus-visible {
@@ -1509,6 +1529,16 @@ button.loading {
     padding: 10px 16px;
   }
 
+  #topbar .topbar-actions { gap: 8px; }
+  #topbar .topbar-actions .chip,
+  #topbar .topbar-actions .wiki-link,
+  #topbar .topbar-actions #sound-toggle { padding: 6px 10px; font-size: 12px; min-height: 32px; }
+
+  #left-panel .stat-grid { gap: 6px; margin-top: 10px; }
+  #left-panel .stat-grid .stat { padding: 6px 8px; min-height: 52px; }
+  #left-panel .stat-grid .stat strong { font-size: 14px; }
+  #left-panel .stat-grid .stat span { font-size: 10px; }
+
   .panel {
     top: 84px;
     width: 240px;
@@ -1556,6 +1586,7 @@ button.loading {
     max-height: min(200px, 28vh);
   }
 }
+
 
 @media (max-width: 760px) {
   body {
@@ -2171,25 +2202,36 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
 #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; }
 #topbar {
   position: fixed; z-index: 30; top: 12px; left: 16px; right: 16px;
-  min-height: 58px; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto;
-  align-items: center; gap: 16px; padding: 8px 12px; pointer-events: auto;
+  min-height: 58px; display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; padding: 8px 16px; pointer-events: auto;
   overflow: visible; clip-path: none;
 }
-.topbar-status { display: flex; align-items: center; gap: 8px; }
-.topbar-status .stat { min-width: 62px; padding: 4px 8px; }
-.secondary-menu { position: relative; }
-.secondary-menu[open] { display: grid; gap: 8px; }
-.secondary-menu > a,
-.secondary-menu > button { min-width: 120px; }
+#topbar .brand-block { flex: 0 1 auto; min-width: 0; }
+#topbar .brand-block h1 { font-size: clamp(18px, 2vw, 24px); }
+#topbar .topbar-actions {
+  display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap;
+  gap: 10px; pointer-events: auto;
+}
+#topbar .topbar-actions .chip { padding: 8px 12px; font-size: 13px; }
+#topbar .topbar-actions .wiki-link,
+#topbar .topbar-actions #sound-toggle { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+#topbar .topbar-actions #sound-toggle { border-radius: 999px; }
+
 #left-panel {
   position: fixed; z-index: 20; top: 86px; left: 16px; width: min(310px, calc(100vw - 96px));
   max-height: calc(100vh - 286px); overflow: auto; padding: 14px;
 }
+#left-panel .stat-grid { gap: 8px; margin-top: 14px; }
+#left-panel .stat-grid .stat { padding: 8px 10px; min-height: 60px; }
+#left-panel .stat-grid .stat strong { font-size: 16px; }
+#left-panel .stat-grid .stat span { font-size: 11px; }
+
 #creation-dock {
-  position: fixed; z-index: 40; left: 50%; bottom: 14px; transform: translateX(-50%);
+  position: fixed; z-index: 40; right: 16px; left: auto; bottom: 14px; transform: none;
   width: min(760px, calc(100vw - 190px)); max-height: var(--dock-height); overflow: auto;
   display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 10px; padding: 12px;
 }
+
 #creation-dock #creation-input { min-height: 66px; }
 #creation-dock #card-panel { grid-column: 1 / -1; }
 .drawer-rail {
@@ -2309,14 +2351,19 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
 
 @media (max-width: 760px) {
   :root { --dock-height: 190px; }
-  #topbar { left: 8px; right: 8px; grid-template-columns: 1fr auto; }
-  .brand-block .eyebrow, .topbar-status .stat:nth-of-type(2), .topbar-status .stat:nth-of-type(3) { display: none; }
+  #topbar { left: 8px; right: 8px; display: flex; }
+  #topbar .brand-block .eyebrow { display: none; }
+  #topbar .topbar-actions { gap: 6px; }
+  #topbar .topbar-actions .chip,
+  #topbar .topbar-actions .wiki-link,
+  #topbar .topbar-actions #sound-toggle { padding: 6px 10px; font-size: 12px; min-height: 30px; }
   #left-panel { top: 78px; left: 8px; width: min(270px, calc(100vw - 72px)); max-height: 178px; }
   #creation-dock { left: 8px; right: 8px; bottom: 8px; width: auto; transform: none; grid-template-columns: 1fr auto; z-index: 60; }
   .drawer-rail { top: 80px; right: 8px; z-index: 61; }
   #right-panel { inset: 0; width: auto; height: auto; max-height: none; padding: 16px 68px calc(var(--dock-height) + 24px) 16px; z-index: 55; }
   .world-signal { left: 8px; right: 8px; bottom: calc(var(--dock-height) + 24px); width: auto; z-index: 62; }
 }
+
 
 @media (prefers-reduced-motion: reduce) {
   .cinematic-art, .cinematic[data-cinematic^="chapter-"] .cinematic-art.chapter-frame-enter { transition: none; transform: none; animation: none; }
@@ -2701,7 +2748,8 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
   grid-row: 1;
   align-self: end;
   margin: 0 -14px 230px 0;
-  padding: 12px 14px 12px;
+  /* 右侧留出关闭按钮的独立区域，避免滚动条出现时遮挡它 */
+  padding: 12px 42px 12px 14px;
   pointer-events: auto;
   border-radius: 16px 16px 4px 16px;
   background: rgba(15, 18, 26, .96);
@@ -2721,19 +2769,35 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
 
 .dialogue-close {
   position: absolute;
-  z-index: 2;
-  top: 5px;
-  right: 5px;
+  z-index: 10;
+  top: 8px;
+  right: 8px;
   width: 28px;
   height: 28px;
   padding: 0;
   border-radius: 50%;
+  display: grid;
+  place-items: center;
+  line-height: 1;
   color: rgba(240, 228, 193, .72);
-  background: transparent;
+  /* 实底 + 边框 + 阴影，确保在滚动条或任何内容之上都可见 */
+  background: rgba(15, 18, 26, .98);
+  border: 1px solid rgba(216, 197, 138, .22);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
   font-size: 19px;
+  cursor: pointer;
 }
 
-.npc-dialogue-bubble .dialogue-history { max-height: 160px; margin: 0; padding: 0 26px 0 0; gap: 6px; }
+.npc-dialogue-bubble .dialogue-history {
+  max-height: 160px;
+  margin: 0;
+  /* 去掉右侧内边距，因为气泡已经为关闭按钮留出了空间 */
+  padding: 0;
+  gap: 6px;
+  overflow-y: auto;
+  /* 稳定预留滚动条槽位：发送前后布局不再因滚动条出现/消失而跳动 */
+  scrollbar-gutter: stable;
+}
 .npc-dialogue-bubble .dialogue-line { max-width: 92%; padding: 8px 10px; font-size: 12px; }
 .npc-dialogue-bubble .dialogue-line.npc { border-bottom-left-radius: 3px; }
 .npc-dialogue-bubble .dialogue-line.player { margin-left: auto; border-bottom-right-radius: 3px; background: rgba(89, 199, 166, .14); }
@@ -2756,7 +2820,7 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
   .npc-portrait-shell { position: relative; right: auto; bottom: auto; width: 150px; height: 330px; opacity: 1; }
   .npc-portrait-caption { display: grid; width: 160px; right: 0; }
   .npc-portrait-caption .dialogue-meta span:nth-child(n+3) { display: none; }
-  .npc-dialogue-bubble { margin: 0 -10px 178px 0; padding: 10px; }
+  .npc-dialogue-bubble { margin: 0 -10px 178px 0; padding: 10px 42px 10px 10px; }
   .npc-dialogue-bubble .dialogue-history { max-height: 120px; }
 }
 
