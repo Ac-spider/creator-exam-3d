@@ -242,6 +242,9 @@ class CreatorExam3D extends GameEngine {
     this.knownLegendIds = null;
     this.knownResidentActionIds = null;
     this.activeDrawerNoticeKey = null;
+    this.worldSignalPresentationKey = null;
+    this.worldSignalSuppressedKey = null;
+    this.worldSignalHideTimer = null;
     this.soundscape = new Soundscape();
     this.restoreFinaleResultsFromWorld();
 
@@ -724,6 +727,22 @@ class CreatorExam3D extends GameEngine {
     return false;
   }
 
+  scheduleWorldSignalAutoHide(selected) {
+    const presentationKey = selected ? `${selected.groupKey}:${selected.count}` : null;
+    if (presentationKey === this.worldSignalPresentationKey) return;
+    if (this.worldSignalHideTimer) window.clearTimeout(this.worldSignalHideTimer);
+    this.worldSignalPresentationKey = presentationKey;
+    this.worldSignalSuppressedKey = null;
+    this.worldSignalHideTimer = null;
+    if (!presentationKey) return;
+    this.worldSignalHideTimer = window.setTimeout(() => {
+      if (this.worldSignalPresentationKey !== presentationKey) return;
+      this.worldSignalSuppressedKey = presentationKey;
+      this.ui.worldSignal.hidden = true;
+      this.worldSignalHideTimer = null;
+    }, 5000);
+  }
+
   renderDrawerSignals() {
     for (const [name, badge] of Object.entries(this.ui.drawerBadges || {})) {
       const count = this.drawerUnread[name] || 0;
@@ -735,7 +754,9 @@ class CreatorExam3D extends GameEngine {
     const all = Object.values(this.drawerNotices).flat();
     const selected = all.find(item => item.priority === 'actionable') || all.at(-1) || null;
     this.activeDrawerNoticeKey = selected?.groupKey || null;
-    this.ui.worldSignal.hidden = !selected;
+    this.scheduleWorldSignalAutoHide(selected);
+    const presentationKey = selected ? `${selected.groupKey}:${selected.count}` : null;
+    this.ui.worldSignal.hidden = !selected || this.worldSignalSuppressedKey === presentationKey;
     if (!selected) return;
     this.ui.worldSignal.dataset.priority = selected.priority;
     this.ui.worldSignal.dataset.drawer = selected.name;

@@ -2498,7 +2498,7 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
 .drawer-view { height: calc(100% - 58px); overflow: auto; padding-right: 4px; }
 .drawer-view > section, .drawer-view > .drawer-section { margin-top: 12px; border-radius: 4px; }
 .drawer-view > .log-panel { position: static; width: auto; max-height: none; }
-.world-signal { position: fixed; z-index: 43; right: 78px; bottom: 198px; width: min(360px, calc(100vw - 32px)); }
+.world-signal { position: fixed; z-index: 43; left: 18px; right: auto; bottom: 18px; width: min(360px, calc(100vw - 36px)); }
 .world-signal {
   display: grid; grid-template-columns: 1fr auto; gap: 4px;
   border: 1px solid rgba(210, 184, 107, .64); border-radius: 4px;
@@ -3094,32 +3094,26 @@ body { margin: 0; background: var(--world-bg); color: var(--text-main); }
 }
 
 .world-signal {
-  top: 92px;
-  right: 74px;
-  bottom: auto;
-  width: min(350px, calc(100vw - 170px));
-  transform-origin: right top;
+  top: auto;
+  left: 18px;
+  right: auto;
+  bottom: 18px;
+  width: min(350px, calc(100vw - 36px));
+  transform-origin: left bottom;
   animation: world-signal-from-rail .2s ease-out both;
 }
 
 .world-signal::after {
-  content: '';
-  position: absolute;
-  top: 18px;
-  right: -10px;
-  width: 11px;
-  height: 18px;
-  background: rgba(21, 25, 35, .98);
-  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  display: none;
 }
 
 @keyframes world-signal-from-rail {
-  from { opacity: 0; transform: translateX(10px) scale(.98); }
-  to { opacity: 1; transform: translateX(0) scale(1); }
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @media (max-width: 760px) {
-  .world-signal { top: 80px; right: 66px; bottom: auto; left: 8px; width: auto; }
+  .world-signal { top: auto; right: 8px; bottom: calc(var(--dock-height) + 24px); left: 8px; width: auto; }
 }
 body[data-board-qa='1'] .topbar,
 body[data-board-qa='1'] .left-panel,
