@@ -6,6 +6,7 @@ import {
   BOARD_THEME_LEVEL_IDS,
   LEVEL_BOARD_THEMES,
   getBoardVisualTheme,
+  getTerrainReadabilityStyle,
   getTerrainVisualStyle
 } from '../public/js/boardVisualThemes.js'
 
@@ -45,9 +46,21 @@ assert.ok(new Set(landColors).size >= 5, 'ground should adapt to level context i
 assert.ok(!waterColors.includes(0x1c78d2), 'legacy saturated blue water should no longer drive visible terrain')
 assert.ok(!landColors.includes(0x52634c), 'legacy uniform green ground should no longer drive visible terrain')
 
+for (const terrain of [TILE.WATER, TILE.FOG, TILE.DARK, TILE.SWAMP, TILE.POISON]) {
+  const readability = getTerrainReadabilityStyle(terrain)
+  assert.ok(readability?.opacity >= 0.3, `${terrain} should remain readable over detailed board art`)
+  assert.ok(readability?.edgeOpacity >= 0.5, `${terrain} should have a visible gameplay boundary`)
+}
+assert.equal(getTerrainReadabilityStyle(TILE.LAND), null, 'ordinary land should preserve the authored board texture')
+
 const gameSource = readFileSync(new URL('../public/js/game.js', import.meta.url), 'utf8')
 for (const contract of [
-  "import { getBoardVisualTheme, getTerrainVisualStyle } from './boardVisualThemes.js'",
+  "import { getBoardVisualTheme, getTerrainReadabilityStyle, getTerrainVisualStyle } from './boardVisualThemes.js'",
+  'const readability = getTerrainReadabilityStyle(terrain)',
+  'const surfaceLocalY = hasRaisedSurface ? height / 2 : -height / 2',
+  'trunk.position.set(offset, surfaceLocalY + 0.11',
+  'group.position.set(pos.x - 0.34, 0.14, pos.z - 0.28)',
+  'group.position.set(pos.x, 0, pos.z)',
   'createBoardSurfaceTexture(theme)',
   'createBoardSurfaceDetails(theme)',
   'this.boardSurfaceGroup.userData.detailTypes = [...(theme.details || [])]',

@@ -18,6 +18,14 @@ const BASE_TERRAIN_STYLES = Object.freeze({
   poison: { color: 0x67704b, secondary: 0x343b2b, accent: 0xa8b56c, roughness: 0.72, emissive: 0x243219, emissiveIntensity: 0.12, form: 'poison' }
 })
 
+export const TERRAIN_READABILITY_STYLES = Object.freeze({
+  water: Object.freeze({ opacity: 0.5, edgeOpacity: 0.76 }),
+  fog: Object.freeze({ opacity: 0.34, edgeOpacity: 0.58 }),
+  dark: Object.freeze({ opacity: 0.46, edgeOpacity: 0.68 }),
+  swamp: Object.freeze({ opacity: 0.38, edgeOpacity: 0.62 }),
+  poison: Object.freeze({ opacity: 0.44, edgeOpacity: 0.72 })
+})
+
 export const LEVEL_BOARD_THEMES = Object.freeze({
   'flood-village': Object.freeze({
     id: 'flood-village', motif: 'floodplain', textureSeed: 1103,
@@ -115,4 +123,8 @@ export function getTerrainVisualStyle(levelId, terrain) {
   const theme = getBoardVisualTheme(levelId)
   const base = BASE_TERRAIN_STYLES[terrain] || BASE_TERRAIN_STYLES.land
   return { ...base, ...(theme.terrain[terrain] || {}) }
+}
+
+export function getTerrainReadabilityStyle(terrain) {
+  return TERRAIN_READABILITY_STYLES[terrain] || null
 }

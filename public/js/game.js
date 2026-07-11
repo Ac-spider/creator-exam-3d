@@ -31,7 +31,7 @@ import { Soundscape } from './soundscape.js';
 import { LEVEL_CHAPTER_INTROS } from './chapterIntros.js';
 import { resolveNpcVisualProfile } from './npcVisualProfiles.js';
 import { getNpcPortraitAsset } from './npcPortraitAssets.js';
-import { getBoardVisualTheme, getTerrainVisualStyle } from './boardVisualThemes.js';
+import { getBoardVisualTheme, getTerrainReadabilityStyle, getTerrainVisualStyle } from './boardVisualThemes.js';
 import { TutorialDirector } from './tutorialDirector.js';
 import { buildTimelineArchive } from './timelineArchive.js';
 import { EndingDirector } from './endingDirector.js';
@@ -3090,7 +3090,7 @@ class CreatorExam3D extends GameEngine {
       if (existing) {
         // Update position and rotation only
         const pos = this.tileToWorld(creation.x, creation.y);
-        existing.position.set(pos.x, 0.45, pos.z);
+        existing.position.set(pos.x, this.getCreationGroundedY(creation.x, creation.y), pos.z);
         const core = existing.children.find(c => c.geometry?.type === 'IcosahedronGeometry');
         if (core) core.rotation.y = creation.remaining * 0.5;
         continue;
@@ -3116,7 +3116,7 @@ class CreatorExam3D extends GameEngine {
         if (existing && existing.userData.unitStatus === unit.status) {
           // Only update position
           const pos = this.tileToWorld(unit.x, unit.y);
-          existing.position.set(pos.x, 0.36, pos.z);
+          existing.position.set(pos.x, this.getUnitGroundedY(unit.x, unit.y), pos.z);
           // Update guided halo
           const hasHalo = existing.children.some(c => c.geometry?.type === 'TorusGeometry');
           if (unit.guidedTurns > 0 && !hasHalo) {
@@ -3233,6 +3233,24 @@ class CreatorExam3D extends GameEngine {
     return 0.2;
   }
 
+  getTerrainSupportHeight(x, y) {
+    const terrain = this.getTerrain(x, y);
+    if (terrain === TILE.MOUNTAIN || terrain === TILE.HIGH || terrain === TILE.WALL || terrain === TILE.BRIDGE || terrain === TILE.WATER) {
+      return this.getTerrainHeight(terrain);
+    }
+    return 0;
+  }
+
+  getUnitGroundedY(x, y) {
+    // Character profiles preserve a local foot height of -0.24 after scaling.
+    return this.getTerrainSupportHeight(x, y) + 0.24;
+  }
+
+  getCreationGroundedY(x, y) {
+    // The creation core has radius 0.25, so its lowest point rests on the surface.
+    return this.getTerrainSupportHeight(x, y) + 0.25;
+  }
+
   terrainVariation(x, y, terrain) {
     let hash = 2166136261;
     for (const character of `${this.activeBoardThemeId}:${terrain}:${x}:${y}`) {
@@ -3247,19 +3265,57 @@ class CreatorExam3D extends GameEngine {
     const style = getTerrainVisualStyle(this.activeBoardThemeId, terrain);
     const variation = this.terrainVariation(x, y, terrain);
     const surfaceMaterial = this.getTerrainMaterial(terrain);
+    const hasRaisedSurface = terrain === TILE.WATER || terrain === TILE.BRIDGE || terrain === TILE.MOUNTAIN || terrain === TILE.WALL || terrain === TILE.HIGH;
+    const surfaceLocalY = hasRaisedSurface ? height / 2 : -height / 2;
     group.rotation.y = (variation - 0.5) * 0.18;
 
     if (terrain === TILE.LAND) return group;
 
+    const readability = getTerrainReadabilityStyle(terrain);
+    if (readability) {
+      const patchGeometry = terrain === TILE.WATER
+        ? this.getCachedGeometry('terrain-readable-water-patch-v1', () => new THREE.PlaneGeometry(1.18, 1.18))
+        : this.getCachedGeometry(`terrain-readable-${terrain}-patch-v1`, () => new THREE.CircleGeometry(0.58, 28));
+      const patch = new THREE.Mesh(
+        patchGeometry,
+        this.material(style.color, {
+          transparent: true,
+          opacity: readability.opacity,
+          depthWrite: false,
+          roughness: style.roughness ?? 0.8,
+          metalness: style.metalness ?? 0,
+          emissive: style.emissive || style.secondary,
+          emissiveIntensity: terrain === TILE.DARK || terrain === TILE.POISON ? 0.12 : 0.04,
+          side: THREE.DoubleSide
+        })
+      );
+      patch.rotation.x = -Math.PI / 2;
+      patch.position.y = surfaceLocalY + 0.012;
+
+      const edge = new THREE.Mesh(
+        this.getCachedGeometry(`terrain-readable-${terrain}-edge-v1`, () => new THREE.TorusGeometry(0.54, 0.018, 6, 32)),
+        this.material(style.accent, {
+          transparent: true,
+          opacity: readability.edgeOpacity,
+          depthWrite: false,
+          emissive: style.secondary,
+          emissiveIntensity: 0.08
+        })
+      );
+      edge.rotation.x = Math.PI / 2;
+      edge.position.y = surfaceLocalY + 0.018;
+      group.add(patch, edge);
+    }
+
     if (terrain === TILE.WATER) {
       const water = new THREE.Mesh(
         this.getCachedGeometry('terrain-water-surface-image2', () => new THREE.PlaneGeometry(1.24, 1.24)),
-        this.material(style.color, { transparent: true, opacity: 0.16, roughness: 0.3, metalness: 0.05, depthWrite: false })
+        this.material(style.color, { transparent: true, opacity: 0.42, roughness: 0.3, metalness: 0.05, depthWrite: false })
       );
       water.rotation.x = -Math.PI / 2;
       water.position.y = 0.045;
-      const rippleA = new THREE.Mesh(this.getCachedGeometry('terrain-water-ripple-a-v3', () => new THREE.TorusGeometry(0.3, 0.009, 5, 22, Math.PI * 1.35)), this.material(style.accent, { transparent: true, opacity: 0.42, emissive: style.secondary, emissiveIntensity: 0.1 }));
-      const rippleB = new THREE.Mesh(this.getCachedGeometry('terrain-water-ripple-b-v3', () => new THREE.TorusGeometry(0.49, 0.008, 5, 24, Math.PI * 0.9)), this.material(style.accent, { transparent: true, opacity: 0.24 }));
+      const rippleA = new THREE.Mesh(this.getCachedGeometry('terrain-water-ripple-a-v3', () => new THREE.TorusGeometry(0.3, 0.009, 5, 22, Math.PI * 1.35)), this.material(style.accent, { transparent: true, opacity: 0.78, emissive: style.secondary, emissiveIntensity: 0.1 }));
+      const rippleB = new THREE.Mesh(this.getCachedGeometry('terrain-water-ripple-b-v3', () => new THREE.TorusGeometry(0.49, 0.008, 5, 24, Math.PI * 0.9)), this.material(style.accent, { transparent: true, opacity: 0.58 }));
       rippleA.rotation.x = Math.PI / 2;
       rippleB.rotation.x = Math.PI / 2;
       rippleA.rotation.z = variation * Math.PI * 2;
@@ -3398,10 +3454,10 @@ class CreatorExam3D extends GameEngine {
 
     if (terrain === TILE.BORDER) {
       const road = new THREE.Mesh(this.getCachedGeometry('terrain-border-road-v3', () => new THREE.BoxGeometry(1.0, 0.025, 0.23)), this.material(style.secondary, { roughness: 1 }));
-      road.position.y = height / 2 + 0.025;
+      road.position.y = surfaceLocalY + 0.025;
       road.rotation.y = variation > 0.5 ? 0.08 : -0.08;
       const post = new THREE.Mesh(this.getCachedGeometry('terrain-border-post-v3', () => new THREE.BoxGeometry(0.07, 0.32, 0.07)), this.material(style.accent));
-      post.position.set(variation > 0.5 ? 0.38 : -0.38, height / 2 + 0.16, 0.18);
+      post.position.set(variation > 0.5 ? 0.38 : -0.38, surfaceLocalY + 0.16, 0.18);
       group.add(road, post);
     }
 
@@ -3410,8 +3466,8 @@ class CreatorExam3D extends GameEngine {
         const offset = (index - 1) * 0.23;
         const trunk = new THREE.Mesh(this.getCachedGeometry('terrain-forest-trunk-v3', () => new THREE.CylinderGeometry(0.035, 0.055, 0.22, 6)), this.material(0x514437, { roughness: 1 }));
         const crown = new THREE.Mesh(this.getCachedGeometry(`terrain-forest-crown-v3-${index}`, () => new THREE.ConeGeometry(0.14 + index * 0.015, 0.32 + index * 0.035, 7)), this.material(index === 1 ? style.accent : style.color, { roughness: 0.96 }));
-        trunk.position.set(offset, height / 2 + 0.11, Math.abs(offset) * 0.45 - 0.03);
-        crown.position.set(offset, height / 2 + 0.34, Math.abs(offset) * 0.45 - 0.03);
+        trunk.position.set(offset, surfaceLocalY + 0.11, Math.abs(offset) * 0.45 - 0.03);
+        crown.position.set(offset, surfaceLocalY + 0.34, Math.abs(offset) * 0.45 - 0.03);
         crown.rotation.y = variation * Math.PI + index;
         trunk.castShadow = true;
         crown.castShadow = true;
@@ -3429,11 +3485,11 @@ class CreatorExam3D extends GameEngine {
           emissiveIntensity: style.emissiveIntensity || 0.08
         })
       );
-      pool.position.y = height / 2 + 0.025;
+      pool.position.y = surfaceLocalY + 0.025;
       group.add(pool);
       for (const reedX of [-0.22, 0.22]) {
         const reed = new THREE.Mesh(this.getCachedGeometry('terrain-wetland-reed-v3', () => new THREE.CylinderGeometry(0.015, 0.02, 0.24, 5)), this.material(style.secondary));
-        reed.position.set(reedX, height / 2 + 0.13, 0.14 - variation * 0.2);
+        reed.position.set(reedX, surfaceLocalY + 0.13, 0.14 - variation * 0.2);
         reed.rotation.z = reedX * 0.35;
         group.add(reed);
       }
@@ -3442,7 +3498,7 @@ class CreatorExam3D extends GameEngine {
     if (terrain === TILE.FIELD) {
       for (let index = -2; index <= 2; index += 1) {
         const row = new THREE.Mesh(this.getCachedGeometry('terrain-field-row-v3', () => new THREE.BoxGeometry(0.055, 0.055, 0.78)), this.material(index % 2 ? style.accent : style.secondary, { roughness: 1 }));
-        row.position.set(index * 0.17, height / 2 + 0.045, 0);
+        row.position.set(index * 0.17, surfaceLocalY + 0.045, 0);
         row.rotation.y = (variation - 0.5) * 0.16;
         group.add(row);
       }
@@ -3451,7 +3507,7 @@ class CreatorExam3D extends GameEngine {
     if (terrain === TILE.DARK) {
       for (let index = 0; index < 3; index += 1) {
         const shard = new THREE.Mesh(this.getCachedGeometry(`terrain-dark-shard-v3-${index}`, () => new THREE.TetrahedronGeometry(0.09 + index * 0.02, 0)), this.material(style.accent, { transparent: true, opacity: 0.38, emissive: style.secondary, emissiveIntensity: 0.12 }));
-        shard.position.set((index - 1) * 0.2, height / 2 + 0.12 + index * 0.035, (index % 2 ? 0.13 : -0.09));
+        shard.position.set((index - 1) * 0.2, surfaceLocalY + 0.12 + index * 0.035, (index % 2 ? 0.13 : -0.09));
         shard.rotation.set(index * 0.4, variation * Math.PI, 0.2);
         group.add(shard);
       }
@@ -3506,7 +3562,7 @@ class CreatorExam3D extends GameEngine {
       house.castShadow = true;
       roof.castShadow = true;
       group.add(house, roof, door);
-      group.position.set(pos.x - 0.34, 0.24, pos.z - 0.28);
+      group.position.set(pos.x - 0.34, 0.14, pos.z - 0.28);
       group.scale.setScalar(0.82);
       group.userData.decorative = true;
       return group;
@@ -3522,7 +3578,7 @@ class CreatorExam3D extends GameEngine {
       const wall = new THREE.Mesh(this.getCachedGeometry('terrain-city-wall-v3', () => new THREE.BoxGeometry(0.88, 0.16, 0.12)), this.material(style.secondary));
       wall.position.set(0, 0.12, 0.12);
       group.add(wall);
-      group.position.set(pos.x, 0.22, pos.z);
+      group.position.set(pos.x, 0, pos.z);
       group.userData.decorative = true;
       return group;
     }
@@ -3539,7 +3595,7 @@ class CreatorExam3D extends GameEngine {
     if (terrain === TILE.EXIT) {
       const ring = new THREE.Mesh(this.getCachedGeometry('terrain-exit-ring-v3', () => new THREE.TorusGeometry(0.42, 0.035, 8, 24)), this.material(style.accent, { emissive: style.emissive || style.secondary, emissiveIntensity: style.emissiveIntensity || 0.16 }));
       ring.rotation.x = Math.PI / 2;
-      ring.position.set(pos.x, 0.32, pos.z);
+      ring.position.set(pos.x, 0.02, pos.z);
       return ring;
     }
     if (terrain === TILE.HIGH) {
@@ -3559,9 +3615,9 @@ class CreatorExam3D extends GameEngine {
       const radius = terrain === TILE.DARK ? 0.58 : 0.5;
       const haze = new THREE.Mesh(
         this.getCachedGeometry(`terrain-haze-v3-${terrain}`, () => new THREE.SphereGeometry(radius, 12, 8)),
-        this.material(style.accent, { transparent: true, opacity: terrain === TILE.DARK ? 0.18 : 0.12, roughness: 1, depthWrite: false })
+        this.material(style.accent, { transparent: true, opacity: terrain === TILE.DARK ? 0.32 : 0.28, roughness: 1, depthWrite: false })
       );
-      haze.position.set(pos.x, terrain === TILE.DARK ? 0.42 : 0.32, pos.z);
+      haze.position.set(pos.x, terrain === TILE.DARK ? 0.42 : 0.18, pos.z);
       haze.scale.set(terrain === TILE.DARK ? 1.15 : 1.38, terrain === TILE.DARK ? 0.66 : 0.34, terrain === TILE.DARK ? 1.15 : 1.38);
       haze.userData.decorative = true;
       return haze;
@@ -3573,7 +3629,7 @@ class CreatorExam3D extends GameEngine {
     const group = new THREE.Group();
     const pos = this.tileToWorld(unit.x, unit.y);
     const visualProfile = unit.type === 'beast' ? null : resolveNpcVisualProfile(unit);
-    group.position.set(pos.x, 0.36, pos.z);
+    group.position.set(pos.x, this.getUnitGroundedY(unit.x, unit.y), pos.z);
     group.userData = {
       unit: true,
       unitId: unit.id,
@@ -3591,7 +3647,7 @@ class CreatorExam3D extends GameEngine {
       this.material(0x000000, { transparent: true, opacity: 0.26, depthWrite: false })
     );
     shadow.rotation.x = -Math.PI / 2;
-    shadow.position.y = -0.31;
+    shadow.position.y = -0.235;
     group.add(shadow);
 
     if (this.isCivilian(unit)) {
@@ -3948,7 +4004,7 @@ class CreatorExam3D extends GameEngine {
     const { card, x, y, remaining } = creation;
     const group = new THREE.Group();
     const pos = this.tileToWorld(x, y);
-    group.position.set(pos.x, 0.45, pos.z);
+    group.position.set(pos.x, this.getCreationGroundedY(x, y), pos.z);
 
     const visual = this.getCreationVisualStyle(card);
     const range = Math.max(0, card.range || 0);
@@ -3965,7 +4021,7 @@ class CreatorExam3D extends GameEngine {
       this.material(visual.ringColor, { transparent: true, opacity: 0.72, emissive: visual.ringEmissive, emissiveIntensity: visual.ringEmissiveIntensity })
     );
     ring.rotation.x = Math.PI / 2;
-    ring.position.y = 0.02;
+    ring.position.y = -0.245;
     ring.scale.setScalar(1 + range * 0.16);
     group.add(ring);
     this.addCreationFamilyAccent(group, visual, range);
@@ -3985,7 +4041,7 @@ class CreatorExam3D extends GameEngine {
         this.material(visual.shadowColor, { transparent: true, opacity: 0.5, depthWrite: false, roughness: 1, side: THREE.DoubleSide })
       );
       shadowPool.rotation.x = -Math.PI / 2;
-      shadowPool.position.y = -0.04;
+      shadowPool.position.y = -0.245;
       shadowPool.scale.setScalar(1 + range * 0.125);
       group.add(shadowPool);
 
