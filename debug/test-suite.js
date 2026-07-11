@@ -863,6 +863,36 @@ runner.test('传承系统 - 后续关卡应把传承者作为真实单位加入'
   }
 });
 
+runner.test('传承系统 - 第三关巨兽困城不继承前序居民', () => {
+  const snapshot = JSON.parse(JSON.stringify(legacySystem.serialize()));
+  try {
+    legacySystem.deserialize({ legacyUnits: [], globalTraits: [], rescueHistory: [], levelCompletions: 0 });
+
+    const game = new DebugGame();
+    game.levelIndex = 0;
+    game.reset();
+
+    const villager = game.units.find(u => u.type === 'villager' && u.status === 'active');
+    runner.assert(villager, '需要一名可记录的村民');
+
+    const legacy = legacySystem.recordRescue(villager, game.level.id, {
+      turn: 1,
+      maxTurns: game.level.maxTurns,
+      lost: 0
+    });
+    legacy.tier = 'legend';
+
+    game.loadLevel(2);
+
+    runner.assertEqual(game.level.id, 'giant-city', '应加载第三关巨兽困城');
+    runner.assert(game.legacyUnits.length === 0, '第三关不应加载传承 NPC');
+    runner.assert(game.returnedLegacyUnits.length === 0, '第三关不应有回归单位');
+    runner.assert(!game.units.some(u => u.isLegacy || u.legacyId === legacy.id), '第三关棋盘上不应出现前序居民');
+  } finally {
+    legacySystem.deserialize(snapshot);
+  }
+});
+
 runner.test('传承系统 - 演示模式应能强制召回低概率传承单位', () => {
   const snapshot = JSON.parse(JSON.stringify(legacySystem.serialize()));
   try {
