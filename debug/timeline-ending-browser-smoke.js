@@ -74,6 +74,10 @@ try {
   await page.locator('#cinematic').waitFor({ state: 'hidden' });
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForFunction(() => Boolean(window.__creatorExam3D));
+  await page.evaluate(() => {
+    document.getElementById('tutorial-choice').hidden = true;
+    document.getElementById('cinematic').hidden = true;
+  });
   assert.equal(await page.evaluate(() => window.__creatorExam3D.lastAirCombatResult?.timelineArchive?.completed), true, 'completed archive should hydrate from the saved world event after reload');
   assert.equal(await page.locator('#timeline-ending-replay').getAttribute('hidden'), null, 'world journal should enable ending replay after reload');
   await page.click('#drawer-world-btn');
