@@ -371,6 +371,11 @@ class CreatorExam3D extends GameEngine {
     this.tutorialDirector?.afterLevelLoad(index);
   }
 
+  performRestart() {
+    if (this.tutorialDirector?.isActive()) this.tutorialDirector.resetCurrentLesson();
+    else this.loadLevel(this.levelIndex);
+  }
+
   applyDebugGate(search = window.location.search) {
     const enabled = new URLSearchParams(search).get('debug') === '1';
     if (this.ui?.testJumpPanel) this.ui.testJumpPanel.hidden = !enabled;
@@ -474,6 +479,9 @@ class CreatorExam3D extends GameEngine {
       modalText: document.getElementById('modal-text'),
       modalPrimary: document.getElementById('modal-primary'),
       modalSecondary: document.getElementById('modal-secondary'),
+      restartConfirm: document.getElementById('restart-confirm'),
+      restartConfirmBtn: document.getElementById('restart-confirm-btn'),
+      restartCancelBtn: document.getElementById('restart-cancel-btn'),
       saveSlotPanel: document.getElementById('save-slot-panel'),
       saveSlotList: document.getElementById('save-slot-list'),
       saveSlotName: document.getElementById('save-slot-name'),
@@ -843,8 +851,18 @@ class CreatorExam3D extends GameEngine {
     this.ui.placeBtn.addEventListener('click', () => this.startPlacement());
     this.ui.endTurnBtn.addEventListener('click', () => this.endTurn());
     this.ui.restartBtn.addEventListener('click', () => {
-      if (this.tutorialDirector?.isActive()) this.tutorialDirector.resetCurrentLesson();
-      else this.loadLevel(this.levelIndex);
+      if (this.tutorialDirector?.isActive()) {
+        this.performRestart();
+      } else {
+        this.ui.restartConfirm?.classList.remove('hidden');
+      }
+    });
+    this.ui.restartConfirmBtn?.addEventListener('click', () => {
+      this.ui.restartConfirm?.classList.add('hidden');
+      this.performRestart();
+    });
+    this.ui.restartCancelBtn?.addEventListener('click', () => {
+      this.ui.restartConfirm?.classList.add('hidden');
     });
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
     this.ui.nightWatchBtn?.addEventListener('click', () => this.openNightWatch());
