@@ -30,6 +30,8 @@ import { LevelPresentationLoader } from './levelPresentation.js';
 import { Soundscape } from './soundscape.js';
 import { LEVEL_CHAPTER_INTROS } from './chapterIntros.js';
 import { resolveNpcVisualProfile } from './npcVisualProfiles.js';
+import { getNpcPortraitAsset } from './npcPortraitAssets.js';
+import { getBoardVisualTheme, getTerrainVisualStyle } from './boardVisualThemes.js';
 
 const TILE_SIZE = 1.55;
 const BOARD_SIZE = 7;
@@ -167,6 +169,8 @@ class CreatorExam3D extends GameEngine {
     this.worldGroup = new THREE.Group();
     this.environmentGroup = new THREE.Group();
     this.environmentGroup.name = 'level-environment';
+    this.boardSurfaceGroup = new THREE.Group();
+    this.boardSurfaceGroup.name = 'board-surface-details';
     this.activeCard = null;
     this.placementMode = false;
     this.selectedRitualCreations = new Set();
@@ -176,6 +180,8 @@ class CreatorExam3D extends GameEngine {
     this.materials = new Map();
     this.geometryCache = new Map();
     this.labelCache = new Map();
+    this.boardTextureCache = new Map();
+    this.boardMaterialCache = new Map();
     this.tileMeshPool = new Map();
     this.unitMeshPool = new Map();
     this.creationMeshPool = new Map();
@@ -389,6 +395,7 @@ class CreatorExam3D extends GameEngine {
       miracle: document.getElementById('miracle-stat'),
       entropy: document.getElementById('entropy-stat'),
       specialMeters: document.getElementById('special-meters'),
+      npcStatusStrip: document.getElementById('npc-status-strip'),
       unitList: document.getElementById('unit-list'),
       missionThreat: document.getElementById('mission-threat'),
       missionGoals: document.getElementById('mission-goals'),
@@ -479,6 +486,9 @@ class CreatorExam3D extends GameEngine {
       npcDialogueActions: document.getElementById('npc-dialogue-actions'),
       npcDialogueInput: document.getElementById('npc-dialogue-input'),
       npcDialogueSend: document.getElementById('npc-dialogue-send'),
+      npcDialoguePortrait: document.getElementById('npc-dialogue-portrait'),
+      npcDialoguePortraitName: document.getElementById('npc-dialogue-portrait-name'),
+      npcDialoguePortraitRole: document.getElementById('npc-dialogue-portrait-role'),
       advancedMechanicList: document.getElementById('advanced-mechanic-list'),
       advancedActionList: document.getElementById('advanced-action-list'),
       advancedDecodeInput: document.getElementById('advanced-decode-input'),
@@ -544,8 +554,11 @@ class CreatorExam3D extends GameEngine {
     );
     base.position.y = -0.25;
     base.receiveShadow = true;
+    base.userData.decorative = true;
+    this.boardBase = base;
     this.scene.add(base);
 
+    this.scene.add(this.boardSurfaceGroup);
     this.scene.add(this.environmentGroup);
     this.scene.add(this.worldGroup);
     this.worldGroup.add(this.intentArrowGroup);
@@ -811,6 +824,11 @@ class CreatorExam3D extends GameEngine {
       if (this.activeDrawerNoticeKey) this.dismissDrawerNotice(this.activeDrawerNoticeKey);
     });
     window.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && (this.selectedDialogueUnit || this.selectedDialogueGroup)) {
+        event.preventDefault();
+        this.closeNpcDialogue();
+        return;
+      }
       if (event.key === 'Escape' && this.activeDrawer) {
         event.preventDefault();
         this.closeDrawer();
@@ -908,6 +926,12 @@ class CreatorExam3D extends GameEngine {
       const unit = this.units.find(u => u.id === unitId);
       if (!unit) return;
       this.handleUnitInteraction(unit);
+    });
+    this.ui.npcStatusStrip?.addEventListener('click', (e) => {
+      const avatar = e.target.closest('[data-npc-avatar-id]');
+      if (!avatar || avatar.disabled) return;
+      const unit = this.units.find(candidate => candidate.id === avatar.dataset.npcAvatarId);
+      if (unit) this.handleUnitInteraction(unit);
     });
 
     // 点击对话 roster 切换对话对象
@@ -1264,11 +1288,24 @@ class CreatorExam3D extends GameEngine {
   }
 
   onPointerDown(event) {
-    if (!this.placementMode || !this.activeCard || this.gameState !== 'playing') return;
+    if (this.gameState !== 'playing') return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
     this.raycaster.setFromCamera(this.pointer, this.camera);
+
+    if (!this.placementMode || !this.activeCard) {
+      const unitHits = this.raycaster.intersectObjects(Array.from(this.unitMeshPool.values()), true);
+      const unitRoot = unitHits.map(hit => {
+        let object = hit.object;
+        while (object && !object.userData?.unit) object = object.parent;
+        return object;
+      }).find(Boolean);
+      const unit = unitRoot ? this.units.find(candidate => candidate.id === unitRoot.userData.unitId) : null;
+      if (unit) this.handleUnitInteraction(unit);
+      return;
+    }
+
     const hits = this.raycaster.intersectObjects(Array.from(this.tileMeshPool.values()), false);
 
     if (!hits.length) return;
@@ -2280,9 +2317,304 @@ class CreatorExam3D extends GameEngine {
     }
   }
 
+  boardColorCss(color) {
+    return `#${Number(color || 0).toString(16).padStart(6, '0')}`;
+  }
+
+  createSeededRandom(seed) {
+    let state = seed >>> 0;
+    return () => {
+      state += 0x6d2b79f5;
+      let value = state;
+      value = Math.imul(value ^ (value >>> 15), value | 1);
+      value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  createBoardSurfaceTexture(theme) {
+    if (this.boardTextureCache.has(theme.id)) return this.boardTextureCache.get(theme.id);
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    const random = this.createSeededRandom(theme.textureSeed);
+    const gradient = ctx.createLinearGradient(0, 0, 512, 512);
+    gradient.addColorStop(0, this.boardColorCss(theme.surface));
+    gradient.addColorStop(1, this.boardColorCss(theme.side));
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+
+    for (let index = 0; index < 820; index += 1) {
+      const size = 0.5 + random() * 4.5;
+      ctx.globalAlpha = 0.025 + random() * 0.11;
+      ctx.fillStyle = this.boardColorCss(index % 3 === 0 ? theme.detailB : theme.detailA);
+      ctx.beginPath();
+      ctx.ellipse(random() * 512, random() * 512, size * (1 + random() * 2.8), size, random() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (theme.motif === 'floodplain') {
+      ctx.strokeStyle = this.boardColorCss(theme.detailA);
+      ctx.globalAlpha = 0.34;
+      ctx.lineWidth = 22;
+      for (let lane = 0; lane < 4; lane += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-40, 90 + lane * 115);
+        ctx.bezierCurveTo(130, 30 + lane * 120, 300, 180 + lane * 60, 560, 70 + lane * 105);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = this.boardColorCss(theme.detailB);
+      ctx.globalAlpha = 0.22;
+      ctx.lineWidth = 3;
+      for (let index = 0; index < 18; index += 1) {
+        const y = random() * 512;
+        ctx.beginPath();
+        ctx.moveTo(random() * 100, y);
+        ctx.lineTo(380 + random() * 150, y + random() * 34 - 17);
+        ctx.stroke();
+      }
+    } else if (theme.motif === 'quarry') {
+      for (let ring = 0; ring < 7; ring += 1) {
+        ctx.strokeStyle = this.boardColorCss(ring % 3 === 0 ? theme.detailB : theme.detailA);
+        ctx.globalAlpha = ring % 3 === 0 ? 0.28 : 0.18;
+        ctx.lineWidth = ring % 3 === 0 ? 3 : 9;
+        ctx.strokeRect(48 + ring * 24, 42 + ring * 24, 416 - ring * 48, 420 - ring * 48);
+      }
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = this.boardColorCss(theme.detailB);
+      for (let index = 0; index < 12; index += 1) {
+        ctx.beginPath();
+        ctx.moveTo(random() * 512, random() * 512);
+        ctx.lineTo(random() * 512, random() * 512);
+        ctx.stroke();
+      }
+    } else if (theme.motif === 'forest-stone') {
+      for (let index = 0; index < 54; index += 1) {
+        ctx.globalAlpha = 0.08 + random() * 0.13;
+        ctx.fillStyle = this.boardColorCss(index % 4 === 0 ? theme.detailB : theme.detailA);
+        ctx.beginPath();
+        ctx.ellipse(random() * 512, random() * 512, 12 + random() * 42, 5 + random() * 18, random() * Math.PI, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 0.24;
+      ctx.strokeStyle = this.boardColorCss(theme.detailB);
+      ctx.lineWidth = 5;
+      for (let index = 0; index < 11; index += 1) {
+        ctx.beginPath();
+        ctx.moveTo(random() * 512, random() * 512);
+        ctx.bezierCurveTo(random() * 512, random() * 512, random() * 512, random() * 512, random() * 512, random() * 512);
+        ctx.stroke();
+      }
+    } else if (theme.motif === 'no-mans-land') {
+      ctx.globalAlpha = 0.32;
+      ctx.fillStyle = this.boardColorCss(theme.detailA);
+      ctx.fillRect(0, 220, 512, 72);
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = this.boardColorCss(theme.detailB);
+      ctx.lineWidth = 4;
+      ctx.setLineDash([18, 14]);
+      ctx.beginPath();
+      ctx.moveTo(0, 256);
+      ctx.lineTo(512, 256);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (let index = 0; index < 22; index += 1) {
+        ctx.globalAlpha = 0.12;
+        ctx.strokeStyle = this.boardColorCss(theme.detailA);
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(random() * 512, random() * 512);
+        ctx.lineTo(random() * 512, random() * 512);
+        ctx.stroke();
+      }
+    } else if (theme.motif === 'memory-mist') {
+      for (let index = 0; index < 34; index += 1) {
+        const radius = 20 + random() * 80;
+        const centerX = random() * 512;
+        const centerY = random() * 512;
+        const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+        glow.addColorStop(0, `${this.boardColorCss(index % 3 === 0 ? theme.detailB : theme.detailA)}55`);
+        glow.addColorStop(1, `${this.boardColorCss(theme.surface)}00`);
+        ctx.globalAlpha = 0.24;
+        ctx.fillStyle = glow;
+        ctx.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+      }
+      ctx.strokeStyle = this.boardColorCss(theme.detailB);
+      ctx.globalAlpha = 0.28;
+      ctx.lineWidth = 3;
+      for (let index = 0; index < 14; index += 1) {
+        ctx.strokeRect(random() * 500, random() * 500, 8 + random() * 26, 2 + random() * 6);
+      }
+    } else {
+      ctx.strokeStyle = this.boardColorCss(theme.detailA);
+      ctx.globalAlpha = 0.42;
+      ctx.lineWidth = 9;
+      let x = 40;
+      let y = 450;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let index = 0; index < 13; index += 1) {
+        x += 34 + random() * 22;
+        y += (random() - 0.5) * 86;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = this.boardColorCss(theme.detailB);
+      ctx.globalAlpha = 0.28;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    texture.needsUpdate = true;
+    this.boardTextureCache.set(theme.id, texture);
+    return texture;
+  }
+
+  clearBoardSurfaceDetails() {
+    while (this.boardSurfaceGroup.children.length > 0) this.boardSurfaceGroup.remove(this.boardSurfaceGroup.children[0]);
+  }
+
+  createBoardSurfaceDetails(theme) {
+    this.clearBoardSurfaceDetails();
+    this.boardSurfaceGroup.userData.motif = theme.motif;
+    this.boardSurfaceGroup.userData.detailTypes = [...(theme.details || [])];
+    const add = (kind, color, position, scale, rotation = [0, 0, 0], options = {}) => {
+      const geometries = {
+        beam: () => new THREE.BoxGeometry(1, 1, 1),
+        disc: () => new THREE.CircleGeometry(1, 28),
+        ring: () => new THREE.RingGeometry(8.05, 8.55, 8, 1),
+        rock: () => new THREE.DodecahedronGeometry(0.5, 0),
+        shard: () => new THREE.TetrahedronGeometry(0.5, 0),
+        tuft: () => new THREE.ConeGeometry(0.5, 1, 6)
+      };
+      const mesh = new THREE.Mesh(
+        this.getCachedGeometry(`board-detail-${kind}`, geometries[kind]),
+        this.material(color, { roughness: 0.9, metalness: 0.02, ...options })
+      );
+      mesh.position.set(...position);
+      mesh.scale.set(...scale);
+      mesh.rotation.set(...rotation);
+      mesh.userData.decorative = true;
+      mesh.receiveShadow = true;
+      this.boardSurfaceGroup.add(mesh);
+      return mesh;
+    };
+
+    add('ring', theme.edge, [0, -0.095, 0], [1, 1, 1], [-Math.PI / 2, Math.PI / 8, 0], { transparent: true, opacity: 0.52 });
+    if (theme.motif === 'floodplain') {
+      const pools = [[-6.6, -2.7, 1.4, 0.55], [6.5, 2.2, 1.7, 0.64], [-6.2, 3.3, 1.0, 0.42], [5.9, -4.3, 1.2, 0.5]];
+      pools.forEach(([x, z, sx, sz], index) => {
+        add('disc', index % 2 ? 0x223f46 : theme.detailA, [x, -0.067, z], [sx, sz, 1], [-Math.PI / 2, 0, index * 0.24], { transparent: true, opacity: 0.58, roughness: 0.18, metalness: 0.14 });
+        add('ring', theme.edge, [x, -0.052, z], [sx * 0.095, sz * 0.095, 1], [-Math.PI / 2, index * 0.18, 0], { transparent: true, opacity: 0.34, roughness: 0.2 });
+      });
+      for (let index = -3; index <= 3; index += 1) {
+        add('beam', theme.detailB, [index * 2.25, -0.005, 6.18 + Math.sin(index) * 0.2], [0.95, 0.055, 0.075], [0, index * 0.19, 0]);
+        if (index % 2 === 0) add('beam', 0x6b563e, [index * 2.1, 0.08, -6.32], [0.72, 0.07, 0.085], [0.12, index * -0.23, 0.18]);
+      }
+      for (let index = 0; index < 24; index += 1) {
+        const side = index % 2 ? -1 : 1;
+        const z = -5.5 + (index % 12) * 1.0;
+        const x = side * (6.25 + (index % 3) * 0.22);
+        add('tuft', index % 4 === 0 ? 0x9a8953 : 0x66764e, [x, 0.22 + (index % 3) * 0.05, z], [0.08, 0.55 + (index % 3) * 0.12, 0.08], [0.08, index * 0.4, side * 0.08]);
+      }
+    } else if (theme.motif === 'quarry') {
+      for (const z of [-6.25, 6.25]) {
+        add('beam', 0x7c7668, [0, 0.005, z - 0.18], [7.6, 0.055, 0.045], [0, 0, 0], { metalness: 0.45, roughness: 0.5 });
+        add('beam', 0x7c7668, [0, 0.005, z + 0.18], [7.6, 0.055, 0.045], [0, 0, 0], { metalness: 0.45, roughness: 0.5 });
+        for (let index = -7; index <= 7; index += 1) add('beam', 0x44382d, [index * 0.55, -0.025, z], [0.08, 0.045, 0.58]);
+      }
+      for (const [index, point] of [[0, [-6.4, -3.8]], [1, [6.5, 3.7]], [2, [-6.8, 2.8]], [3, [6.35, -3.0]], [4, [0, -6.7]]]) {
+        const [x, z] = point;
+        add('rock', index % 2 ? 0x4a4e50 : theme.detailA, [x, 0.1, z], [0.72, 0.42, 0.64], [0.2, x, 0.1]);
+        add('shard', index % 2 ? 0xb18b45 : 0x7663a0, [x + 0.18, 0.34, z - 0.12], [0.12, 0.42, 0.12], [0.4, x * 0.2, 0.15], { emissive: index % 2 ? 0x5c421b : 0x31254d, emissiveIntensity: 0.35 });
+      }
+      for (let index = 0; index < 16; index += 1) {
+        const angle = index * Math.PI * 2 / 16;
+        add('rock', 0x3c4042, [Math.cos(angle) * 6.75, 0.05, Math.sin(angle) * 6.75], [0.18 + (index % 3) * 0.08, 0.16, 0.2], [index * 0.1, angle, 0]);
+      }
+    } else if (theme.motif === 'forest-stone') {
+      for (let index = 0; index < 14; index += 1) {
+        const angle = index * Math.PI * 2 / 14;
+        const radius = index % 2 ? 6.55 : 6.95;
+        add('beam', index % 2 ? 0x4b4634 : theme.detailB, [Math.cos(angle) * 5.9, 0.015, Math.sin(angle) * 5.9], [1.65, 0.055, 0.075], [0, -angle + 0.5, (index % 3 - 1) * 0.08]);
+        if (index % 2 === 0) {
+          add('beam', 0x4f3f2c, [Math.cos(angle) * radius, 0.68, Math.sin(angle) * radius], [0.24, 1.45 + (index % 3) * 0.3, 0.24], [0.03, angle, 0.04]);
+          add('tuft', index % 4 ? 0x355a3e : 0x486a46, [Math.cos(angle) * radius, 1.8, Math.sin(angle) * radius], [1.0, 1.55, 1.0], [0, angle, 0]);
+          add('tuft', 0x5d7652, [Math.cos(angle) * radius + 0.42, 1.45, Math.sin(angle) * radius - 0.2], [0.62, 1.05, 0.62], [0, -angle, 0]);
+        } else {
+          add('disc', 0x617154, [Math.cos(angle) * radius, -0.046, Math.sin(angle) * radius], [0.55, 0.3, 1], [-Math.PI / 2, 0, angle], { transparent: true, opacity: 0.48 });
+        }
+      }
+    } else if (theme.motif === 'no-mans-land') {
+      add('beam', 0x5b514b, [0, -0.045, 0], [7.9, 0.04, 0.8], [0, -0.08, 0]);
+      add('beam', 0x786d5e, [0, -0.025, 0], [7.9, 0.025, 0.04], [0, -0.08, 0], { transparent: true, opacity: 0.5 });
+      for (const z of [-6.2, 6.2]) {
+        for (let index = -6; index <= 6; index += 1) {
+          add('beam', index % 2 ? 0x40383a : theme.detailB, [index * 0.65, -0.008, z + Math.sin(index * 1.3) * 0.18], [0.5, 0.09, 0.18], [0, index * 0.1, 0]);
+          if (index % 3 === 0) add('rock', 0x625b56, [index * 0.66, 0.08, z - 0.38], [0.25, 0.18, 0.26], [0.2, index, 0]);
+        }
+      }
+      for (const x of [-6.7, 6.7]) for (let index = -3; index <= 3; index += 1) {
+        add('beam', theme.detailB, [x, 0.27, index * 1.05], [0.055, 0.68, 0.055], [0, 0, index * 0.13]);
+        add('beam', index % 2 ? 0x85645a : 0x6d6578, [x - Math.sign(x) * 0.12, 0.52, index * 1.05], [0.28, 0.24, 0.035], [0, 0, 0.08 * index]);
+      }
+    } else if (theme.motif === 'memory-mist') {
+      for (let index = 0; index < 9; index += 1) {
+        const angle = index * Math.PI * 2 / 9;
+        const radius = index % 2 ? 6.25 : 6.75;
+        add('disc', index % 2 ? 0x526d68 : 0x756686, [Math.cos(angle) * radius, -0.052, Math.sin(angle) * radius], [1.1, 0.5, 1], [-Math.PI / 2, 0, angle], { transparent: true, opacity: 0.38, metalness: 0.34, roughness: 0.12, emissive: theme.detailB, emissiveIntensity: 0.1 });
+        add('ring', theme.edge, [Math.cos(angle) * radius, -0.038, Math.sin(angle) * radius], [0.13, 0.06, 1], [-Math.PI / 2, angle, 0], { transparent: true, opacity: 0.28 });
+        add('shard', index % 2 ? theme.detailB : theme.edge, [Math.cos(angle) * 7.25, 0.28 + (index % 3) * 0.14, Math.sin(angle) * 7.25], [0.18, 0.65, 0.1], [index * 0.2, angle, -0.3], { transparent: true, opacity: 0.72, emissive: theme.detailB, emissiveIntensity: 0.24 });
+        if (index % 2 === 0) add('shard', 0xb4c9bd, [Math.cos(angle + 0.1) * 6.75, 0.16, Math.sin(angle + 0.1) * 6.75], [0.1, 0.28, 0.08], [0.5, -angle, 0.2], { transparent: true, opacity: 0.5 });
+      }
+    } else {
+      for (let branch = 0; branch < 4; branch += 1) {
+        const branchAngle = -0.92 + branch * 0.58;
+        for (let index = 0; index < 8; index += 1) {
+          const distance = 0.65 + index * 0.9;
+          const x = Math.cos(branchAngle) * distance + Math.sin(index * 1.7 + branch) * 0.22;
+          const z = Math.sin(branchAngle) * distance + Math.cos(index * 1.2 + branch) * 0.22;
+          add('beam', index % 2 ? theme.detailA : theme.edge, [x, -0.005, z], [0.58, 0.05, 0.065], [0, -branchAngle + Math.sin(index) * 0.16, 0], { emissive: theme.edge, emissiveIntensity: 0.28, transparent: true, opacity: 0.82 });
+        }
+      }
+      const fragmentKinds = ['rock', 'tuft', 'shard', 'beam', 'disc', 'rock', 'tuft'];
+      const fragmentColors = [0x3f4548, 0x486a46, 0x8f73c8, 0x7c7668, 0x345966, 0x625b56, 0x66764e];
+      for (let index = 0; index < fragmentKinds.length; index += 1) {
+        const angle = index * Math.PI * 2 / fragmentKinds.length;
+        const kind = fragmentKinds[index];
+        const rotation = kind === 'disc' ? [-Math.PI / 2, 0, angle] : [0.3, angle, 0.15];
+        add(kind, fragmentColors[index], [Math.cos(angle) * 7.0, kind === 'disc' ? -0.04 : 0.22, Math.sin(angle) * 7.0], kind === 'disc' ? [0.65, 0.36, 1] : [0.38, 0.65, 0.32], rotation, { emissive: index === 2 ? theme.edge : 0x000000, emissiveIntensity: index === 2 ? 0.35 : 0 });
+      }
+    }
+  }
+
+  applyBoardVisualTheme(levelId) {
+    const theme = getBoardVisualTheme(levelId);
+    this.activeBoardThemeId = theme.id;
+    if (!this.boardMaterialCache.has(theme.id)) {
+      const texture = this.createBoardSurfaceTexture(theme);
+      this.boardMaterialCache.set(theme.id, [
+        new THREE.MeshStandardMaterial({ color: theme.side, roughness: 0.94, metalness: 0.03 }),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, map: texture, roughness: 0.86, metalness: 0.04, emissive: theme.surface, emissiveIntensity: 0.08 }),
+        new THREE.MeshStandardMaterial({ color: theme.side, roughness: 1, metalness: 0 })
+      ]);
+    }
+    this.boardBase.material = this.boardMaterialCache.get(theme.id);
+    this.boardBase.userData.boardTheme = theme.id;
+    this.createBoardSurfaceDetails(theme);
+  }
+
   applyLevelEnvironment(levelId) {
     const preset = LEVEL_ENVIRONMENTS[levelId] || LEVEL_ENVIRONMENTS['final-exam'];
     this.clearLevelEnvironment();
+    this.applyBoardVisualTheme(levelId);
     this.scene.background = new THREE.Color(preset.background);
     this.scene.fog.color.setHex(preset.fog);
     this.scene.fog.near = preset.near;
@@ -2344,7 +2676,7 @@ class CreatorExam3D extends GameEngine {
         const key = `${x},${y}`;
         activeTileKeys.add(key);
         const existing = this.tileMeshPool.get(key);
-        if (existing && existing.userData.terrain === terrain) {
+        if (existing && existing.userData.terrain === terrain && existing.userData.themeId === this.activeBoardThemeId) {
           // Terrain unchanged, skip
           continue;
         }
@@ -2497,10 +2829,11 @@ class CreatorExam3D extends GameEngine {
 
   createTileMesh(terrain, x, y) {
     const height = this.getTerrainHeight(terrain);
+    const style = getTerrainVisualStyle(this.activeBoardThemeId, terrain);
     const geometry = this.getCachedGeometry(`tile-hit-${height}`, () => new THREE.BoxGeometry(TILE_SIZE * 0.9, Math.max(height, 0.08), TILE_SIZE * 0.9));
-    const material = this.material(MATERIAL_COLORS[terrain] || MATERIAL_COLORS[TILE.LAND], {
+    const material = this.material(style.color, {
       transparent: true,
-      opacity: 0.045,
+      opacity: 0.025,
       depthWrite: false,
     });
 
@@ -2509,8 +2842,8 @@ class CreatorExam3D extends GameEngine {
     mesh.position.set(pos.x, height / 2, pos.z);
     mesh.receiveShadow = true;
     mesh.castShadow = false;
-    mesh.userData = { x, y, terrain, tile: true, visualStyle: 'sculpted-terrain-v2' };
-    mesh.add(this.createTerrainVisual(terrain, height));
+    mesh.userData = { x, y, terrain, tile: true, themeId: this.activeBoardThemeId, visualStyle: 'sculpted-terrain-v3' };
+    mesh.add(this.createTerrainVisual(terrain, height, x, y));
     return mesh;
   }
 
@@ -2523,47 +2856,66 @@ class CreatorExam3D extends GameEngine {
     return 0.2;
   }
 
-  createTerrainVisual(terrain, height) {
+  terrainVariation(x, y, terrain) {
+    let hash = 2166136261;
+    for (const character of `${this.activeBoardThemeId}:${terrain}:${x}:${y}`) {
+      hash ^= character.codePointAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0) / 4294967295;
+  }
+
+  createTerrainVisual(terrain, height, x, y) {
     const group = new THREE.Group();
-    const color = MATERIAL_COLORS[terrain] || MATERIAL_COLORS[TILE.LAND];
+    const style = getTerrainVisualStyle(this.activeBoardThemeId, terrain);
+    const variation = this.terrainVariation(x, y, terrain);
     const surfaceMaterial = this.getTerrainMaterial(terrain);
+    group.rotation.y = (variation - 0.5) * 0.18;
 
     if (terrain === TILE.WATER) {
+      const basin = new THREE.Mesh(
+        this.getCachedGeometry('terrain-water-basin-v3', () => new THREE.CylinderGeometry(0.64, 0.72, 0.065, 14)),
+        this.material(style.secondary, { roughness: 0.95 })
+      );
       const water = new THREE.Mesh(
-        this.getCachedGeometry('terrain-water-disc', () => new THREE.CylinderGeometry(0.66, 0.7, 0.055, 32)),
+        this.getCachedGeometry('terrain-water-surface-v3', () => new THREE.CylinderGeometry(0.59, 0.63, 0.035, 20)),
         surfaceMaterial
       );
-      const rippleA = new THREE.Mesh(
-        this.getCachedGeometry('terrain-water-ripple-a', () => new THREE.TorusGeometry(0.38, 0.01, 6, 32)),
-        this.material(0x9fe8ff, { transparent: true, opacity: 0.5, emissive: 0x0b5b74, emissiveIntensity: 0.18 })
-      );
-      const rippleB = new THREE.Mesh(
-        this.getCachedGeometry('terrain-water-ripple-b', () => new THREE.TorusGeometry(0.54, 0.012, 6, 32)),
-        this.material(0xd8f7ff, { transparent: true, opacity: 0.32, emissive: 0x0b5b74, emissiveIntensity: 0.12 })
-      );
+      water.position.y = 0.022;
+      water.scale.set(0.96 + variation * 0.07, 1, 1.02 - variation * 0.06);
+      const rippleA = new THREE.Mesh(this.getCachedGeometry('terrain-water-ripple-a-v3', () => new THREE.TorusGeometry(0.3, 0.009, 5, 22, Math.PI * 1.35)), this.material(style.accent, { transparent: true, opacity: 0.42, emissive: style.secondary, emissiveIntensity: 0.1 }));
+      const rippleB = new THREE.Mesh(this.getCachedGeometry('terrain-water-ripple-b-v3', () => new THREE.TorusGeometry(0.49, 0.008, 5, 24, Math.PI * 0.9)), this.material(style.accent, { transparent: true, opacity: 0.24 }));
       rippleA.rotation.x = Math.PI / 2;
       rippleB.rotation.x = Math.PI / 2;
-      rippleA.position.y = 0.04;
-      rippleB.position.y = 0.045;
-      group.add(water, rippleA, rippleB);
+      rippleA.rotation.z = variation * Math.PI * 2;
+      rippleB.rotation.z = (1 - variation) * Math.PI;
+      rippleA.position.y = 0.045;
+      rippleB.position.y = 0.048;
+      group.add(basin, water, rippleA, rippleB);
+      if (this.activeBoardThemeId === 'flood-village' && variation > 0.46) {
+        const debris = new THREE.Mesh(this.getCachedGeometry('terrain-water-driftwood-v3', () => new THREE.BoxGeometry(0.42, 0.035, 0.055)), this.material(0x66523c, { roughness: 1 }));
+        debris.position.set((variation - 0.5) * 0.35, 0.065, 0.1 - variation * 0.2);
+        debris.rotation.y = variation * Math.PI;
+        group.add(debris);
+      }
       return group;
     }
 
     if (terrain === TILE.BRIDGE) {
-      const railMaterial = this.material(0x6f4b2e);
+      const railMaterial = this.material(style.secondary, { roughness: 0.96 });
       for (let i = -2; i <= 2; i += 1) {
         const plank = new THREE.Mesh(
-          this.getCachedGeometry('terrain-bridge-plank', () => new THREE.BoxGeometry(0.18, 0.08, 1.16)),
+          this.getCachedGeometry('terrain-bridge-plank-v3', () => new THREE.BoxGeometry(0.18, 0.08, 1.16)),
           surfaceMaterial
         );
         plank.position.set(i * 0.18, 0.04, 0);
-        plank.rotation.y = (i % 2) * 0.035;
+        plank.rotation.y = (i % 2) * 0.035 + (variation - 0.5) * 0.025;
         plank.castShadow = true;
         group.add(plank);
       }
       for (const z of [-0.48, 0.48]) {
         const rail = new THREE.Mesh(
-          this.getCachedGeometry('terrain-bridge-rail', () => new THREE.BoxGeometry(1.04, 0.08, 0.06)),
+          this.getCachedGeometry('terrain-bridge-rail-v3', () => new THREE.BoxGeometry(1.04, 0.08, 0.06)),
           railMaterial
         );
         rail.position.set(0, 0.12, z);
@@ -2575,66 +2927,157 @@ class CreatorExam3D extends GameEngine {
 
     if (terrain === TILE.MOUNTAIN || terrain === TILE.WALL) {
       const base = new THREE.Mesh(
-        this.getCachedGeometry(`terrain-rock-base-${terrain}`, () => new THREE.CylinderGeometry(0.58, 0.72, height, 7)),
+        this.getCachedGeometry(`terrain-rock-base-v3-${terrain}`, () => new THREE.CylinderGeometry(0.56, 0.71, height, 7)),
         surfaceMaterial
       );
       base.castShadow = true;
       base.receiveShadow = true;
       group.add(base);
-      const rockMaterial = this.material(terrain === TILE.WALL ? 0x808899 : 0x8a8b91);
+      const rockMaterial = this.material(style.accent, { roughness: 0.98 });
       for (let i = 0; i < 3; i += 1) {
         const rock = new THREE.Mesh(
-          this.getCachedGeometry(`terrain-rock-${i}`, () => new THREE.DodecahedronGeometry(0.18 + i * 0.035, 0)),
-          rockMaterial
+          this.getCachedGeometry(`terrain-rock-v3-${i}`, () => new THREE.DodecahedronGeometry(0.16 + i * 0.038, 0)),
+          i === 1 ? this.material(style.secondary, { roughness: 1 }) : rockMaterial
         );
-        rock.position.set((i - 1) * 0.2, height / 2 + 0.1 + i * 0.04, (i % 2 ? 0.12 : -0.1));
-        rock.rotation.set(0.4 * i, 0.6 * i, 0.2);
+        rock.position.set((i - 1) * 0.2, height / 2 + 0.08 + i * 0.045, (i % 2 ? 0.12 : -0.1));
+        rock.rotation.set(0.3 * i + variation, 0.55 * i + variation, 0.18);
         rock.castShadow = true;
         group.add(rock);
+      }
+      if (terrain === TILE.WALL) {
+        const seam = new THREE.Mesh(this.getCachedGeometry('terrain-wall-seam-v3', () => new THREE.BoxGeometry(0.92, 0.035, 0.045)), this.material(style.secondary));
+        seam.position.set(0, height / 2 + 0.04, 0.36);
+        seam.rotation.y = (variation - 0.5) * 0.16;
+        group.add(seam);
       }
       return group;
     }
 
     const base = new THREE.Mesh(
-      this.getCachedGeometry(`terrain-slab-${terrain}-${height}`, () => new THREE.CylinderGeometry(0.64, 0.72, height, 8)),
+      this.getCachedGeometry(`terrain-slab-v3-${terrain}-${height}`, () => new THREE.CylinderGeometry(0.62, 0.71, height, 9)),
       surfaceMaterial
     );
+    base.scale.set(0.96 + variation * 0.06, 1, 1.02 - variation * 0.05);
     base.castShadow = terrain !== TILE.FOG && terrain !== TILE.DARK;
     base.receiveShadow = true;
     group.add(base);
 
     const rim = new THREE.Mesh(
-      this.getCachedGeometry('terrain-slab-rim', () => new THREE.TorusGeometry(0.62, 0.018, 6, 32)),
-      this.material(color, { transparent: true, opacity: 0.36, roughness: 0.8 })
+      this.getCachedGeometry('terrain-slab-rim-v3', () => new THREE.TorusGeometry(0.6, 0.014, 5, 26)),
+      this.material(style.accent, { transparent: true, opacity: 0.22, roughness: 0.9 })
     );
     rim.rotation.x = Math.PI / 2;
     rim.position.y = height / 2 + 0.016;
     group.add(rim);
 
+    if (terrain === TILE.LAND) {
+      for (let index = 0; index < 2; index += 1) {
+        const pebble = new THREE.Mesh(this.getCachedGeometry(`terrain-land-pebble-v3-${index}`, () => new THREE.DodecahedronGeometry(0.055 + index * 0.018, 0)), this.material(index ? style.accent : style.secondary, { roughness: 1 }));
+        pebble.position.set((index ? -1 : 1) * (0.19 + variation * 0.12), height / 2 + 0.045, (variation - 0.5) * 0.4 + index * 0.12);
+        pebble.scale.y = 0.45;
+        group.add(pebble);
+      }
+      if (this.activeBoardThemeId === 'flood-village') {
+        for (const reedX of [-0.16, -0.08]) {
+          const reed = new THREE.Mesh(this.getCachedGeometry('terrain-land-flood-reed-v3', () => new THREE.CylinderGeometry(0.012, 0.017, 0.19, 5)), this.material(style.accent));
+          reed.position.set(reedX, height / 2 + 0.1, 0.2 + variation * 0.08);
+          reed.rotation.z = reedX * 0.5;
+          group.add(reed);
+        }
+      } else if (this.activeBoardThemeId === 'night-mine') {
+        const mineral = new THREE.Mesh(this.getCachedGeometry('terrain-land-mineral-v3', () => new THREE.TetrahedronGeometry(0.09, 0)), this.material(style.accent, { emissive: style.secondary, emissiveIntensity: 0.06 }));
+        mineral.position.set(0.18 - variation * 0.3, height / 2 + 0.08, 0.15);
+        mineral.scale.set(0.55, 0.8, 0.45);
+        group.add(mineral);
+      } else if (this.activeBoardThemeId === 'giant-city') {
+        const moss = new THREE.Mesh(this.getCachedGeometry('terrain-land-moss-v3', () => new THREE.ConeGeometry(0.07, 0.14, 6)), this.material(style.accent));
+        moss.position.set(-0.14, height / 2 + 0.075, 0.18 - variation * 0.2);
+        moss.rotation.z = 0.3;
+        group.add(moss);
+      } else if (this.activeBoardThemeId === 'wordless-war') {
+        const scar = new THREE.Mesh(this.getCachedGeometry('terrain-land-scar-v3', () => new THREE.BoxGeometry(0.42, 0.018, 0.035)), this.material(style.secondary));
+        scar.position.set(0.02, height / 2 + 0.025, -0.1);
+        scar.rotation.y = variation * Math.PI;
+        group.add(scar);
+      } else if (this.activeBoardThemeId === 'memory-plague') {
+        const fragment = new THREE.Mesh(this.getCachedGeometry('terrain-land-memory-fragment-v3', () => new THREE.BoxGeometry(0.16, 0.025, 0.05)), this.material(style.accent, { transparent: true, opacity: 0.58 }));
+        fragment.position.set(0.12, height / 2 + 0.04, -0.16 + variation * 0.22);
+        fragment.rotation.set(0.15, variation * Math.PI, -0.12);
+        group.add(fragment);
+      } else {
+        const fissure = new THREE.Mesh(this.getCachedGeometry('terrain-land-rift-v3', () => new THREE.BoxGeometry(0.46, 0.02, 0.028)), this.material(0x766982, { emissive: 0x3b304d, emissiveIntensity: 0.14 }));
+        fissure.position.set(0, height / 2 + 0.028, -0.08);
+        fissure.rotation.y = variation * Math.PI;
+        group.add(fissure);
+      }
+    }
+
+    if (terrain === TILE.HIGH) {
+      const terrace = new THREE.Mesh(this.getCachedGeometry('terrain-high-terrace-v3', () => new THREE.CylinderGeometry(0.43, 0.51, 0.13, 8)), this.material(style.accent, { roughness: 0.93 }));
+      terrace.position.y = height / 2 + 0.07;
+      terrace.rotation.y = variation * Math.PI;
+      group.add(terrace);
+    }
+
+    if (terrain === TILE.BORDER) {
+      const road = new THREE.Mesh(this.getCachedGeometry('terrain-border-road-v3', () => new THREE.BoxGeometry(1.0, 0.025, 0.23)), this.material(style.secondary, { roughness: 1 }));
+      road.position.y = height / 2 + 0.025;
+      road.rotation.y = variation > 0.5 ? 0.08 : -0.08;
+      const post = new THREE.Mesh(this.getCachedGeometry('terrain-border-post-v3', () => new THREE.BoxGeometry(0.07, 0.32, 0.07)), this.material(style.accent));
+      post.position.set(variation > 0.5 ? 0.38 : -0.38, height / 2 + 0.16, 0.18);
+      group.add(road, post);
+    }
+
     if (terrain === TILE.FOREST) {
-      for (const offset of [-0.22, 0, 0.22]) {
-        const tuft = new THREE.Mesh(
-          this.getCachedGeometry('terrain-forest-tuft', () => new THREE.ConeGeometry(0.13, 0.34, 7)),
-          this.material(0x4ee28d, { roughness: 0.9 })
-        );
-        tuft.position.set(offset, height / 2 + 0.18, Math.abs(offset) * 0.5);
-        tuft.castShadow = true;
-        group.add(tuft);
+      for (let index = 0; index < 3; index += 1) {
+        const offset = (index - 1) * 0.23;
+        const trunk = new THREE.Mesh(this.getCachedGeometry('terrain-forest-trunk-v3', () => new THREE.CylinderGeometry(0.035, 0.055, 0.22, 6)), this.material(0x514437, { roughness: 1 }));
+        const crown = new THREE.Mesh(this.getCachedGeometry(`terrain-forest-crown-v3-${index}`, () => new THREE.ConeGeometry(0.14 + index * 0.015, 0.32 + index * 0.035, 7)), this.material(index === 1 ? style.accent : style.color, { roughness: 0.96 }));
+        trunk.position.set(offset, height / 2 + 0.11, Math.abs(offset) * 0.45 - 0.03);
+        crown.position.set(offset, height / 2 + 0.34, Math.abs(offset) * 0.45 - 0.03);
+        crown.rotation.y = variation * Math.PI + index;
+        trunk.castShadow = true;
+        crown.castShadow = true;
+        group.add(trunk, crown);
       }
     }
 
     if (terrain === TILE.SWAMP || terrain === TILE.POISON) {
       const pool = new THREE.Mesh(
-        this.getCachedGeometry('terrain-swamp-pool', () => new THREE.CylinderGeometry(0.34, 0.36, 0.025, 24)),
-        this.material(terrain === TILE.POISON ? 0x9dff58 : 0x6f7d39, {
+        this.getCachedGeometry('terrain-swamp-pool-v3', () => new THREE.CylinderGeometry(0.34, 0.38, 0.025, 18)),
+        this.material(style.accent, {
           transparent: true,
-          opacity: 0.58,
-          emissive: terrain === TILE.POISON ? 0x254000 : 0x101c06,
-          emissiveIntensity: 0.16
+          opacity: terrain === TILE.POISON ? 0.5 : 0.38,
+          emissive: style.emissive || style.secondary,
+          emissiveIntensity: style.emissiveIntensity || 0.08
         })
       );
       pool.position.y = height / 2 + 0.025;
       group.add(pool);
+      for (const reedX of [-0.22, 0.22]) {
+        const reed = new THREE.Mesh(this.getCachedGeometry('terrain-wetland-reed-v3', () => new THREE.CylinderGeometry(0.015, 0.02, 0.24, 5)), this.material(style.secondary));
+        reed.position.set(reedX, height / 2 + 0.13, 0.14 - variation * 0.2);
+        reed.rotation.z = reedX * 0.35;
+        group.add(reed);
+      }
+    }
+
+    if (terrain === TILE.FIELD) {
+      for (let index = -2; index <= 2; index += 1) {
+        const row = new THREE.Mesh(this.getCachedGeometry('terrain-field-row-v3', () => new THREE.BoxGeometry(0.055, 0.055, 0.78)), this.material(index % 2 ? style.accent : style.secondary, { roughness: 1 }));
+        row.position.set(index * 0.17, height / 2 + 0.045, 0);
+        row.rotation.y = (variation - 0.5) * 0.16;
+        group.add(row);
+      }
+    }
+
+    if (terrain === TILE.DARK) {
+      for (let index = 0; index < 3; index += 1) {
+        const shard = new THREE.Mesh(this.getCachedGeometry(`terrain-dark-shard-v3-${index}`, () => new THREE.TetrahedronGeometry(0.09 + index * 0.02, 0)), this.material(style.accent, { transparent: true, opacity: 0.38, emissive: style.secondary, emissiveIntensity: 0.12 }));
+        shard.position.set((index - 1) * 0.2, height / 2 + 0.12 + index * 0.035, (index % 2 ? 0.13 : -0.09));
+        shard.rotation.set(index * 0.4, variation * Math.PI, 0.2);
+        group.add(shard);
+      }
     }
 
     return group;
@@ -2674,52 +3117,76 @@ class CreatorExam3D extends GameEngine {
 
   createTerrainMarker(terrain, x, y) {
     const pos = this.tileToWorld(x, y);
+    const style = getTerrainVisualStyle(this.activeBoardThemeId, terrain);
     if (terrain === TILE.VILLAGE) {
       const group = new THREE.Group();
-      const house = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.34, 0.46), this.material(0xa06f42));
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.32, 4), this.material(0x4d263e));
+      const house = new THREE.Mesh(this.getCachedGeometry('terrain-village-house-v3', () => new THREE.BoxGeometry(0.46, 0.34, 0.46)), this.material(style.color, { roughness: 0.96 }));
+      const roof = new THREE.Mesh(this.getCachedGeometry('terrain-village-roof-v3', () => new THREE.ConeGeometry(0.42, 0.32, 4)), this.material(style.secondary, { roughness: 0.94 }));
+      const door = new THREE.Mesh(this.getCachedGeometry('terrain-village-door-v3', () => new THREE.BoxGeometry(0.12, 0.2, 0.035)), this.material(style.accent));
       roof.position.y = 0.34;
       roof.rotation.y = Math.PI / 4;
+      door.position.set(0, -0.03, 0.248);
       house.castShadow = true;
       roof.castShadow = true;
-      group.add(house, roof);
+      group.add(house, roof, door);
       group.position.set(pos.x - 0.34, 0.24, pos.z - 0.28);
       group.scale.setScalar(0.82);
+      group.userData.decorative = true;
       return group;
     }
     if (terrain === TILE.CITY) {
       const group = new THREE.Group();
       for (let i = 0; i < 3; i += 1) {
-        const tower = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.45 + i * 0.12, 0.26), this.material(0xc8c4dc));
+        const tower = new THREE.Mesh(this.getCachedGeometry(`terrain-city-tower-v3-${i}`, () => new THREE.BoxGeometry(0.26, 0.45 + i * 0.12, 0.26)), this.material(i === 1 ? style.accent : style.color, { roughness: 0.93 }));
         tower.position.set((i - 1) * 0.28, 0.23 + i * 0.06, 0);
         tower.castShadow = true;
         group.add(tower);
       }
+      const wall = new THREE.Mesh(this.getCachedGeometry('terrain-city-wall-v3', () => new THREE.BoxGeometry(0.88, 0.16, 0.12)), this.material(style.secondary));
+      wall.position.set(0, 0.12, 0.12);
+      group.add(wall);
       group.position.set(pos.x, 0.22, pos.z);
+      group.userData.decorative = true;
       return group;
     }
     if (terrain === TILE.SACRED) {
       const group = new THREE.Group();
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 0.55, 8), this.material(0x6f4c32));
-      const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(0.46, 1), this.material(0x4ee89c, { emissive: 0x123d2d }));
+      const trunk = new THREE.Mesh(this.getCachedGeometry('terrain-sacred-trunk-v3', () => new THREE.CylinderGeometry(0.08, 0.11, 0.55, 8)), this.material(0x58483b, { roughness: 1 }));
+      const crown = new THREE.Mesh(this.getCachedGeometry('terrain-sacred-crown-v3', () => new THREE.IcosahedronGeometry(0.46, 1)), this.material(style.accent, { emissive: style.emissive || style.secondary, emissiveIntensity: style.emissiveIntensity || 0.16, roughness: 0.78 }));
       crown.position.y = 0.52;
       group.add(trunk, crown);
       group.position.set(pos.x, 0.28, pos.z);
+      group.userData.decorative = true;
       return group;
     }
-    if (terrain === TILE.EXIT || terrain === TILE.HIGH) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.035, 8, 24), this.material(terrain === TILE.EXIT ? 0x67e8ff : 0xffdb82, { emissive: terrain === TILE.EXIT ? 0x0b3a48 : 0x402c0a }));
+    if (terrain === TILE.EXIT) {
+      const ring = new THREE.Mesh(this.getCachedGeometry('terrain-exit-ring-v3', () => new THREE.TorusGeometry(0.42, 0.035, 8, 24)), this.material(style.accent, { emissive: style.emissive || style.secondary, emissiveIntensity: style.emissiveIntensity || 0.16 }));
       ring.rotation.x = Math.PI / 2;
       ring.position.set(pos.x, 0.32, pos.z);
       return ring;
     }
+    if (terrain === TILE.HIGH) {
+      const cairn = new THREE.Group();
+      for (let index = 0; index < 3; index += 1) {
+        const stone = new THREE.Mesh(this.getCachedGeometry(`terrain-high-cairn-v3-${index}`, () => new THREE.DodecahedronGeometry(0.16 - index * 0.025, 0)), this.material(index === 1 ? style.accent : style.secondary));
+        stone.position.y = index * 0.17;
+        stone.rotation.set(index * 0.3, index * 0.6, 0.15);
+        cairn.add(stone);
+      }
+      cairn.position.set(pos.x + 0.32, 0.62, pos.z - 0.2);
+      cairn.scale.setScalar(0.72);
+      cairn.userData.decorative = true;
+      return cairn;
+    }
     if (terrain === TILE.DARK || terrain === TILE.FOG) {
       const radius = terrain === TILE.DARK ? 0.58 : 0.5;
       const haze = new THREE.Mesh(
-        new THREE.SphereGeometry(radius, 12, 8),
-        new THREE.MeshStandardMaterial({ color: terrain === TILE.DARK ? 0x0b0d19 : 0xb8c2d6, transparent: true, opacity: terrain === TILE.DARK ? 0.45 : 0.28, roughness: 1 })
+        this.getCachedGeometry(`terrain-haze-v3-${terrain}`, () => new THREE.SphereGeometry(radius, 12, 8)),
+        this.material(style.accent, { transparent: true, opacity: terrain === TILE.DARK ? 0.18 : 0.12, roughness: 1, depthWrite: false })
       );
-      haze.position.set(pos.x, 0.5, pos.z);
+      haze.position.set(pos.x, terrain === TILE.DARK ? 0.42 : 0.32, pos.z);
+      haze.scale.set(terrain === TILE.DARK ? 1.15 : 1.38, terrain === TILE.DARK ? 0.66 : 0.34, terrain === TILE.DARK ? 1.15 : 1.38);
+      haze.userData.decorative = true;
       return haze;
     }
     return null;
@@ -3352,6 +3819,8 @@ class CreatorExam3D extends GameEngine {
 
     this.updateSpecialMeters();
     this.updateUnitList();
+    if (this.selectedDialogueUnit?.status === 'lost') this.closeNpcDialogue();
+    this.renderNpcStatusStrip();
     this.updateMissionDossier();
     this.renderIntentPreview();
     this.updateLogs();
@@ -3380,6 +3849,11 @@ class CreatorExam3D extends GameEngine {
         turn: this.turn,
         gameState: this.gameState,
         isResolvingTurn: this.isResolvingTurn,
+        boardVisual: {
+          themeId: this.activeBoardThemeId || '',
+          motif: this.boardSurfaceGroup?.userData?.motif || '',
+          details: [...(this.boardSurfaceGroup?.userData?.detailTypes || [])]
+        },
         turnControls: {
           endTurnDisabled: !!this.ui.endTurnBtn?.disabled,
           endTurnText: this.ui.endTurnBtn?.textContent || '',
@@ -5490,11 +5964,7 @@ class CreatorExam3D extends GameEngine {
       this.ui.missionThreat.textContent = this.getMissionThreatLabel();
       this.ui.missionThreat.dataset.threat = this.level?.hazard?.type || this.level?.win || 'standard';
     }
-    if (this.ui.missionGoals) {
-      this.ui.missionGoals.innerHTML = this.buildMissionGoalTags()
-        .map(tag => `<span class="mission-goal-chip ${escapeHtml(tag.tone)}"><strong>${escapeHtml(tag.label)}</strong>${escapeHtml(tag.value)}</span>`)
-        .join('');
-    }
+    if (this.ui.missionGoals) this.ui.missionGoals.replaceChildren();
   }
 
   getMissionThreatLabel() {
@@ -5570,25 +6040,63 @@ class CreatorExam3D extends GameEngine {
     }).join('') || '<div class="intent-item threat-none"><strong>暂无可预览意图</strong><span>当前没有活跃单位或灾害。</span></div>';
   }
 
+  renderNpcStatusStrip() {
+    if (!this.ui?.npcStatusStrip) return;
+    const people = this.units.filter(unit => this.isCivilian(unit) || this.isMessenger(unit));
+    this.ui.npcStatusStrip.hidden = people.length === 0;
+    this.ui.npcStatusStrip.innerHTML = people.map(unit => {
+      const status = unit.status || 'active';
+      const selected = this.selectedDialogueUnit?.id === unit.id;
+      const disabled = status === 'lost';
+      const statusLabel = status === 'lost' ? '遇难' : status === 'rescued' ? '获救' : '在场';
+      const portrait = getNpcPortraitAsset(unit);
+      return `
+        <button class="npc-status-avatar status-${escapeHtml(status)} ${selected ? 'selected' : ''}" type="button"
+          data-npc-avatar-id="${escapeHtml(unit.id)}" aria-label="${escapeHtml(unit.name)}，${statusLabel}" ${disabled ? 'disabled' : ''}>
+          ${portrait
+            ? `<img src="${escapeHtml(portrait)}" alt="" draggable="false">`
+            : `<span class="npc-avatar-fallback" aria-hidden="true">${escapeHtml(unit.name.slice(0, 1))}</span>`}
+          <span class="npc-status-name">${escapeHtml(unit.name)}</span>
+          <span class="npc-status-mark" aria-hidden="true">${status === 'lost' ? '×' : status === 'rescued' ? '✓' : ''}</span>
+        </button>
+      `;
+    }).join('');
+  }
+
   renderNpcDialoguePanel() {
     if (!this.ui?.npcDialoguePanel) return;
     if (!this.selectedDialogueUnit && !this.selectedDialogueGroup) {
       this.ui.npcDialoguePanel.classList.add('hidden');
+      delete this.root?.dataset.dialogueOpen;
       return;
     }
     const unit = this.selectedDialogueUnit;
     const npc = this.selectedDialogueNpc;
     this.ui.npcDialoguePanel.classList.remove('hidden');
+    if (this.root) this.root.dataset.dialogueOpen = 'true';
     this.ui.npcDialogueTitle.textContent = this.selectedDialogueGroup ? '救援群聊' : (unit?.name || 'NPC');
     if (this.ui.npcDialogueMeta) {
       const trust = npc?.dynamicTraits?.trustLevel;
       const mood = this.selectedDialogueGroup ? '多人在线' : npc?.mood || (unit && this.isMessenger(unit) ? '紧张' : '不安');
       const attitude = npc?.attitude || '未知';
-      const channel = this.selectedDialogueGroup ? '救援群聊' : `单聊 · ${unit?.name || ''}`;
       this.ui.npcDialogueMeta.innerHTML = `
-        <span class="dialogue-channel">${escapeHtml(channel)}</span>
-        <span>情绪：${escapeHtml(mood)} · 态度：${escapeHtml(attitude)}${Number.isFinite(trust) ? ` · 信任：${trust}` : ''}</span>
+        <span>情绪 ${escapeHtml(mood)}</span>
+        <span>态度 ${escapeHtml(attitude)}</span>
+        ${Number.isFinite(trust) ? `<span>信任 ${trust}</span>` : ''}
       `;
+    }
+    if (this.ui.npcDialoguePortrait) {
+      const portraitUnit = unit || this.getDialogueParticipants()[0];
+      if (portraitUnit) {
+        const portrait = getNpcPortraitAsset(portraitUnit);
+        const profile = resolveNpcVisualProfile(portraitUnit);
+        this.ui.npcDialoguePortrait.hidden = !portrait;
+        this.ui.npcDialoguePortrait.src = portrait || '';
+        this.ui.npcDialoguePortrait.alt = portrait ? `${portraitUnit.name}的立绘` : '';
+        if (this.ui.npcDialoguePortraitRole) this.ui.npcDialoguePortraitRole.textContent = this.selectedDialogueGroup ? '在场人物' : profile.role;
+      } else {
+        this.ui.npcDialoguePortrait.hidden = true;
+      }
     }
     if (this.ui.npcDialogueRoster) {
       const currentUnit = this.selectedDialogueUnit;
@@ -5607,7 +6115,7 @@ class CreatorExam3D extends GameEngine {
     }
     const messages = this.dialogueMessages || [];
     if (this.ui.npcDialogueHistory) {
-      this.ui.npcDialogueHistory.innerHTML = messages.map(message => `
+      this.ui.npcDialogueHistory.innerHTML = messages.slice(-3).map(message => `
         <div class="dialogue-line ${escapeHtml(message.role)}">
           <strong>${escapeHtml(message.speaker)}</strong>
           ${escapeHtml(message.text)}
@@ -5699,6 +6207,7 @@ class CreatorExam3D extends GameEngine {
     this.addNpcDialogueLine('npc', unit.name, dialogue);
     this.addLog(`【对话】${unit.name}：${dialogue}`, true);
     this.renderNpcDialoguePanel();
+    window.setTimeout(() => this.ui?.npcDialogueInput?.focus(), 0);
 
     if (npc) {
       this.npcManager.updateNPCMemory(npc.id, `第 ${this.turn} 回合与造物者交谈：${dialogue}`);
@@ -5725,6 +6234,8 @@ class CreatorExam3D extends GameEngine {
     this.selectedDialogueGroup = false;
     this.dialogueMessages = [];
     this.ui?.npcDialoguePanel?.classList.add('hidden');
+    if (this.root) delete this.root.dataset.dialogueOpen;
+    this.renderNpcStatusStrip();
   }
 
   getDialogueParticipants() {
@@ -6117,7 +6628,7 @@ class CreatorExam3D extends GameEngine {
   }
 
   handleUnitInteraction(unit) {
-    if (unit.status !== 'active') {
+    if (!['active', 'rescued'].includes(unit.status)) {
       this.showToast(`${unit.name} 当前无法回应。`);
       return;
     }
@@ -6125,7 +6636,7 @@ class CreatorExam3D extends GameEngine {
       this.showToast(`${unit.name} 暂时无法交谈。`);
       return;
     }
-    this.openDrawer('people', 'npc-dialogue-panel', document.getElementById('drawer-people-btn'));
+    this.closeDrawer();
     const npcId = unit.residentId || unit.name;
     const npc = this.npcManager?.getNPC(npcId);
     this.openNpcDialogue(unit, npc);
@@ -6828,13 +7339,20 @@ class CreatorExam3D extends GameEngine {
   }
 
   getTerrainMaterial(terrain) {
-    const color = MATERIAL_COLORS[terrain] || MATERIAL_COLORS[TILE.LAND];
-    if (terrain === TILE.WATER) return this.material(color, { transparent: true, opacity: 0.74, roughness: 0.25, metalness: 0.08 });
-    if (terrain === TILE.DARK) return this.material(color, { roughness: 1, emissive: 0x02030a });
-    if (terrain === TILE.FOG) return this.material(color, { transparent: true, opacity: 0.72, roughness: 1 });
-    if (terrain === TILE.FIELD) return this.material(color, { transparent: true, opacity: 0.52, emissive: 0x0d4c5a, emissiveIntensity: 0.2 });
-    if (terrain === TILE.EXIT || terrain === TILE.SACRED) return this.material(color, { emissive: color, emissiveIntensity: 0.12 });
-    return this.material(color);
+    const style = getTerrainVisualStyle(this.activeBoardThemeId, terrain);
+    const options = {
+      roughness: style.roughness,
+      metalness: style.metalness || 0
+    };
+    if (style.emissive) {
+      options.emissive = style.emissive;
+      options.emissiveIntensity = style.emissiveIntensity || 0.1;
+    }
+    if (terrain === TILE.WATER) return this.material(style.color, { ...options, transparent: true, opacity: 0.76, depthWrite: false });
+    if (terrain === TILE.DARK) return this.material(style.color, { ...options, emissive: style.secondary, emissiveIntensity: 0.08 });
+    if (terrain === TILE.FOG) return this.material(style.color, { ...options, transparent: true, opacity: style.opacity || 0.62, depthWrite: false });
+    if (terrain === TILE.FIELD) return this.material(style.color, { ...options, emissive: style.secondary, emissiveIntensity: 0.08 });
+    return this.material(style.color, options);
   }
 
   tileToWorld(x, y) {
