@@ -309,7 +309,10 @@
             border-radius: 0;
         }
         #backgroundCanvas {
-            background-color: var(--surface-color);
+            background:
+                linear-gradient(rgba(7, 12, 22, 0.1), rgba(7, 12, 22, 0.1)),
+                url('../../assets/art/backgrounds/night-watch-battlefield-image2.png') center / cover no-repeat,
+                var(--surface-color);
             z-index: 1; /* Sits at the bottom */
         }
         #gameCanvas {
@@ -1105,7 +1108,7 @@
                 <div id="wave-display">波次: 0/30</div>
             </div>
             <button class="action-btn" id="start-wave-btn" style="display: none;"></button>
-            <button id="highlight-protocol-btn" type="button" hidden aria-hidden="true" tabindex="-1" data-tutorial-bailout="true" title="教学保底外挂：清除当前全部敌人，不计入正常玩法要求">教学保底 · 全塔裁决</button>
+            <button id="highlight-protocol-btn" type="button" hidden aria-hidden="true" tabindex="-1" data-tutorial-bailout="true" title="直接按胜利结算并进入下一个模块">一键通关</button>
             <div id="speed-controls" role="group" aria-label="游戏速度"></div>
             <div id="tower-selection">
 
@@ -11367,17 +11370,10 @@ function startRandomNightWatchMap() {
 startWaveBtn.onclick = spawnWave;
 function activateNightWatchHighlightProtocol() {
     if (gameEnded || isPaused) return false;
-    const activeEnemies = enemies.filter(enemy => enemy.hp > 0 && enemy.type !== 'dummy');
-    if (activeEnemies.length === 0) {
-        return false;
-    }
-    for (const [index, enemy] of activeEnemies.entries()) {
-        const executionSource = towers[index % towers.length] || null;
-        enemy.hasShield = false;
-        enemy.shieldHp = 0;
-        if (executionSource) effects.push(new AnnihilatorBeamEffect(executionSource, enemy));
-        enemy.takeDamage(Math.max(enemy.hp, enemy.maxHp) * 2, executionSource, { areaDamage: true, suppressSpotlightCrit: true });
-    }
+    wave = FINAL_WAVE;
+    hp = Math.max(1, hp);
+    gameOver(true);
+    window.setTimeout(() => window.NightWatchBridge?.returnToMain?.(), 180);
     return true;
 }
 window.activateNightWatchHighlightProtocol = activateNightWatchHighlightProtocol;

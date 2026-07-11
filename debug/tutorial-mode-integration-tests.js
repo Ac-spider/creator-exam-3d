@@ -79,7 +79,8 @@ assert.ok(!towerBridge.includes('第 10 列、第 6 行'), 'Night Watch guide sh
 assert.ok(towerHtml.includes('isTutorialMode?.() && towers.length >= 3'), 'three guided towers should prevent an unrecoverable Night Watch defeat')
 assert.ok(/id="highlight-protocol-btn"[^>]*hidden[^>]*data-tutorial-bailout="true"/.test(towerHtml), 'Night Watch should start with a tutorial-only bailout control')
 assert.ok(towerHtml.includes('window.activateNightWatchHighlightProtocol = activateNightWatchHighlightProtocol'), 'Night Watch should expose the bailout API')
-assert.ok(towerBridge.includes("bailout.hidden = false") && towerBridge.includes('这是救急外挂，不计入正常流程'), 'Night Watch should reveal and explain the bailout without making it a normal step')
+assert.ok(towerBridge.includes("bailout.hidden = false") && towerBridge.includes('想跳过本模块，可直接点“一键通关”'), 'Night Watch should reveal and explain the one-click clear')
+assert.ok(towerHtml.includes('wave = FINAL_WAVE') && towerHtml.includes('gameOver(true)') && towerHtml.includes('NightWatchBridge?.returnToMain?.()'), 'Night Watch one-click clear should publish a victory and continue')
 assert.ok(towerBridge.includes('night-watch-tutorial-toggle') && towerBridge.includes("guide.classList.toggle('collapsed')"), 'Night Watch guide should collapse behind a 教 button')
 
 assert.ok(airBridge.includes('function isTutorialMode()'), 'Air Combat should detect tutorial context')
@@ -90,7 +91,8 @@ assert.ok(airCss.includes('.airspace-tutorial'), 'Air Combat guide should be sty
 assert.ok(airGame.includes('bridge.isTutorialMode?.()') && airGame.includes('教学护航接住了载体'), 'Air Combat should recover from tutorial lethal damage')
 assert.ok(/id="airspace-highlight"[^>]*hidden[^>]*data-tutorial-bailout="true"/.test(airHtml), 'Air Combat should start with a tutorial-only bailout control')
 assert.ok(airGame.includes('window.activateAirspaceHighlightProtocol = activateAirspaceHighlightProtocol'), 'Air Combat should expose the bailout API')
-assert.ok(airHtml.includes('这是救急外挂，不计入正常流程'), 'Air Combat should explain the bailout without making it a normal step')
+assert.ok(airHtml.includes('想跳过本模块，可直接点“一键通关”'), 'Air Combat should explain the one-click clear')
+assert.ok(airGame.includes("game.finish('victory')") && airGame.includes('bridge.returnToMain()'), 'Air Combat one-click clear should publish a victory and continue')
 assert.ok(airHtml.includes('id="airspace-tutorial-toggle"') && airGame.includes("tutorialGuide.classList.toggle('collapsed')"), 'Air Combat guide should collapse behind a 教 button')
 
 console.log(`Tutorial mode integration tests passed: ${coverage.systemIds.length} guided system uses`)

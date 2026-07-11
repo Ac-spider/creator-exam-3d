@@ -1059,13 +1059,13 @@
         phase: 'carrier-rise',
         kicker: '第七日 · 载体成形',
         title: weapon.name,
-        text: `${buffText}「${weapon.sourceCreation}」被压缩为空域武器，${weapon.description}`
+        text: `${buffText}「${weapon.sourceCreation}」被压缩为空域武器，${weapon.description} 守夜时未被消灭的裂隙残响受高空主核召回，重组为无人机、战舰与六座空域首领，正从裂隙航道分批俯冲。`
       },
       {
         phase: 'seventh-day',
         kicker: '第七日 · 清算航线',
         title: resonance.name,
-        text: `6 段 Boss 航线已锁定：${route().map(boss => `${boss.affix.name}·${boss.title}`).join(' / ')}。最终压力 ${Math.round(endingPressure() * 100)}%。${loreSignal()}`
+        text: `敌群由前方裂隙门持续投放，护送六座首领逼近载体；击毁当前首领后才会进入下一段航线。6 段航线已锁定：${route().map(boss => `${boss.affix.name}·${boss.title}`).join(' / ')}。最终压力 ${Math.round(endingPressure() * 100)}%。${loreSignal()}`
       }
     ];
   }

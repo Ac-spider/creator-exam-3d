@@ -337,8 +337,8 @@
       },
       {
         kicker: '长夜六更 · 人员编组',
-        title: `${rescued} 名居民接过城墙灯火`,
-        body: `30 波裂隙潮分为六更，每更 5 波。${rescued} 名获救居民会参与补给与守城${lost ? `；另有 ${lost} 个失落名字只能以回声留在防线中` : ''}。`,
+        title: `裂隙残响沿撤离路反扑`,
+        body: `地面终考扰动了边境裂隙，白天被击散的恶意与失控造物在夜里凝成来袭者，并沿居民撤离时留下的道路追向城墙。30 波裂隙潮分为六更，每更 5 波；${rescued} 名获救居民负责补给与守城${lost ? `，另有 ${lost} 个失落名字化作危险回声` : ''}。`,
         artPosition: '64% 50%'
       },
       {
@@ -705,12 +705,13 @@
         min-height: min(58vh, 620px);
         background-color: #0b0f18;
         background-image:
-          linear-gradient(90deg, rgba(7,10,17,.82), rgba(7,10,17,.2) 58%, rgba(7,10,17,.62)),
+          linear-gradient(90deg, rgba(7,10,17,.54), rgba(7,10,17,.06) 58%, rgba(7,10,17,.32)),
           url('../../assets/art/cg-night-watch.webp'),
           radial-gradient(circle at 76% 36%, rgba(143,115,200,.46), transparent 34%),
           linear-gradient(145deg, #151923, #070a11 64%);
         background-position: center, var(--night-watch-cg-position, 50% 50%), center, center;
         background-size: cover;
+        filter: brightness(1.18) saturate(1.08);
         transition: background-position 520ms ease;
       }
       canvas[data-night-watch-art-type] {
@@ -881,9 +882,6 @@
     }
     let guide = document.getElementById('night-watch-tutorial-guide');
     if (guide) return guide;
-    const selection = defaultSelection();
-    const pool = selection.towerPool || [];
-    const towerName = index => towerPlan?.towers?.[pool[index]]?.name || TOWER_THEME[pool[index]]?.name || pool[index] || `第 ${index + 1} 种守夜塔`;
     ensureTutorialTargets();
     guide = document.createElement('aside');
     guide.id = 'night-watch-tutorial-guide';
@@ -891,13 +889,9 @@
     guide.innerHTML = `
       <button class="night-watch-tutorial-toggle" type="button" aria-expanded="true" aria-label="收起守夜教学">教</button>
       <div class="night-watch-tutorial-body">
-        <strong>守夜教学</strong>
-        <ol>
-          <li>选第一项誓约，开始守夜。</li>
-          <li>依次选择“${towerName(0)}”“${towerName(1)}”“${towerName(2)}”，点击地图上的 1、2、3。</li>
-          <li>先升级 1 号塔，守到第 30 波。</li>
-        </ol>
-        <small>实在过不了，就点“教学保底 · 全塔裁决”。这是救急外挂，不计入正常流程。</small>
+        <strong>守夜规则</strong>
+        <p>敌人会沿灰色道路进攻基地。把守夜塔放在道路旁，击败敌人获得材料并升级塔；基地仍有生命时守完 30 波即可通关。</p>
+        <small>想跳过本模块，可直接点“一键通关”。</small>
       </div>
     `;
     const toggle = guide.querySelector('.night-watch-tutorial-toggle');

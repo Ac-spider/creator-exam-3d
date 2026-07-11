@@ -1347,7 +1347,7 @@
       this.time = 0;
       this.highlightInvulnerable = false;
       highlightBtn?.classList.remove('active');
-      if (highlightBtn) highlightBtn.textContent = '教学保底 · 开启无敌';
+      if (highlightBtn) highlightBtn.textContent = '一键通关';
       this.backgroundWorld = backgroundWorldForRoute(this.route, this.segmentIndex);
       menu.classList.add('hidden');
       resultPanel.classList.add('hidden');
@@ -2687,16 +2687,11 @@
     tutorialGuideToggle.setAttribute('aria-label', collapsed ? '展开空战教学' : '收起空战教学');
   });
   function activateAirspaceHighlightProtocol() {
-    if (game.state !== 'playing' || !game.player || game.highlightInvulnerable) return false;
-    game.highlightInvulnerable = true;
-    game.player.hp = game.player.maxHp;
-    game.player.shield = Math.max(game.player.shield, 40);
-    game.enemyBullets = [];
-    game.lasers = [];
-    highlightBtn.classList.add('active');
-    highlightBtn.textContent = '教学保底 · 无敌生效';
-    game.burst(game.player.x, game.player.y, '#72d6bd', 28);
-    game.say('教学保底已经接管机体：本局伤害全部豁免。', 3, { eventType: 'airspace_highlight_protocol' });
+    if (game.state !== 'playing' || !game.player) return false;
+    game.clearedLayers = game.route.length;
+    game.bossDefeated = game.route.length;
+    game.finish('victory');
+    window.setTimeout(() => bridge.returnToMain(), 180);
     return true;
   }
   window.activateAirspaceHighlightProtocol = activateAirspaceHighlightProtocol;

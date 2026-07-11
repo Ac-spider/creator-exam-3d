@@ -61,10 +61,10 @@ button {
 
 .airspace-briefing-visual {
   --cg-position: 12% center;
-  --cg-filter: saturate(.82) brightness(.78);
+  --cg-filter: saturate(1.02) brightness(1.14);
   --cg-overlay:
-    linear-gradient(180deg, rgba(7, 10, 17, .16), rgba(7, 10, 17, .62)),
-    linear-gradient(90deg, rgba(87, 47, 25, .42), transparent 62%);
+    linear-gradient(180deg, rgba(7, 10, 17, .06), rgba(7, 10, 17, .32)),
+    linear-gradient(90deg, rgba(87, 47, 25, .2), transparent 62%);
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -100,25 +100,25 @@ button {
 
 .airspace-briefing-visual[data-briefing-step="1"] {
   --cg-position: 36% center;
-  --cg-filter: saturate(.74) brightness(.62) contrast(1.06);
+  --cg-filter: saturate(.98) brightness(1.08) contrast(1.02);
   --cg-overlay:
-    linear-gradient(180deg, rgba(12, 8, 24, .24), rgba(8, 10, 18, .7)),
+    linear-gradient(180deg, rgba(12, 8, 24, .08), rgba(8, 10, 18, .34)),
     radial-gradient(circle at 48% 70%, rgba(216, 197, 138, .2), transparent 34%);
 }
 
 .airspace-briefing-visual[data-briefing-step="2"] {
   --cg-position: 52% center;
-  --cg-filter: saturate(.9) brightness(.72) contrast(1.03);
+  --cg-filter: saturate(1.06) brightness(1.14) contrast(1.02);
   --cg-overlay:
-    linear-gradient(180deg, rgba(10, 8, 24, .2), rgba(4, 13, 20, .64)),
+    linear-gradient(180deg, rgba(10, 8, 24, .06), rgba(4, 13, 20, .3)),
     radial-gradient(circle at 50% 48%, rgba(114, 214, 189, .18), transparent 31%);
 }
 
 .airspace-briefing-visual[data-briefing-step="3"] {
   --cg-position: 66% center;
-  --cg-filter: saturate(1.02) brightness(.67) contrast(1.08);
+  --cg-filter: saturate(1.1) brightness(1.1) contrast(1.04);
   --cg-overlay:
-    linear-gradient(180deg, rgba(11, 8, 26, .28), rgba(4, 8, 15, .72)),
+    linear-gradient(180deg, rgba(11, 8, 26, .1), rgba(4, 8, 15, .34)),
     radial-gradient(circle at 50% 9%, rgba(153, 105, 224, .3), transparent 38%);
 }
 
