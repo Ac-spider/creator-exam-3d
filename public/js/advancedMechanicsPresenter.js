@@ -24,6 +24,15 @@ const OATH_LABELS = {
   kinship: '血盟誓约'
 }
 
+const TUTORIAL_ABILITY_LABELS = {
+  absorb_water: '吸收洪水',
+  illuminate: '驱散黑暗',
+  calm: '安抚',
+  reveal_path: '显现路径',
+  memory_beacon: '记忆信标',
+  redirect_hazard: '改道灾害'
+}
+
 function materialSummary(materials = {}) {
   const entries = Object.entries(materials)
   if (!entries.length) return '暂无材料'
@@ -79,6 +88,7 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
   const social = state.social || {}
   const legacy = state.legacy || {}
   const tactical = state.tactical || {}
+  const tutorial = state.tutorial?.active ? state.tutorial : null
 
   const inventory = workshop.inventory || []
   const workshopCreations = workshop.workshopCreations || []
@@ -154,6 +164,15 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
       tone: highThreatCount > 0 ? 'danger' : intentCount > 0 ? 'ready' : 'idle'
     }
   ]
+
+  if (tutorial?.system) {
+    systems.unshift({
+      id: 'tutorial-current',
+      title: `当前教学 · ${tutorial.system.title}`,
+      status: tutorial.system.instruction,
+      tone: 'active'
+    })
+  }
 
   const defaultActions = [
     {
@@ -281,7 +300,7 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
     }
   ]
 
-  const actions = tacticalOptions.length
+  let actions = tacticalOptions.length
     ? tacticalOptions.map(option => ({
         id: option.id,
         label: option.label,
@@ -296,6 +315,20 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
       }))
     : defaultActions
 
+  if (tutorial?.system) {
+    const actionIndex = actions.findIndex(action => action.id === tutorial.system.action)
+    const defaultAction = defaultActions.find(action => action.id === tutorial.system.action)
+    const sourceAction = actionIndex >= 0 ? actions[actionIndex] : defaultAction
+    const tutorialAction = {
+      ...(sourceAction || { id: tutorial.system.action, enabled: true }),
+      id: tutorial.system.action,
+      label: `教学 · ${tutorial.system.title}`,
+      hint: [tutorial.system.instruction, tutorial.system.expected].filter(Boolean).join(' · '),
+      tone: 'active'
+    }
+    actions = [tutorialAction, ...actions.filter(action => action.id !== tutorial.system.action)]
+  }
+
   const director = tactical.director || {
     title: 'AI 考核者',
     text: '先看箭头。哪一格会出事，就只改那一格。',
@@ -303,6 +336,9 @@ export function buildAdvancedMechanicsViewModel(state = {}) {
   }
 
   const detail = [
+    tutorial?.creations?.length
+      ? `本课造物：${tutorial.creations.map(creation => `${creation.name}（${TUTORIAL_ABILITY_LABELS[creation.ability] || creation.ability}，剩余 ${creation.remaining} 回合）`).join('、')}`
+      : '',
     tacticalBudget ? `AI干涉：${tacticalBudget.remaining}/${tacticalBudget.limit}。这回合别贪。` : '',
     tactical.threatLine || (intentCount ? `已读到 ${intentCount} 条下一步。` : '先读箭头，再决定放什么。'),
     chain.latest ? `最新共鸣：${chain.latest}` : '两种相邻造物咬上，才会出连锁。',

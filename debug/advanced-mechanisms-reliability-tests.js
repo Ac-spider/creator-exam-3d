@@ -113,4 +113,25 @@ for (const mechanism of tacticalMechanisms) {
 assert(tacticalModel.director.text.includes('箭头'), 'Tactical director brief should be visible in the presenter model');
 assert(tacticalModel.detail.includes('AI干涉：1/2'), 'Tactical detail should show remaining per-turn interference');
 
+const tutorialModel = buildAdvancedMechanicsViewModel({
+  tutorial: {
+    active: true,
+    system: {
+      action: 'trigger-legend',
+      title: '形成世界传说',
+      instruction: '把本关造物与后果写进民间说法。',
+      expected: '世界志出现新的传闻。'
+    },
+    creations: [{ name: '停战路标', ability: 'reveal_path', remaining: 8 }]
+  },
+  tactical: {
+    options: [{ id: 'refresh-intent', label: '重读意图', enabled: true, impact: '刷新箭头' }]
+  }
+});
+
+assert(tutorialModel.actions[0].id === 'trigger-legend', 'Current tutorial action should be injected ahead of generic tactical cards');
+assert(tutorialModel.actions[0].label === '教学 · 形成世界传说', 'Tutorial action label should match the guide');
+assert(tutorialModel.systems[0].title === '当前教学 · 形成世界传说', 'Systems summary should show the same current tutorial step');
+assert(tutorialModel.detail.includes('停战路标') && tutorialModel.detail.includes('显现路径'), 'Advanced detail should identify the placed tutorial creation with the player-facing ability label');
+
 console.log('Advanced mechanisms reliability tests passed.');

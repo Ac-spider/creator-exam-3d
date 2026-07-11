@@ -53,6 +53,9 @@ assert.ok(director.includes("value = 'tutorial-campaign'"), 'tutorial should use
 assert.ok(director.includes("['compile', 'place'].includes(phase.kind)"), 'the map target should stay visible from prompt through placement')
 assert.ok(director.includes('this.panelExpanded = !this.panelExpanded'), 'the tutorial rail button should collapse and expand the guide')
 assert.ok(!director.includes('推荐卡必须放在第'), 'tutorial placement feedback should point to the map instead of printing coordinates')
+assert.ok(director.includes('advancedPanelContext()'), 'the Advanced panel should receive the current tutorial step and placed golden creations')
+assert.ok(!director.includes("this.game.openDrawer?.(spec.id === 'intent' ? 'world' : 'systems')"), 'tutorial actions should not repeatedly force the Advanced drawer open')
+assert.ok(game.includes('tutorial: this.tutorialDirector?.advancedPanelContext?.()'), 'the Advanced presenter state should include tutorial context')
 
 const coverage = tutorialCampaignCoverage()
 assert.equal(coverage.levelIds.length, 6, 'tutorial should cover all six ground levels')

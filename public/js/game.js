@@ -4697,6 +4697,7 @@ class CreatorExam3D extends GameEngine {
         returned: this.returnedLegacyUnits || [],
         canAdvance: this.levelIndex >= 0 && this.levelIndex < LEVELS.length - 1
       },
+      tutorial: this.tutorialDirector?.advancedPanelContext?.() || null,
       social: this.getSocialDemoState(),
       tactical: this.getTacticalState(),
       logs: this.logs

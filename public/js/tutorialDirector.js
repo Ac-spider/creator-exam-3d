@@ -165,6 +165,32 @@ export class TutorialDirector {
     return lesson.systems.find(item => !completed.has(item.id)) || null
   }
 
+  advancedPanelContext() {
+    if (!this.isActive()) return null
+    const phase = this.phase()
+    const systemSpec = phase.kind === 'system' ? phase.system : null
+    const panelActionAliases = { storyteller: 'trigger-story' }
+    const showInSystems = systemSpec && !['npc-dialogue', 'save-tutorial'].includes(systemSpec.action)
+    return {
+      active: true,
+      system: showInSystems ? {
+        id: systemSpec.id,
+        action: panelActionAliases[systemSpec.action] || systemSpec.action,
+        title: systemSpec.title,
+        instruction: systemSpec.instruction,
+        expected: systemSpec.expected
+      } : null,
+      creations: this.game.creations
+        .filter(creation => creation.placed && creation.card?.tutorialLessonCardId)
+        .map(creation => ({
+          id: creation.card.tutorialLessonCardId,
+          name: creation.card.name,
+          ability: creation.card.ability,
+          remaining: creation.remaining
+        }))
+    }
+  }
+
   phase() {
     if (!this.isActive() || !this.lesson()) return { kind: 'inactive' }
     if (this.game.gameState === 'lost') return { kind: 'lost' }
@@ -243,13 +269,15 @@ export class TutorialDirector {
   recordSystemAction(action) {
     if (!this.isActive()) return false
     const spec = this.currentSystemSpec()
-    if (!spec || spec.action !== action) return false
+    const normalizedAction = action === 'trigger-story' ? 'storyteller' : action
+    if (!spec || spec.action !== normalizedAction) return false
     const progress = this.levelProgress()
     if (!progress.systems.includes(spec.id)) progress.systems.push(spec.id)
     this.checkpoint(`system:${spec.id}`)
     this.persist()
     this.ensureResources()
     this.render()
+    this.game.renderAdvancedMechanicsPanel?.()
     return true
   }
 
@@ -311,7 +339,6 @@ export class TutorialDirector {
       this.recordSystemAction('save-tutorial')
       return
     }
-    this.game.openDrawer?.(spec.id === 'intent' ? 'world' : 'systems')
     this.game.tacticalActionHistory = []
     const result = this.game.handleAdvancedAction?.(spec.action)
     if (result?.success === false) {
@@ -510,7 +537,7 @@ export class TutorialDirector {
     } else if (phase.kind === 'system') {
       ui.tutorialCopy.textContent = phase.system.instruction
       ui.tutorialPrimary.textContent = phase.system.title
-      this.focusSelector('#drawer-systems-btn')
+      this.focusSelector(null)
     } else if (phase.kind === 'turns') {
       ui.tutorialCopy.textContent = '结束回合，观察造物怎样改变局面。'
       ui.tutorialPrimary.textContent = `结束第 ${this.game.turn} 回合`
