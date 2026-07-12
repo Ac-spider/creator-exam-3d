@@ -2179,6 +2179,8 @@ class CreatorExam3D extends GameEngine {
   // Override applyTileHazardsToUnits for browser-specific effects
   applyTileHazardsToUnits() {
     const HAZARD_TERRAINS = [TILE.WATER, TILE.DARK, TILE.FOG, TILE.POISON];
+    // 致命地形：水/黑暗/污染会导致居民迷失死亡；迷雾仅引发混乱（偏离寻路），不致死
+    const DEADLY_HAZARD_TERRAINS = [TILE.WATER, TILE.DARK, TILE.POISON];
     for (const unit of this.units) {
       if (unit.status !== 'active') continue;
       const terrain = this.getTerrain(unit.x, unit.y);
@@ -2193,6 +2195,19 @@ class CreatorExam3D extends GameEngine {
       if (terrain === TILE.FOG) {
         unit.hazardCoverTurns = 0;
         unit.lastHazardTerrain = null;
+        continue;
+      }
+
+      // 豁免：单位所在地块在灾害扩散前属于安全区域（非致命地形），但灾害扩散后变为致命地块。
+      // 无论单位是否移动，只要地块从安全变为致命，每次均给予一回合宽限，重置覆盖计数。
+      // 与迷雾混乱严格区分——迷雾仅引发寻路偏离不致死；此豁免针对水/黑暗/污染等致命地形，
+      // 水、黑暗、污染待遇完全一致。
+      if (unit._arrivalTerrain != null
+        && !DEADLY_HAZARD_TERRAINS.includes(unit._arrivalTerrain)
+        && DEADLY_HAZARD_TERRAINS.includes(terrain)) {
+        unit.hazardCoverTurns = 1;
+        unit.lastHazardTerrain = terrain;
+        this.addLog(`${unit.name} 所在地块被${TERRAIN_LABELS[terrain]}蔓延覆盖，获得一回合豁免`);
         continue;
       }
 
@@ -2416,10 +2431,7 @@ class CreatorExam3D extends GameEngine {
   isPassable(x, y, unit, options = {}) {
     // Support temporary pathfinding blocks used by _findNonReversingStep.
     if (unit?._pathfindBlock && unit._pathfindBlock.x === x && unit._pathfindBlock.y === y) return false;
-    const occupant = this.unitAt(x, y);
-    const sharedMeetingPoint = occupant && occupant !== unit && this.isMessenger(unit) && this.isMessenger(occupant)
-      && unit.goal?.x === x && unit.goal?.y === y && occupant.goal?.x === x && occupant.goal?.y === y;
-    if (!options.ignoreOccupants && occupant && occupant !== unit && occupant.status === 'active' && !sharedMeetingPoint) return false;
+    // 寻路与移动允许两个对象共享同一坐标，只要地形本身允许通过即可。
     const terrain = this.getTerrain(x, y);
     if (terrain === TILE.MOUNTAIN || terrain === TILE.WALL) return false;
     if (unit.type === 'beast') {
@@ -4156,7 +4168,7 @@ class CreatorExam3D extends GameEngine {
 
       // 居民在迷雾内时不显示动向箭头（迷雾中看不清下一步方向）
       const previewUnit = p.unitId ? this.units.find(u => u.id === p.unitId) : null;
-      if (previewUnit && this.getTerrain(previewUnit.x, previewUnit.y) === TILE.FOG) continue;
+      if (previewUnit && this.isCivilian(previewUnit) && this.getTerrain(previewUnit.x, previewUnit.y) === TILE.FOG) continue;
 
       if (p.targetPosition) {
         const end = this.tileToWorld(p.targetPosition.x, p.targetPosition.y);
@@ -4410,7 +4422,11 @@ class CreatorExam3D extends GameEngine {
       this.turn,
       this.entropy,
       this.warMeter,
-      this.units.map(unit => `${unit.id}:${unit.x},${unit.y}:${unit.status}:${unit.guidedTurns || 0}:${unit.stunnedTurns || 0}`).join('|'),
+      this.units.map(unit => {
+        const g = unit.goal ? `${unit.goal.x},${unit.goal.y}` : '';
+        const ag = unit.attractedTo ? `${unit.attractedTo.x},${unit.attractedTo.y}` : '';
+        return `${unit.id}:${unit.x},${unit.y}:${unit.status}:${unit.guidedTurns || 0}:${unit.stunnedTurns || 0}:${unit.attractTurns || 0}:${ag}:${unit.dreamLinked || ''}:${unit.immuneChaos || 0}:${unit.hazardPhase || ''}:${unit.revealedPath || 0}:${g}`;
+      }).join('|'),
       this.creations.filter(c => c.placed && c.remaining > 0).map(c => `${c.id}:${c.card?.ability}:${c.x},${c.y}:${c.remaining}`).join('|')
     ].join('::');
 
