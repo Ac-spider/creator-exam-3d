@@ -119,4 +119,10 @@ assert.equal(resumed.director.state.checkpoint, undefined, 'full reset must clea
 assert.equal(resumed.director.state.active, true, 'full reset should keep tutorial mode active')
 assert.equal(resumed.storage.getItem(TUTORIAL_CHOICE_KEY), 'tutorial', 'full reset should remain in tutorial mode')
 
+const delegated = createFixture(tutorialState(3))
+let delegatedOptions = null
+delegated.game.resetAllProgress = options => { delegatedOptions = options }
+delegated.director.resetAllTutorial()
+assert.deepEqual(delegatedOptions, { resetTutorial: true }, 'browser tutorial reset should delegate to the global campaign reset')
+
 console.log('Tutorial state tests passed: resume, current-level restart, full-campaign reset')

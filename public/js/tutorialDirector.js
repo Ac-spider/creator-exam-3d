@@ -83,7 +83,7 @@ export class TutorialDirector {
   }
 
   start(options = {}) {
-    if (options.reset) this.state = freshState()
+    if (options.reset) this.prepareFullReset()
     this.state.active = true
     this.panelExpanded = true
     this.state.startedAt ||= Date.now()
@@ -417,10 +417,23 @@ export class TutorialDirector {
   resetAllTutorial() {
     if (!this.isActive()) return
     this.game.ui.tutorialResetConfirm?.classList.add('hidden')
+    if (this.game.resetAllProgress) {
+      this.game.resetAllProgress({ resetTutorial: true })
+      return
+    }
     this.start({
       reset: true,
       message: '全部教学进度已重置，已返回第一关。普通存档保持不变。'
     })
+  }
+
+  prepareFullReset() {
+    this.state = freshState()
+    this.state.active = true
+    this.panelExpanded = true
+    this.state.startedAt = Date.now()
+    this.storage.setItem(TUTORIAL_CHOICE_KEY, 'tutorial')
+    this.persist()
   }
 
   checkpoint(reason) {

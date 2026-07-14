@@ -103,7 +103,7 @@
           <button id="compile-btn" class="primary" type="button">生成造物卡</button>
           <button id="random-btn" class="secondary" type="button">灵感</button>
           <button id="end-turn-btn" class="primary" type="button">结束回合</button>
-          <button id="restart-btn" class="secondary" type="button">重开本关</button>
+          <button id="restart-btn" class="secondary" type="button">重新开始</button>
         </div>
 
         <div id="card-panel" class="card hidden">
@@ -431,13 +431,14 @@
         </div>
       </div>
 
-      <div id="restart-confirm" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="restart-confirm-title">
+      <div id="restart-confirm" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="restart-confirm-title" aria-describedby="restart-confirm-copy">
         <div class="modal-box glass">
           <div class="eyebrow">考核重置</div>
-          <h2 id="restart-confirm-title">重开本关</h2>
-          <p>确定要重开本关吗？当前进度将重置。</p>
+          <h2 id="restart-confirm-title">选择重新开始范围</h2>
+          <p id="restart-confirm-copy">重新开始本关只重置当前棋盘；从第一关重新开始会清空当前战役的自动进度，但保留命名存档和设置。</p>
           <div class="button-row center">
-            <button id="restart-confirm-btn" class="primary" type="button">确认</button>
+            <button id="restart-confirm-btn" class="secondary" type="button">重新开始本关</button>
+            <button id="restart-all-btn" class="primary" type="button">从第一关重新开始</button>
             <button id="restart-cancel-btn" class="secondary" type="button">取消</button>
           </div>
         </div>
