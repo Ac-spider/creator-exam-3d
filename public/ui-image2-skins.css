@@ -351,19 +351,88 @@ body.air-combat-mode {
 
 @media (max-width: 720px) {
   .creator-exam-main #topbar {
-    grid-template-columns: minmax(180px, 1fr) auto auto;
-    gap: 8px;
+    height: auto;
+    min-height: 88px;
+    margin: 0;
+    padding: 8px 10px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
   }
 
   .creator-exam-main #topbar h1 {
-    font-size: 20px;
+    overflow: hidden;
+    font-size: 18px;
+    line-height: 1.1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .creator-exam-main #topbar .topbar-actions {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: 1fr 1.1fr 0.9fr 1.1fr;
+    gap: 4px;
+  }
+
+  .creator-exam-main #topbar .topbar-actions > .chip,
+  .creator-exam-main #topbar .topbar-actions > .wiki-link,
+  .creator-exam-main #topbar .topbar-actions > button {
+    min-width: 0;
+    min-height: 32px;
+    padding: 5px 4px;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .creator-exam-main #creation-dock #creation-input {
+    height: 60px;
+    min-height: 60px;
+    max-height: 60px;
+  }
+
+  .creator-exam-main #creation-dock #ai-mode {
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .creator-exam-main #creation-dock .dock-action-grid {
+    grid-template-columns: 1.3fr 0.75fr 1fr 1fr;
+    grid-template-rows: 1fr;
+    gap: 6px;
+  }
+
+  .creator-exam-main #creation-dock .dock-action-grid button {
+    min-height: 42px;
+    padding: 7px 4px;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .creator-exam-main #left-panel {
+    top: 104px;
+    margin: 0;
+  }
+
+  .creator-exam-main .drawer-rail {
+    top: 104px;
   }
 
   .creator-exam-main .npc-status-strip {
-    top: 92px;
-    left: 292px;
-    right: 70px;
+    top: 296px;
+    left: 50%;
+    right: auto;
+    max-width: calc(100vw - 112px);
     justify-content: center;
+    transform: translateX(-50%);
   }
 
   .creator-exam-main .glass {

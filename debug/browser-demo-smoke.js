@@ -14,6 +14,7 @@ const abilitySource = readFileSync(new URL('../public/js/abilities.js', import.m
 const particleSource = readFileSync(new URL('../public/js/particles.js', import.meta.url), 'utf8');
 const htmlSource = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
+const imageSkinCssSource = readFileSync(new URL('../public/ui-image2-skins.css', import.meta.url), 'utf8');
 const smokeBlock = sourceBlock(gameSource, '  async runBrowserDemoSmoke(options = {}) {', '  demoCard(ability) {');
 const pointerBlock = sourceBlock(gameSource, '  onPointerDown(event) {', '  placeCreation(x, y) {');
 const loadLevelBlock = sourceBlock(gameSource, '  loadLevel(index) {', '  applyDebugGate(search = window.location.search) {');
@@ -156,6 +157,30 @@ assert.ok(gameSource.includes('notifyDrawer(name, notice)'), 'game should expose
 assert.ok(gameSource.includes('worldLegendSystem.myths.values()'), 'legend notifications must scan every myth, not only the top three');
 
 assert.ok(cssSource.includes('@media (max-width: 760px)'), 'UI should define the approved mobile breakpoint');
+assert.ok(htmlSource.includes('<link rel="icon" href="data:," />'), 'main page should suppress the empty favicon request');
+const compactImageSkinCss = sourceBlock(imageSkinCssSource, '@media (max-width: 720px) {', '@media (prefers-reduced-motion: reduce)');
+assert.match(
+  compactImageSkinCss,
+  /\.creator-exam-main #topbar\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/,
+  'mobile topbar should stack its brand and controls without horizontal overflow'
+);
+assert.match(
+  compactImageSkinCss,
+  /\.creator-exam-main #topbar \.topbar-actions\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*1fr 1\.1fr 0\.9fr 1\.1fr;/,
+  'mobile topbar controls should share one bounded row'
+);
+assert.match(
+  compactImageSkinCss,
+  /\.creator-exam-main #creation-dock \.dock-action-grid\s*\{[^}]*grid-template-columns:\s*1\.3fr 0\.75fr 1fr 1fr;[^}]*grid-template-rows:\s*1fr;/,
+  'mobile creation commands should remain visible in one row'
+);
+for (const [selector, top] of [['#left-panel', '104px'], ['\\.drawer-rail', '104px'], ['\\.npc-status-strip', '296px']]) {
+  assert.match(
+    compactImageSkinCss,
+    new RegExp(`\\.creator-exam-main ${selector}\\s*\\{[^}]*top:\\s*${top};`),
+    `${selector} should reserve its mobile vertical lane`
+  );
+}
 assert.match(
   cssSource,
   /#right-panel\[hidden\]\s*\{\s*display:\s*none;/,
