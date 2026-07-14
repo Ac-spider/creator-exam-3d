@@ -24,6 +24,7 @@ const airBridge = read('public/modes/air-combat/airCombatBridge.js');
 const airGame = read('public/modes/air-combat/airCombatGame.js');
 const airAssets = read('public/modes/air-combat/airCombatAssets.js');
 const airCss = read('public/modes/air-combat/style.css');
+const nightWatchHighlightBlock = sourceBlock(towerHtml, 'function activateNightWatchHighlightProtocol() {', 'window.activateNightWatchHighlightProtocol = activateNightWatchHighlightProtocol;');
 const nightWatchSlides = sourceBlock(towerBridge, '  function cutsceneSlides() {', '  function showNightWatchCinematic() {');
 const airBriefingSlides = sourceBlock(airBridge, '  function briefingSlides() {', '  function difficulty() {');
 const nightWatchKeyStart = towerBridge.indexOf("overlay.addEventListener('keydown', event => {");
@@ -51,7 +52,13 @@ for (const id of [
 }
 assert.ok(towerHtml.includes('id="highlight-protocol-btn"'), 'Night Watch should expose the highlight protocol button');
 assert.ok(towerHtml.includes("highlight-protocol-core.png"), 'Night Watch highlight protocol should use the generated rift-core emblem');
-assert.ok(towerHtml.includes('enemy.takeDamage(Math.max(enemy.hp, enemy.maxHp) * 2'), 'Night Watch highlight protocol should execute active enemies');
+assert.ok(
+  nightWatchHighlightBlock.includes('wave = FINAL_WAVE')
+    && nightWatchHighlightBlock.includes('hp = Math.max(1, hp)')
+    && nightWatchHighlightBlock.includes('gameOver(true)')
+    && nightWatchHighlightBlock.includes('NightWatchBridge?.returnToMain?.()'),
+  'Night Watch highlight protocol should settle a victory and return to the main game'
+);
 assert.ok(towerBridge.includes("CONTEXT_KEY = 'creatorExamNightWatchContext'"), 'Night Watch should read the main-game context key');
 assert.ok(towerBridge.includes("RESULT_KEY = 'creatorExamNightWatchResult'"), 'Night Watch should publish the result key');
 assert.ok(towerBridge.includes("document.body.dataset.mode = 'night-watch'"), 'Night Watch should mark the page mode');
