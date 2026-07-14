@@ -8,8 +8,8 @@ const BASE_TERRAIN_STYLES = Object.freeze({
   border: { color: 0x665e5b, secondary: 0x403b3b, accent: 0x9b846f, roughness: 0.92, form: 'border' },
   forest: { color: 0x3e5947, secondary: 0x293b31, accent: 0x748764, roughness: 0.98, form: 'forest' },
   mountain: { color: 0x5f6261, secondary: 0x373b3c, accent: 0x8a887e, roughness: 0.97, form: 'rock' },
-  dark: { color: 0x151820, secondary: 0x090b10, accent: 0x4d5262, roughness: 1, form: 'dark' },
-  fog: { color: 0x777b80, secondary: 0x494d54, accent: 0xb0b2ad, roughness: 1, opacity: 0.66, form: 'fog' },
+  dark: { color: 0x151820, secondary: 0x090b10, accent: 0x4d5262, roughness: 1, opacity: 0.5, form: 'dark' },
+  fog: { color: 0x777b80, secondary: 0x494d54, accent: 0xb0b2ad, roughness: 1, opacity: 0.42, form: 'fog' },
   sacred: { color: 0x507865, secondary: 0x314b40, accent: 0xa7c491, roughness: 0.82, emissive: 0x183f32, emissiveIntensity: 0.16, form: 'sacred' },
   swamp: { color: 0x525943, secondary: 0x30362c, accent: 0x87916b, roughness: 0.74, form: 'wetland' },
   bridge: { color: 0x81684a, secondary: 0x4f4032, accent: 0xb89a68, roughness: 0.9, form: 'bridge' },
@@ -20,8 +20,8 @@ const BASE_TERRAIN_STYLES = Object.freeze({
 
 export const TERRAIN_READABILITY_STYLES = Object.freeze({
   water: Object.freeze({ opacity: 0.5, edgeOpacity: 0.76 }),
-  fog: Object.freeze({ opacity: 0.34, edgeOpacity: 0.58 }),
-  dark: Object.freeze({ opacity: 0.46, edgeOpacity: 0.68 }),
+  fog: Object.freeze({ opacity: 0.32, edgeOpacity: 0.52 }),
+  dark: Object.freeze({ opacity: 0.36, edgeOpacity: 0.54 }),
   swamp: Object.freeze({ opacity: 0.38, edgeOpacity: 0.62 }),
   poison: Object.freeze({ opacity: 0.44, edgeOpacity: 0.72 })
 })
@@ -75,7 +75,7 @@ export const LEVEL_BOARD_THEMES = Object.freeze({
     terrain: Object.freeze({
       land: { color: 0x55504e, secondary: 0x373232, accent: 0x827872 },
       border: { color: 0x6a5c5d, secondary: 0x433a3d, accent: 0xa48671 },
-      fog: { color: 0x858188, secondary: 0x55525a, accent: 0xb8b3b2, opacity: 0.62 },
+      fog: { color: 0x858188, secondary: 0x55525a, accent: 0xb8b3b2, opacity: 0.4 },
       forest: { color: 0x465246, secondary: 0x2e3930, accent: 0x707a67 },
       mountain: { color: 0x686363, secondary: 0x3e3b3d, accent: 0x918885 },
       village: { color: 0x73544b, secondary: 0x463735, accent: 0xa6745e }
@@ -88,7 +88,7 @@ export const LEVEL_BOARD_THEMES = Object.freeze({
     surface: 0x283a3a, side: 0x101f22, edge: 0x6e7e78, detailA: 0x526d68, detailB: 0x756686,
     terrain: Object.freeze({
       land: { color: 0x465952, secondary: 0x2c3d39, accent: 0x768d80 },
-      fog: { color: 0x7e8886, secondary: 0x505d5d, accent: 0xb9c0b5, opacity: 0.58 },
+      fog: { color: 0x7e8886, secondary: 0x505d5d, accent: 0xb9c0b5, opacity: 0.38 },
       swamp: { color: 0x4e6057, secondary: 0x2f423c, accent: 0x829488 },
       village: { color: 0x665b67, secondary: 0x403943, accent: 0x9c879c },
       sacred: { color: 0x557d6d, secondary: 0x344f45, accent: 0xb4cf9c, emissive: 0x20513e, emissiveIntensity: 0.22 }
@@ -103,7 +103,7 @@ export const LEVEL_BOARD_THEMES = Object.freeze({
       land: { color: 0x44434a, secondary: 0x2b2b32, accent: 0x6e6d70 },
       water: { color: 0x405664, secondary: 0x253744, accent: 0x78939c },
       dark: { color: 0x171720, secondary: 0x08090e, accent: 0x4a4657 },
-      fog: { color: 0x716d7b, secondary: 0x494653, accent: 0xa6a0aa, opacity: 0.58 },
+      fog: { color: 0x716d7b, secondary: 0x494653, accent: 0xa6a0aa, opacity: 0.38 },
       border: { color: 0x685566, secondary: 0x433745, accent: 0x987784 },
       forest: { color: 0x3c5144, secondary: 0x26362e, accent: 0x667761 },
       mountain: { color: 0x5c5d62, secondary: 0x37383f, accent: 0x858287 },

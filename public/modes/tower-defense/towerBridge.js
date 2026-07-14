@@ -1170,6 +1170,25 @@
     return text || fallback;
   }
 
+  function showAirCombatTransitionOverlay() {
+    if (context.mode !== 'night_watch' && new URLSearchParams(window.location.search).get('from') !== 'creator-exam') return;
+    if (document.getElementById('night-watch-airspace-transition')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'night-watch-airspace-transition';
+    overlay.setAttribute('role', 'status');
+    overlay.setAttribute('aria-live', 'polite');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:linear-gradient(145deg,rgba(3,5,12,.88),rgba(10,15,28,.95));color:#f0e4c1;font-family:inherit;text-align:center;padding:24px;opacity:0;transition:opacity .4s ease;';
+    overlay.innerHTML = '<div style="max-width:420px"><div style="font-size:1.25rem;font-weight:700;color:#d2b86b;margin-bottom:10px">守夜结束</div><div style="font-size:.95rem;line-height:1.6;color:#cbd5e1">正在折叠余烬，转入第七日裂隙空域...</div><div style="margin-top:16px;font-size:.8rem;color:#79d0b0">长夜的防线正在升空成为载体</div></div>';
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+    window.setTimeout(() => {
+      if (overlay.isConnected) {
+        overlay.style.opacity = '0';
+        window.setTimeout(() => overlay.remove(), 400);
+      }
+    }, 8000);
+  }
+
   function complete(isVictory, state = {}) {
     if (context.mode !== 'night_watch' && new URLSearchParams(window.location.search).get('from') !== 'creator-exam') {
       return null;
@@ -1215,6 +1234,7 @@
     };
 
     publish(result);
+    showAirCombatTransitionOverlay();
     requestNightWatchText(
       'night_watch_settlement',
       `请为长夜守城结算生成一个关键时刻。结果：${isVictory ? '守住' : '失守'}，波次${survivedWaves}，基地损伤${baseDamage}，保护居民${protectedCount}/${residents}。只写一段，不解释规则。`,

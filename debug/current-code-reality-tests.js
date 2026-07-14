@@ -506,6 +506,9 @@ function assertFinaleContinuity() {
   }
   assert.ok(nightResultBlock.includes("artUrl: './assets/art/cg-airspace-bridge.webp'"), 'Night Watch settlement must use the local airspace bridge CG');
   assert.ok(nightResultBlock.includes('this.openAirCombatMode()'), 'Night Watch settlement CG must continue directly into the seventh-day airspace');
+  assert.ok(nightResultBlock.includes('airspaceBridgeAutoAdvanceTimer'), 'Night Watch settlement must auto-advance to airspace without manual click');
+  assert.ok(nightResultBlock.includes('handleCinematicPrimary'), 'Night Watch auto-advance must trigger the cinematic primary action');
+  assert.ok(airOpenBlock.includes('nightWatchWindow'), 'Air Combat open must reuse the Night Watch window for a seamless transition');
 
   const contextualBridge = loadAirBridgeForContext({
     entropy: 4,

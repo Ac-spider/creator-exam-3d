@@ -44,6 +44,7 @@ const MAX_LOGS = 18;
 const TURN_RESOLUTION_LOCK_MS = 300;
 const CHAPTER_TRANSITION_MS = 1150;
 const FINALE_RETURN_KEY = 'creatorExamFinaleReturnState';
+const AIRSPACE_BRIDGE_AUTO_ADVANCE_MS = 3500;
 
 // AI Narrative endpoint configuration
 const NARRATIVE_ENDPOINT = '/api/narrative';
@@ -76,12 +77,12 @@ const MATERIAL_COLORS = {
 };
 
 const LEVEL_ENVIRONMENTS = Object.freeze({
-  'flood-village': { background: 0x07151b, fog: 0x102b33, near: 13, far: 30, ambient: 1.85, sun: 0xffd487, sunPower: 2.35, rim: 0x59c7a6 },
-  'night-mine': { background: 0x050609, fog: 0x090b10, near: 10, far: 24, ambient: 1.05, sun: 0xdceeff, sunPower: 1.45, rim: 0xf2e7c2 },
-  'giant-city': { background: 0x081512, fog: 0x173027, near: 14, far: 31, ambient: 1.75, sun: 0xe0b86a, sunPower: 2.4, rim: 0x59c7a6 },
-  'wordless-war': { background: 0x0d0b14, fog: 0x292338, near: 12, far: 27, ambient: 1.45, sun: 0xe6c778, sunPower: 2.05, rim: 0x8f73c8 },
-  'memory-plague': { background: 0x071310, fog: 0x241e35, near: 13, far: 29, ambient: 1.7, sun: 0xb9e8d5, sunPower: 2.25, rim: 0xa993da },
-  'final-exam': { background: 0x070a11, fog: 0x181429, near: 14, far: 32, ambient: 1.65, sun: 0xd2b86b, sunPower: 2.3, rim: 0x8f73c8 }
+  'flood-village': { background: 0x07151b, fog: 0x102b33, near: 16, far: 38, ambient: 2.05, sun: 0xffd487, sunPower: 2.5, rim: 0x59c7a6 },
+  'night-mine': { background: 0x050609, fog: 0x090b10, near: 13, far: 32, ambient: 1.35, sun: 0xdceeff, sunPower: 1.65, rim: 0xf2e7c2 },
+  'giant-city': { background: 0x081512, fog: 0x173027, near: 17, far: 39, ambient: 1.95, sun: 0xe0b86a, sunPower: 2.55, rim: 0x59c7a6 },
+  'wordless-war': { background: 0x0d0b14, fog: 0x292338, near: 15, far: 35, ambient: 1.7, sun: 0xe6c778, sunPower: 2.2, rim: 0x8f73c8 },
+  'memory-plague': { background: 0x071310, fog: 0x241e35, near: 16, far: 37, ambient: 1.95, sun: 0xb9e8d5, sunPower: 2.4, rim: 0xa993da },
+  'final-exam': { background: 0x070a11, fog: 0x181429, near: 17, far: 40, ambient: 1.9, sun: 0xd2b86b, sunPower: 2.45, rim: 0x8f73c8 }
 });
 
 const ABILITY_COLORS = {
@@ -224,6 +225,9 @@ class CreatorExam3D extends GameEngine {
     this.processedNightWatchResults = new Set();
     this.lastAirCombatResult = null;
     this.processedAirCombatResults = new Set();
+    this.nightWatchWindow = null;
+    this.airspaceBridgeAutoAdvanceTimer = null;
+    this.airspaceBridgeCountdownInterval = null;
     this.isResolvingTurn = false;
     this.cinematicCloseAction = null;
     this.cinematicPrimaryAction = null;
@@ -563,7 +567,7 @@ class CreatorExam3D extends GameEngine {
   initScene() {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x070918);
-    this.scene.fog = new THREE.Fog(0x070918, 15, 34);
+    this.scene.fog = new THREE.Fog(0x070918, 18, 42);
 
     const renderSize = this.getCanvasRenderSize();
     this.camera = new THREE.PerspectiveCamera(47, renderSize.width / renderSize.height, 0.1, 100);
@@ -1176,6 +1180,14 @@ class CreatorExam3D extends GameEngine {
     if (this.chapterTransitionTimer) {
       window.clearTimeout(this.chapterTransitionTimer);
       this.chapterTransitionTimer = null;
+    }
+    if (this.airspaceBridgeAutoAdvanceTimer) {
+      window.clearTimeout(this.airspaceBridgeAutoAdvanceTimer);
+      this.airspaceBridgeAutoAdvanceTimer = null;
+    }
+    if (this.airspaceBridgeCountdownInterval) {
+      window.clearInterval(this.airspaceBridgeCountdownInterval);
+      this.airspaceBridgeCountdownInterval = null;
     }
     const action = this.cinematicCloseAction;
     this.cinematicCloseAction = null;
@@ -1911,6 +1923,20 @@ class CreatorExam3D extends GameEngine {
     }
     this.rememberFinaleReturn();
 
+    if (this.nightWatchWindow) {
+      try {
+        if (!this.nightWatchWindow.closed) {
+          this.nightWatchWindow.location.href = url.toString();
+          try { this.nightWatchWindow.focus(); } catch (_) {}
+          this.addLog(`【第七天裂隙空域】已压缩 ${context.recentCreations.length || 1} 件造物为空域载体。`, true);
+          this.showToast('守夜窗口正在转入第七日裂隙空域。');
+          this.nightWatchWindow = null;
+          return;
+        }
+      } catch (_) {}
+      this.nightWatchWindow = null;
+    }
+
     try {
       const response = await fetch(url.toString(), { method: 'HEAD' });
       if (response.ok) {
@@ -1991,6 +2017,7 @@ class CreatorExam3D extends GameEngine {
     url.searchParams.set('from', 'creator-exam');
     this.rememberFinaleReturn();
     const tab = window.open(url.toString(), 'creator_exam_night_watch');
+    this.nightWatchWindow = tab;
     this.addLog(`【长夜守城】已开启 ${context.regionTitle} 的守夜防线。`, true);
     this.showToast(tab ? '长夜守城已打开。' : '浏览器拦截了新窗口，正在当前页打开。');
     if (!tab) window.location.href = url.toString();
@@ -2080,6 +2107,27 @@ class CreatorExam3D extends GameEngine {
         this.openAirCombatMode();
       }
     });
+    let countdown = Math.ceil(AIRSPACE_BRIDGE_AUTO_ADVANCE_MS / 1000);
+    const countdownButton = this.ui.cinematicPrimary;
+    const originalLabel = countdownButton.textContent;
+    countdownButton.textContent = `${originalLabel}（${countdown}s）`;
+    this.airspaceBridgeCountdownInterval = window.setInterval(() => {
+      countdown -= 1;
+      if (countdown <= 0) {
+        window.clearInterval(this.airspaceBridgeCountdownInterval);
+        this.airspaceBridgeCountdownInterval = null;
+        return;
+      }
+      countdownButton.textContent = `${originalLabel}（${countdown}s）`;
+    }, 1000);
+    this.airspaceBridgeAutoAdvanceTimer = window.setTimeout(() => {
+      this.airspaceBridgeAutoAdvanceTimer = null;
+      if (this.airspaceBridgeCountdownInterval) {
+        window.clearInterval(this.airspaceBridgeCountdownInterval);
+        this.airspaceBridgeCountdownInterval = null;
+      }
+      if (!this.ui.cinematic.hidden) this.handleCinematicPrimary();
+    }, AIRSPACE_BRIDGE_AUTO_ADVANCE_MS);
   }
 
   renderNightWatchPanel() {
@@ -3561,7 +3609,7 @@ class CreatorExam3D extends GameEngine {
 
     if (terrain === TILE.DARK) {
       for (let index = 0; index < 3; index += 1) {
-        const shard = new THREE.Mesh(this.getCachedGeometry(`terrain-dark-shard-v3-${index}`, () => new THREE.TetrahedronGeometry(0.09 + index * 0.02, 0)), this.material(style.accent, { transparent: true, opacity: 0.38, emissive: style.secondary, emissiveIntensity: 0.12 }));
+        const shard = new THREE.Mesh(this.getCachedGeometry(`terrain-dark-shard-v3-${index}`, () => new THREE.TetrahedronGeometry(0.09 + index * 0.02, 0)), this.material(style.accent, { transparent: true, opacity: 0.24, emissive: style.secondary, emissiveIntensity: 0.12 }));
         shard.position.set((index - 1) * 0.2, surfaceLocalY + 0.12 + index * 0.035, (index % 2 ? 0.13 : -0.09));
         shard.rotation.set(index * 0.4, variation * Math.PI, 0.2);
         group.add(shard);
@@ -3670,7 +3718,7 @@ class CreatorExam3D extends GameEngine {
       const radius = terrain === TILE.DARK ? 0.58 : 0.5;
       const haze = new THREE.Mesh(
         this.getCachedGeometry(`terrain-haze-v3-${terrain}`, () => new THREE.SphereGeometry(radius, 12, 8)),
-        this.material(style.accent, { transparent: true, opacity: terrain === TILE.DARK ? 0.32 : 0.28, roughness: 1, depthWrite: false })
+        this.material(style.accent, { transparent: true, opacity: terrain === TILE.DARK ? 0.18 : 0.16, roughness: 1, depthWrite: false })
       );
       haze.position.set(pos.x, terrain === TILE.DARK ? 0.42 : 0.18, pos.z);
       haze.scale.set(terrain === TILE.DARK ? 1.15 : 1.38, terrain === TILE.DARK ? 0.66 : 0.34, terrain === TILE.DARK ? 1.15 : 1.38);
@@ -7853,8 +7901,8 @@ class CreatorExam3D extends GameEngine {
       options.emissiveIntensity = style.emissiveIntensity || 0.1;
     }
     if (terrain === TILE.WATER) return this.material(style.color, { ...options, transparent: true, opacity: 0.76, depthWrite: false });
-    if (terrain === TILE.DARK) return this.material(style.color, { ...options, emissive: style.secondary, emissiveIntensity: 0.08 });
-    if (terrain === TILE.FOG) return this.material(style.color, { ...options, transparent: true, opacity: style.opacity || 0.62, depthWrite: false });
+    if (terrain === TILE.DARK) return this.material(style.color, { ...options, transparent: true, opacity: style.opacity || 0.5, depthWrite: false, emissive: style.secondary, emissiveIntensity: 0.08 });
+    if (terrain === TILE.FOG) return this.material(style.color, { ...options, transparent: true, opacity: style.opacity || 0.42, depthWrite: false });
     if (terrain === TILE.FIELD) return this.material(style.color, { ...options, emissive: style.secondary, emissiveIntensity: 0.08 });
     return this.material(style.color, options);
   }
