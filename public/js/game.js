@@ -33,6 +33,7 @@ import { resolveNpcVisualProfile } from './npcVisualProfiles.js';
 import { getNpcPortraitAsset } from './npcPortraitAssets.js';
 import { getBoardVisualTheme, getTerrainReadabilityStyle, getTerrainVisualStyle } from './boardVisualThemes.js';
 import { TutorialDirector } from './tutorialDirector.js';
+import { clearCampaignProgress } from './campaignReset.js';
 import { buildTimelineArchive } from './timelineArchive.js';
 import { EndingDirector } from './endingDirector.js';
 import { TIMELINE_ENDING_ASSETS } from './timelineEndingManifest.js';
@@ -380,6 +381,16 @@ class CreatorExam3D extends GameEngine {
     else this.loadLevel(this.levelIndex);
   }
 
+  resetAllProgress(options = {}) {
+    const resetTutorial = options.resetTutorial ?? this.tutorialDirector?.isActive();
+    if (resetTutorial) this.tutorialDirector?.prepareFullReset();
+    clearCampaignProgress(localStorage, sessionStorage, LEVELS.map(level => level.id));
+    const target = new URL(window.location.href);
+    target.search = '';
+    target.hash = '';
+    window.location.replace(target.toString());
+  }
+
   applyDebugGate(search = window.location.search) {
     const enabled = new URLSearchParams(search).get('debug') === '1';
     if (this.ui?.testJumpPanel) this.ui.testJumpPanel.hidden = !enabled;
@@ -460,6 +471,10 @@ class CreatorExam3D extends GameEngine {
       tutorialPrompt: document.getElementById('tutorial-prompt'),
       tutorialPrimary: document.getElementById('tutorial-primary'),
       tutorialRecover: document.getElementById('tutorial-recover'),
+      tutorialResetAll: document.getElementById('tutorial-reset-all'),
+      tutorialResetConfirm: document.getElementById('tutorial-reset-confirm'),
+      tutorialResetConfirmBtn: document.getElementById('tutorial-reset-confirm-btn'),
+      tutorialResetCancelBtn: document.getElementById('tutorial-reset-cancel-btn'),
       tutorialCollapse: document.getElementById('tutorial-collapse'),
       tutorialTargetMarker: document.getElementById('tutorial-target-marker'),
       tutorialTargetMarkerLabel: document.getElementById('tutorial-target-marker-label'),
@@ -485,6 +500,7 @@ class CreatorExam3D extends GameEngine {
       modalSecondary: document.getElementById('modal-secondary'),
       restartConfirm: document.getElementById('restart-confirm'),
       restartConfirmBtn: document.getElementById('restart-confirm-btn'),
+      restartAllBtn: document.getElementById('restart-all-btn'),
       restartCancelBtn: document.getElementById('restart-cancel-btn'),
       saveSlotPanel: document.getElementById('save-slot-panel'),
       saveSlotList: document.getElementById('save-slot-list'),
@@ -874,18 +890,20 @@ class CreatorExam3D extends GameEngine {
     this.ui.placeBtn.addEventListener('click', () => this.startPlacement());
     this.ui.endTurnBtn.addEventListener('click', () => this.endTurn());
     this.ui.restartBtn.addEventListener('click', () => {
-      if (this.tutorialDirector?.isActive()) {
-        this.performRestart();
-      } else {
-        this.ui.restartConfirm?.classList.remove('hidden');
-      }
+      this.ui.restartConfirm?.classList.remove('hidden');
+      this.ui.restartConfirmBtn?.focus?.();
     });
     this.ui.restartConfirmBtn?.addEventListener('click', () => {
       this.ui.restartConfirm?.classList.add('hidden');
       this.performRestart();
     });
+    this.ui.restartAllBtn?.addEventListener('click', () => {
+      this.ui.restartConfirm?.classList.add('hidden');
+      this.resetAllProgress();
+    });
     this.ui.restartCancelBtn?.addEventListener('click', () => {
       this.ui.restartConfirm?.classList.add('hidden');
+      this.ui.restartBtn?.focus?.();
     });
     this.ui.nextBtn.addEventListener('click', () => this.nextLevel());
     this.ui.nightWatchBtn?.addEventListener('click', () => this.openNightWatch());
