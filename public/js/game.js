@@ -33,6 +33,7 @@ import { resolveNpcVisualProfile } from './npcVisualProfiles.js';
 import { getNpcPortraitAsset } from './npcPortraitAssets.js';
 import { getBoardVisualTheme, getTerrainReadabilityStyle, getTerrainVisualStyle } from './boardVisualThemes.js';
 import { TutorialDirector } from './tutorialDirector.js';
+import { clearCampaignProgress } from './campaignReset.js';
 import { buildTimelineArchive } from './timelineArchive.js';
 import { EndingDirector } from './endingDirector.js';
 import { TIMELINE_ENDING_ASSETS } from './timelineEndingManifest.js';
@@ -380,6 +381,29 @@ class CreatorExam3D extends GameEngine {
     else this.loadLevel(this.levelIndex);
   }
 
+  restartFromFirst() {
+    if (this.tutorialDirector?.isActive()) {
+      this.tutorialDirector.resetAllTutorial();
+      return;
+    }
+    clearCampaignProgress(window.localStorage, window.sessionStorage, LEVELS.map(level => level.id));
+    this.loadLevel(0);
+    this.showToast?.('已从第一关重新开始；命名存档和设置保持不变。');
+  }
+
+  resetAllProgress(options = {}) {
+    clearCampaignProgress(window.localStorage, window.sessionStorage, LEVELS.map(level => level.id));
+    if (options.resetTutorial && this.tutorialDirector) {
+      this.tutorialDirector.start({
+        reset: true,
+        message: '全部教学进度已重置，已返回第一关。普通存档保持不变。'
+      });
+      return;
+    }
+    this.loadLevel(0);
+    this.showToast?.('战役自动进度已清空，已返回第一关。命名存档和设置保持不变。');
+  }
+
   applyDebugGate(search = window.location.search) {
     const enabled = new URLSearchParams(search).get('debug') === '1';
     if (this.ui?.testJumpPanel) this.ui.testJumpPanel.hidden = !enabled;
@@ -460,6 +484,10 @@ class CreatorExam3D extends GameEngine {
       tutorialPrompt: document.getElementById('tutorial-prompt'),
       tutorialPrimary: document.getElementById('tutorial-primary'),
       tutorialRecover: document.getElementById('tutorial-recover'),
+      tutorialResetAll: document.getElementById('tutorial-reset-all'),
+      tutorialResetConfirm: document.getElementById('tutorial-reset-confirm'),
+      tutorialResetConfirmBtn: document.getElementById('tutorial-reset-confirm-btn'),
+      tutorialResetCancelBtn: document.getElementById('tutorial-reset-cancel-btn'),
       tutorialCollapse: document.getElementById('tutorial-collapse'),
       tutorialTargetMarker: document.getElementById('tutorial-target-marker'),
       tutorialTargetMarkerLabel: document.getElementById('tutorial-target-marker-label'),
@@ -485,6 +513,7 @@ class CreatorExam3D extends GameEngine {
       modalSecondary: document.getElementById('modal-secondary'),
       restartConfirm: document.getElementById('restart-confirm'),
       restartConfirmBtn: document.getElementById('restart-confirm-btn'),
+      restartAllBtn: document.getElementById('restart-all-btn'),
       restartCancelBtn: document.getElementById('restart-cancel-btn'),
       saveSlotPanel: document.getElementById('save-slot-panel'),
       saveSlotList: document.getElementById('save-slot-list'),
@@ -883,6 +912,10 @@ class CreatorExam3D extends GameEngine {
     this.ui.restartConfirmBtn?.addEventListener('click', () => {
       this.ui.restartConfirm?.classList.add('hidden');
       this.performRestart();
+    });
+    this.ui.restartAllBtn?.addEventListener('click', () => {
+      this.ui.restartConfirm?.classList.add('hidden');
+      this.restartFromFirst();
     });
     this.ui.restartCancelBtn?.addEventListener('click', () => {
       this.ui.restartConfirm?.classList.add('hidden');
